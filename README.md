@@ -214,3 +214,4 @@ and add `SPOTIFY_REDIRECT_URI` in your Spotify app dashboard.
   - `LICENSE`
   - `TERMS.md`
   - `PRIVACY.md`
+- Voice state resolution includes REST + short event wait fallback so `!play` works after bot cold-start while users are already in voice.

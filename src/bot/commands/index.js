@@ -140,7 +140,14 @@ function getDjRoleSet(guildConfig) {
 }
 
 async function ensureConnectedSession(ctx, explicitChannelId = null) {
-  const resolvedVoice = explicitChannelId ?? ctx.voiceStateStore.resolveMemberVoiceChannel(ctx.message);
+  let resolvedVoice = explicitChannelId ?? ctx.voiceStateStore.resolveMemberVoiceChannel(ctx.message);
+  if (!resolvedVoice && !explicitChannelId && ctx.voiceStateStore.resolveMemberVoiceChannelWithFallback) {
+    resolvedVoice = await ctx.voiceStateStore.resolveMemberVoiceChannelWithFallback(
+      ctx.message,
+      ctx.rest,
+      2_500
+    );
+  }
   if (!resolvedVoice) {
     const prefix = ctx.prefix ?? ctx.config.prefix;
     throw new ValidationError(
@@ -770,7 +777,7 @@ export function registerCommands(registry) {
 
         const chunks = chunkLines(rows, 950);
         for (let i = 0; i < chunks.length; i += 1) {
-          const suffix = chunks.length > 1 ? ` (${i + 1}/${chunks.length})` : '';
+          const suffix = i === 0 ? '' : ' (more)';
           fields.push({
             name: `${category}${suffix}`,
             value: chunks[i].join('\n'),

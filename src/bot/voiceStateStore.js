@@ -2,6 +2,7 @@ export class VoiceStateStore {
   constructor(logger) {
     this.logger = logger;
     this.guildVoiceStates = new Map();
+    this.pendingWaiters = new Map();
   }
 
   register(gateway) {
@@ -41,19 +42,48 @@ export class VoiceStateStore {
   }
 
   resolveMemberVoiceChannel(message) {
-    const direct =
-      message?.member?.voice_channel_id ??
-      message?.member?.voice_state?.channel_id ??
-      message?.member?.voice?.channel_id ??
-      null;
+    const direct = this._voiceChannelFromMember(message?.member);
 
     if (direct) return direct;
 
-    const guildId = message?.guild_id;
-    const userId = message?.author?.id ?? message?.user_id ?? message?.member?.user?.id ?? null;
+    const guildId = this._guildIdFromMessage(message);
+    const userId = this._userIdFromMessage(message);
     if (!guildId || !userId) return null;
 
     return this.guildVoiceStates.get(guildId)?.get(userId) ?? null;
+  }
+
+  async resolveMemberVoiceChannelWithFallback(message, rest, timeoutMs = 2_000) {
+    const direct = this.resolveMemberVoiceChannel(message);
+    if (direct) return direct;
+
+    const guildId = this._guildIdFromMessage(message);
+    const userId = this._userIdFromMessage(message);
+    if (!guildId || !userId) return null;
+
+    if (rest?.getGuildMember) {
+      try {
+        const member = await rest.getGuildMember(guildId, userId);
+        const fromMember = this._voiceChannelFromMember(member) ?? this._voiceChannelFromMember(member?.member);
+        if (fromMember) {
+          this._upsert(guildId, userId, fromMember);
+          this.logger?.debug?.('Resolved member voice channel via REST fallback', {
+            guildId,
+            userId,
+            channelId: fromMember,
+          });
+          return fromMember;
+        }
+      } catch (err) {
+        this.logger?.debug?.('Voice channel REST fallback failed', {
+          guildId,
+          userId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    return this.waitForMemberVoiceChannel(guildId, userId, timeoutMs);
   }
 
   getGuildVoiceStateCount(guildId) {
@@ -109,5 +139,78 @@ export class VoiceStateStore {
     }
 
     map.set(userId, channelId);
+    this._resolveWaiters(guildId, userId, channelId);
+  }
+
+  waitForMemberVoiceChannel(guildId, userId, timeoutMs = 2_000) {
+    const gid = String(guildId ?? '').trim();
+    const uid = String(userId ?? '').trim();
+    if (!gid || !uid) return Promise.resolve(null);
+
+    const cached = this.guildVoiceStates.get(gid)?.get(uid) ?? null;
+    if (cached) return Promise.resolve(cached);
+
+    const key = `${gid}:${uid}`;
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        this._removeWaiter(key, waiter);
+        resolve(null);
+      }, timeoutMs);
+
+      const waiter = {
+        resolve: (channelId) => {
+          clearTimeout(timeout);
+          resolve(channelId);
+        },
+      };
+
+      const list = this.pendingWaiters.get(key) ?? [];
+      list.push(waiter);
+      this.pendingWaiters.set(key, list);
+    });
+  }
+
+  _resolveWaiters(guildId, userId, channelId) {
+    const key = `${String(guildId)}:${String(userId)}`;
+    const list = this.pendingWaiters.get(key);
+    if (!list?.length) return;
+
+    this.pendingWaiters.delete(key);
+    for (const waiter of list) {
+      try {
+        waiter.resolve(channelId);
+      } catch {
+        // ignore waiter resolution errors
+      }
+    }
+  }
+
+  _removeWaiter(key, waiter) {
+    const list = this.pendingWaiters.get(key);
+    if (!list?.length) return;
+
+    const next = list.filter((entry) => entry !== waiter);
+    if (next.length) {
+      this.pendingWaiters.set(key, next);
+    } else {
+      this.pendingWaiters.delete(key);
+    }
+  }
+
+  _voiceChannelFromMember(member) {
+    return (
+      member?.voice_channel_id ??
+      member?.voice_state?.channel_id ??
+      member?.voice?.channel_id ??
+      null
+    );
+  }
+
+  _guildIdFromMessage(message) {
+    return message?.guild_id ?? null;
+  }
+
+  _userIdFromMessage(message) {
+    return message?.author?.id ?? message?.user_id ?? message?.member?.user?.id ?? null;
   }
 }
