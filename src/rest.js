@@ -234,8 +234,19 @@ export class RestClient {
     return this.request('GET', `/channels/${channelId}`);
   }
 
-  async getGuild(guildId) {
-    return this.request('GET', `/guilds/${guildId}`);
+  async listCurrentUserGuilds(options = {}) {
+    const query = {};
+    if (options.before != null) query.before = options.before;
+    if (options.after != null) query.after = options.after;
+    if (options.limit != null) query.limit = options.limit;
+    if (options.withCounts != null) query.with_counts = options.withCounts;
+    return this.request('GET', '/users/@me/guilds', { query });
+  }
+
+  async getGuild(guildId, options = {}) {
+    const query = {};
+    if (options.withCounts != null) query.with_counts = options.withCounts;
+    return this.request('GET', `/guilds/${guildId}`, { query });
   }
 
   async getGuildMember(guildId, userId) {

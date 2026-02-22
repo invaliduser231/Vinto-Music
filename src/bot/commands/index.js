@@ -93,6 +93,95 @@ function sumTrackDurationsSeconds(tracks) {
   return total;
 }
 
+function readMemberCountFromGuildLike(value) {
+  if (!value || typeof value !== 'object') return null;
+
+  const candidates = [
+    value.member_count,
+    value.members_count,
+    value.approximate_member_count,
+    value.approx_member_count,
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = Number.parseInt(String(candidate ?? ''), 10);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
+async function fetchGlobalGuildAndUserCounts(rest) {
+  if (!rest?.listCurrentUserGuilds) {
+    return {
+      guildCount: null,
+      userCount: null,
+      incompleteGuildCount: 0,
+    };
+  }
+
+  const guilds = [];
+  let before = null;
+
+  // Fetch all guild pages (Discord-like pagination with "before").
+  for (let page = 0; page < 100; page += 1) {
+    const chunk = await rest.listCurrentUserGuilds({
+      limit: 200,
+      before,
+      withCounts: true,
+    }).catch(() => null);
+    if (!Array.isArray(chunk) || !chunk.length) break;
+
+    guilds.push(...chunk);
+    if (chunk.length < 200) break;
+
+    const lastId = chunk[chunk.length - 1]?.id;
+    if (!lastId) break;
+    before = String(lastId);
+  }
+
+  if (!guilds.length) {
+    return {
+      guildCount: 0,
+      userCount: 0,
+      incompleteGuildCount: 0,
+    };
+  }
+
+  let userCount = 0;
+  let incompleteGuildCount = 0;
+  const missingGuildIds = [];
+
+  for (const guild of guilds) {
+    const count = readMemberCountFromGuildLike(guild);
+    if (count == null) {
+      incompleteGuildCount += 1;
+      if (guild?.id) missingGuildIds.push(String(guild.id));
+      continue;
+    }
+    userCount += count;
+  }
+
+  // Best-effort enrichment for guilds that did not include member count in list payload.
+  const toEnrich = missingGuildIds.slice(0, 25);
+  for (const guildId of toEnrich) {
+    const details = await rest.getGuild(guildId, { withCounts: true }).catch(() => null);
+    const count = readMemberCountFromGuildLike(details);
+    if (count == null) continue;
+
+    userCount += count;
+    incompleteGuildCount -= 1;
+  }
+
+  return {
+    guildCount: guilds.length,
+    userCount,
+    incompleteGuildCount: Math.max(0, incompleteGuildCount),
+  };
+}
+
 function ensureGuild(ctx) {
   if (!ctx.guildId) {
     throw new ValidationError('This command can only be used in a guild channel.');
@@ -1540,10 +1629,24 @@ export function registerCommands(registry) {
     async execute(ctx) {
       const uptimeSeconds = Math.floor((Date.now() - ctx.startedAt) / 1000);
       const mem = process.memoryUsage();
+      const globalCounts = await fetchGlobalGuildAndUserCounts(ctx.rest).catch(() => null);
+
+      const serverCountLabel = globalCounts?.guildCount == null
+        ? 'n/a'
+        : String(globalCounts.guildCount);
+      const userCountLabel = globalCounts?.userCount == null
+        ? 'n/a'
+        : (
+          globalCounts.incompleteGuildCount > 0
+            ? `${globalCounts.userCount} (partial)`
+            : String(globalCounts.userCount)
+        );
 
       await ctx.reply.info('Runtime statistics', [
         { name: 'Uptime', value: `${uptimeSeconds}s`, inline: true },
         { name: 'Guild sessions', value: String(ctx.sessions.sessions.size), inline: true },
+        { name: 'Servers total', value: serverCountLabel, inline: true },
+        { name: 'Users total', value: userCountLabel, inline: true },
         { name: 'Heap Used', value: `${Math.round(mem.heapUsed / 1024 / 1024)} MB`, inline: true },
       ]);
     },
