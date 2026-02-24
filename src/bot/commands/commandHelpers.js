@@ -33,7 +33,7 @@ function parseVoiceChannelArgument(args) {
 }
 
 function trackLabel(track) {
-  const by = track.requestedBy ? ` â€¢ requested by <@${track.requestedBy}>` : '';
+  const by = track.requestedBy ? ` • requested by <@${track.requestedBy}>` : '';
   return `**${track.title}** (${track.duration})${by}`;
 }
 
@@ -83,7 +83,7 @@ function formatUptimeCompact(totalSeconds) {
 
 function buildProgressBar(positionSec, totalSec, size = 16) {
   if (!Number.isFinite(totalSec) || totalSec <= 0) {
-    return `${formatSeconds(positionSec)} â€¢ live/unknown`;
+    return `${formatSeconds(positionSec)} • live/unknown`;
   }
 
   const clamped = Math.max(0, Math.min(positionSec, totalSec));
@@ -92,7 +92,7 @@ function buildProgressBar(positionSec, totalSec, size = 16) {
 
   const chars = [];
   for (let i = 0; i < size; i += 1) {
-    chars.push(i === marker ? 'â—' : 'â”');
+    chars.push(i === marker ? '●' : '━');
   }
 
   return `${formatSeconds(clamped)} ${chars.join('')} ${formatSeconds(totalSec)}`;
@@ -243,6 +243,55 @@ function getDjRoleSet(guildConfig) {
   return new Set(roleIds.map((roleId) => String(roleId)));
 }
 
+function extractVoiceStateFromMemberPayload(member) {
+  if (!member || typeof member !== 'object') return null;
+
+  const candidates = [
+    member.voice_state,
+    member.voiceState,
+    member.voice,
+    member?.member?.voice_state,
+    member?.member?.voiceState,
+    member?.member?.voice,
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === 'object') {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function isVoiceStateDeafened(voiceState) {
+  if (!voiceState || typeof voiceState !== 'object') return false;
+
+  const flags = [
+    voiceState.deaf,
+    voiceState.self_deaf,
+    voiceState.selfDeaf,
+    voiceState.is_deafened,
+    voiceState.isDeafened,
+  ];
+
+  return flags.some((value) => value === true);
+}
+
+async function isBotCurrentlyDeafened(ctx) {
+  if (!ctx?.guildId || !ctx?.botUserId || typeof ctx?.rest?.getGuildMember !== 'function') {
+    return false;
+  }
+
+  try {
+    const botMember = await ctx.rest.getGuildMember(ctx.guildId, ctx.botUserId);
+    const voiceState = extractVoiceStateFromMemberPayload(botMember);
+    return isVoiceStateDeafened(voiceState);
+  } catch {
+    return false;
+  }
+}
+
 async function ensureConnectedSession(ctx, explicitChannelId = null) {
   let resolvedVoice = explicitChannelId ?? ctx.voiceStateStore.resolveMemberVoiceChannel(ctx.message);
   if (!resolvedVoice && !explicitChannelId && ctx.voiceStateStore.resolveMemberVoiceChannelWithFallback) {
@@ -266,6 +315,10 @@ async function ensureConnectedSession(ctx, explicitChannelId = null) {
     }
   }
 
+  if (await isBotCurrentlyDeafened(ctx)) {
+    throw new ValidationError('Cannot connect to VC because I am Deafened - please undeafen me.');
+  }
+
   const hadSession = ctx.sessions.has(ctx.guildId);
   const session = await ctx.sessions.ensure(ctx.guildId, ctx.guildConfig);
   ctx.sessions.bindTextChannel(ctx.guildId, ctx.channelId);
@@ -277,6 +330,9 @@ async function ensureConnectedSession(ctx, explicitChannelId = null) {
   } catch (err) {
     if (!hadSession) {
       await ctx.sessions.destroy(ctx.guildId, 'connect_failed').catch(() => null);
+    }
+    if (await isBotCurrentlyDeafened(ctx)) {
+      throw new ValidationError('Cannot connect to VC because I am Deafened - please undeafen me.');
     }
     throw err;
   }
@@ -344,7 +400,7 @@ function formatQueuePage(session, page) {
 
   const pendingDurationSec = sumTrackDurationsSeconds(pending);
   return {
-    description: `Loop: **${session.player.loopMode}** â€¢ Volume: **${session.player.volumePercent}%** â€¢ Pending duration: **${formatSeconds(pendingDurationSec)}** â€¢ Autoplay: **disabled** â€¢ Dedupe: **${session.settings.dedupeEnabled ? 'on' : 'off'}** â€¢ 24/7: **${session.settings.stayInVoiceEnabled ? 'on' : 'off'}**`,
+    description: `Loop: **${session.player.loopMode}** • Volume: **${session.player.volumePercent}%** • Pending duration: **${formatSeconds(pendingDurationSec)}** • Autoplay: **disabled** • Dedupe: **${session.settings.dedupeEnabled ? 'on' : 'off'}** • 24/7: **${session.settings.stayInVoiceEnabled ? 'on' : 'off'}**`,
     fields,
   };
 }
@@ -368,7 +424,7 @@ function formatHistoryPage(session, page) {
     .slice(start, start + HISTORY_PAGE_SIZE);
 
   return {
-    description: `History page **${safePage}/${totalPages}** â€¢ Total tracks: **${history.length}**`,
+    description: `History page **${safePage}/${totalPages}** • Total tracks: **${history.length}**`,
     fields: [{
       name: 'Recently Played',
       value: pageItems

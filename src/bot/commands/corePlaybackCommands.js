@@ -651,7 +651,7 @@ registry.register(createCommand({
       }
 
       await ctx.reply.info(
-        `Persistent history page **${persisted.page}/${persisted.totalPages}** â€¢ Total tracks: **${persisted.total}**`,
+        `Persistent history page **${persisted.page}/${persisted.totalPages}** • Total tracks: **${persisted.total}**`,
         [{
           name: 'Recently Played',
           value: persisted.items
