@@ -292,6 +292,8 @@ export class RestClient {
           body: {
             content: fallbackContent,
             nonce: body.nonce,
+            message_reference: body.message_reference,
+            allowed_mentions: body.allowed_mentions,
           },
           retryUnsafe: false,
         });

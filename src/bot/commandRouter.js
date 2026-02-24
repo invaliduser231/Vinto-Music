@@ -55,6 +55,7 @@ const SESSION_PANEL_REACTIONS = [
   '\u23F8\uFE0F', // pause
   '\u25B6\uFE0F', // resume
 ];
+const SEND_PERMISSION_PREFLIGHT_BYPASS = new Set(['ping', 'help']);
 
 function formatSeconds(seconds) {
   const safe = Math.max(0, Math.floor(seconds));
@@ -85,6 +86,20 @@ function summarizeTrack(track) {
   if (!track) return 'Unknown track';
   const by = track.requestedBy ? ` by <@${track.requestedBy}>` : '';
   return `${track.title} (${track.duration})${by}`;
+}
+
+function buildCommandReplyOptions(message) {
+  const messageId = String(message?.id ?? message?.message_id ?? '').trim();
+  if (!messageId) return null;
+
+  const options = {
+    replyToMessageId: messageId,
+  };
+  const channelId = String(message?.channel_id ?? message?.channelId ?? '').trim();
+  const guildId = String(message?.guild_id ?? message?.guildId ?? '').trim();
+  if (channelId) options.replyToChannelId = channelId;
+  if (guildId) options.replyToGuildId = guildId;
+  return options;
 }
 
 export class CommandRouter {
@@ -149,7 +164,13 @@ export class CommandRouter {
     const command = this.registry.resolve(parsed.name);
     if (!command) {
       this.metrics?.commandsTotal?.inc?.(1, { command: parsed.name.toLowerCase(), outcome: 'unknown' });
-      await this._safeReply(message.channel_id, 'warning', `Unknown command: \`${parsed.name}\``);
+      await this._safeReply(
+        message.channel_id,
+        'warning',
+        `Unknown command: \`${parsed.name}\``,
+        null,
+        buildCommandReplyOptions(message)
+      );
       return;
     }
 
@@ -162,7 +183,11 @@ export class CommandRouter {
     }
 
     try {
-      if (context.guildId && this.permissionService) {
+      if (
+        context.guildId
+        && this.permissionService
+        && !SEND_PERMISSION_PREFLIGHT_BYPASS.has(String(command.name ?? '').toLowerCase())
+      ) {
         const canSend = await this.permissionService.canBotSendMessages(context.guildId, context.channelId);
         if (canSend === false) {
           this.logger?.warn?.('Bot lacks send permission in command channel', {
@@ -293,6 +318,7 @@ export class CommandRouter {
 
   _buildContext(message, parsed, command, options = {}) {
     const channelId = message.channel_id;
+    const commandReplyOptions = buildCommandReplyOptions(message);
 
     return {
       config: this.config,
@@ -332,19 +358,17 @@ export class CommandRouter {
       authorId: message.author?.id ?? message.user_id ?? message.member?.user?.id ?? null,
 
       safeTyping: async () => {
-        try {
-          await this.rest.sendTyping(channelId);
-        } catch {
+        this.rest.sendTyping(channelId).catch(() => {
           // typing indicator is optional
-        }
+        });
       },
 
       reply: {
-        info: async (text, fields = null) => this._safeReply(channelId, 'info', text, fields),
-        success: async (text, fields = null) => this._safeReply(channelId, 'success', text, fields),
-        warning: async (text, fields = null) => this._safeReply(channelId, 'warning', text, fields),
-        error: async (text, fields = null) => this._safeReply(channelId, 'error', text, fields),
-        plain: async (text) => this._safeReply(channelId, 'plain', text),
+        info: async (text, fields = null) => this._safeReply(channelId, 'info', text, fields, commandReplyOptions),
+        success: async (text, fields = null) => this._safeReply(channelId, 'success', text, fields, commandReplyOptions),
+        warning: async (text, fields = null) => this._safeReply(channelId, 'warning', text, fields, commandReplyOptions),
+        error: async (text, fields = null) => this._safeReply(channelId, 'error', text, fields, commandReplyOptions),
+        plain: async (text) => this._safeReply(channelId, 'plain', text, null, commandReplyOptions),
       },
     };
   }
@@ -747,13 +771,13 @@ export class CommandRouter {
     }
   }
 
-  async _safeReply(channelId, type, text, fields = null) {
+  async _safeReply(channelId, type, text, fields = null, replyOptions = null) {
     try {
-      if (type === 'info') return await this.responder.info(channelId, text, fields);
-      if (type === 'success') return await this.responder.success(channelId, text, fields);
-      if (type === 'warning') return await this.responder.warning(channelId, text, fields);
-      if (type === 'error') return await this.responder.error(channelId, text, fields);
-      return await this.responder.plain(channelId, text);
+      if (type === 'info') return await this.responder.info(channelId, text, fields, replyOptions);
+      if (type === 'success') return await this.responder.success(channelId, text, fields, replyOptions);
+      if (type === 'warning') return await this.responder.warning(channelId, text, fields, replyOptions);
+      if (type === 'error') return await this.responder.error(channelId, text, fields, replyOptions);
+      return await this.responder.plain(channelId, text, replyOptions);
     } catch (err) {
       const isUnknownGuild = (
         err?.status === 404

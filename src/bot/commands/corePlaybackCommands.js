@@ -29,6 +29,7 @@ import {
   formatHistoryPage,
   requireLibrary,
 } from './commandHelpers.js';
+import { buildEmbed } from '../messageFormatter.js';
 
 function resolveGatewayLatencyMs(gateway) {
   if (!gateway) return null;
@@ -48,13 +49,55 @@ function resolveGatewayLatencyMs(gateway) {
   return null;
 }
 
+function buildCommandMessageReference(ctx) {
+  const messageId = String(ctx?.message?.id ?? ctx?.message?.message_id ?? '').trim();
+  if (!messageId) return null;
+
+  const reference = { message_id: messageId };
+  const channelId = String(ctx?.channelId ?? '').trim();
+  const guildId = String(ctx?.guildId ?? '').trim();
+  if (channelId) reference.channel_id = channelId;
+  if (guildId) reference.guild_id = guildId;
+  return reference;
+}
+
+function withCommandReplyReference(ctx, payload) {
+  const reference = buildCommandMessageReference(ctx);
+  if (!reference) return payload;
+
+  return {
+    ...(payload ?? {}),
+    message_reference: reference,
+    allowed_mentions: {
+      parse: [],
+      users: [],
+      roles: [],
+      ...(payload?.allowed_mentions ?? {}),
+      replied_user: false,
+    },
+  };
+}
+
 function buildPingPayload(ctx, fields) {
   if (ctx.config?.enableEmbeds === false) {
     const lines = fields.map((field) => `${field.name}: ${field.value}`);
-    return { content: ['Pong.', ...lines].join('\n') };
+    return { content: ['Pong!', ...lines].join('\n') };
   }
 
-  return { embeds: [{ title: 'Pong', fields }] };
+  return {
+    embeds: [
+      buildEmbed({
+        title: 'Pong!',
+        fields,
+      }),
+    ],
+    allowed_mentions: {
+      parse: [],
+      users: [],
+      roles: [],
+      replied_user: false,
+    },
+  };
 }
 
 export function registerCorePlaybackCommands(registry) {
@@ -65,7 +108,7 @@ export function registerCorePlaybackCommands(registry) {
     usage: 'help',
     async execute(ctx) {
       const pages = buildHelpPages(ctx);
-      const first = await ctx.rest.sendMessage(ctx.channelId, pages[0]);
+      const first = await ctx.rest.sendMessage(ctx.channelId, withCommandReplyReference(ctx, pages[0]));
       const messageId = first?.id ?? first?.message?.id ?? null;
       if (messageId && ctx.registerHelpPagination) {
         await ctx.registerHelpPagination(ctx.channelId, messageId, pages);
@@ -89,31 +132,40 @@ registry.register(createCommand({
     description: 'Show current latency.',
     usage: 'ping',
     async execute(ctx) {
-      const canProbe =
+      const canMeasure =
         Boolean(ctx.channelId)
         && typeof ctx.rest?.sendMessage === 'function'
         && typeof ctx.rest?.editMessage === 'function';
 
-      let probeMessage = null;
-      let restLatencyMs = null;
-      if (canProbe) {
-        const probeStartedAt = Date.now();
-        probeMessage = await ctx.rest.sendMessage(ctx.channelId, { content: 'Pinging...' });
-        restLatencyMs = Math.max(0, Date.now() - probeStartedAt);
+      if (!canMeasure) {
+        const gatewayLatencyMs = resolveGatewayLatencyMs(ctx.gateway);
+        await ctx.reply.success('Pong!', [
+          { name: 'Round-trip', value: 'n/a', inline: true },
+          { name: 'Gateway', value: gatewayLatencyMs == null ? 'n/a' : `${gatewayLatencyMs}ms`, inline: true },
+        ]);
+        return;
       }
 
-      const gatewayLatencyMs = resolveGatewayLatencyMs(ctx.gateway);
-      let measuredGatewayLatencyMs = gatewayLatencyMs;
-      if (measuredGatewayLatencyMs == null && typeof ctx.gateway?.sampleHeartbeatLatency === 'function') {
-        measuredGatewayLatencyMs = await ctx.gateway.sampleHeartbeatLatency(4_000);
-      }
+      const gatewayLatencyPromise = (async () => {
+        const cached = resolveGatewayLatencyMs(ctx.gateway);
+        if (cached != null) return cached;
+        if (typeof ctx.gateway?.sampleHeartbeatLatency === 'function') {
+          return await ctx.gateway.sampleHeartbeatLatency(2_500);
+        }
+        return null;
+      })();
+
+      const roundTripStartedAt = Date.now();
+      const probeMessage = await ctx.rest.sendMessage(
+        ctx.channelId,
+        withCommandReplyReference(ctx, { content: 'Pinging...' })
+      );
+      const roundTripMs = Math.max(0, Date.now() - roundTripStartedAt);
+      const gatewayLatencyMs = await gatewayLatencyPromise;
+
       const fields = [
-        { name: 'REST Latency', value: restLatencyMs == null ? 'n/a' : `${restLatencyMs} ms`, inline: true },
-        {
-          name: 'Gateway Latency',
-          value: measuredGatewayLatencyMs == null ? 'n/a (gateway not ready)' : `${Math.round(measuredGatewayLatencyMs)} ms`,
-          inline: true,
-        },
+        { name: 'Round-trip', value: `${roundTripMs}ms`, inline: true },
+        { name: 'Gateway', value: gatewayLatencyMs == null ? 'n/a' : `${Math.round(gatewayLatencyMs)}ms`, inline: true },
       ];
       const payload = buildPingPayload(ctx, fields);
       const messageId = probeMessage?.id ?? probeMessage?.message?.id ?? null;
@@ -123,11 +175,11 @@ registry.register(createCommand({
           await ctx.rest.editMessage(ctx.channelId, messageId, payload);
           return;
         } catch {
-          // Fall back to a new message if editing fails.
+          // Fall back to regular reply if edit fails.
         }
       }
 
-      await ctx.reply.success('Pong.', fields);
+      await ctx.reply.success('Pong!', fields);
     },
   }));
 

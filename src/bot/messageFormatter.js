@@ -16,6 +16,28 @@ function truncate(text, max) {
   return `${text.slice(0, max - 3)}...`;
 }
 
+function buildReplyMessageReference(replyOptions) {
+  const messageId = String(replyOptions?.replyToMessageId ?? '').trim();
+  if (!messageId) return null;
+
+  const reference = { message_id: messageId };
+  const channelId = String(replyOptions?.replyToChannelId ?? '').trim();
+  const guildId = String(replyOptions?.replyToGuildId ?? '').trim();
+  if (channelId) reference.channel_id = channelId;
+  if (guildId) reference.guild_id = guildId;
+  return reference;
+}
+
+function mergeAllowedMentions(current) {
+  return {
+    parse: [],
+    users: [],
+    roles: [],
+    ...(current && typeof current === 'object' ? current : {}),
+    replied_user: false,
+  };
+}
+
 export function buildEmbed({
   title,
   description,
@@ -45,28 +67,34 @@ export function buildEmbed({
   return embed;
 }
 
-function createMessagePayload(text, embed, useEmbeds) {
-  if (!useEmbeds || !embed) {
-    return { content: text };
+function createMessagePayload(text, embed, useEmbeds, replyOptions = null) {
+  const payload = (!useEmbeds || !embed)
+    ? { content: text }
+    : {
+      content: text || undefined,
+      embeds: [embed],
+      allowed_mentions: {
+        parse: [],
+        users: [],
+        roles: [],
+        replied_user: false,
+      },
+    };
+
+  const messageReference = buildReplyMessageReference(replyOptions);
+  if (messageReference) {
+    payload.message_reference = messageReference;
+    payload.allowed_mentions = mergeAllowedMentions(payload.allowed_mentions);
   }
 
-  return {
-    content: text || undefined,
-    embeds: [embed],
-    allowed_mentions: {
-      parse: [],
-      users: [],
-      roles: [],
-      replied_user: false,
-    },
-  };
+  return payload;
 }
 
 export function makeResponder(rest, options = {}) {
   const useEmbeds = options.enableEmbeds !== false;
 
   return {
-    async info(channelId, text, details = null) {
+    async info(channelId, text, details = null, replyOptions = null) {
       const payload = createMessagePayload(
         useEmbeds ? null : text,
         buildEmbed({
@@ -75,12 +103,13 @@ export function makeResponder(rest, options = {}) {
           color: COLORS.info,
           fields: details,
         }),
-        useEmbeds
+        useEmbeds,
+        replyOptions
       );
       return rest.sendMessage(channelId, payload);
     },
 
-    async success(channelId, text, details = null) {
+    async success(channelId, text, details = null, replyOptions = null) {
       const payload = createMessagePayload(
         useEmbeds ? null : text,
         buildEmbed({
@@ -89,12 +118,13 @@ export function makeResponder(rest, options = {}) {
           color: COLORS.success,
           fields: details,
         }),
-        useEmbeds
+        useEmbeds,
+        replyOptions
       );
       return rest.sendMessage(channelId, payload);
     },
 
-    async warning(channelId, text, details = null) {
+    async warning(channelId, text, details = null, replyOptions = null) {
       const payload = createMessagePayload(
         useEmbeds ? null : text,
         buildEmbed({
@@ -103,12 +133,13 @@ export function makeResponder(rest, options = {}) {
           color: COLORS.warning,
           fields: details,
         }),
-        useEmbeds
+        useEmbeds,
+        replyOptions
       );
       return rest.sendMessage(channelId, payload);
     },
 
-    async error(channelId, text, details = null) {
+    async error(channelId, text, details = null, replyOptions = null) {
       const payload = createMessagePayload(
         useEmbeds ? null : text,
         buildEmbed({
@@ -117,13 +148,15 @@ export function makeResponder(rest, options = {}) {
           color: COLORS.error,
           fields: details,
         }),
-        useEmbeds
+        useEmbeds,
+        replyOptions
       );
       return rest.sendMessage(channelId, payload);
     },
 
-    async plain(channelId, text) {
-      return rest.sendMessage(channelId, { content: text });
+    async plain(channelId, text, replyOptions = null) {
+      const payload = createMessagePayload(text, null, false, replyOptions);
+      return rest.sendMessage(channelId, payload);
     },
   };
 }
