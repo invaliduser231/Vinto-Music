@@ -25,11 +25,11 @@
     "deezer"
   ],
   "dependencies": {
-    "@sentry/node": "^10.23.0",
-    "@livekit/rtc-node": "^0.11.0",
-    "dotenv": "^16.4.7",
+    "@sentry/node": "^10.40.0",
+    "@livekit/rtc-node": "^0.13.24",
+    "dotenv": "^17.3.1",
     "ffmpeg-static": "^5.3.0",
-    "mongodb": "^6.21.0",
+    "mongodb": "^7.1.0",
     "play-dl": "^1.9.7",
     "ws": "^8.18.0"
   }
