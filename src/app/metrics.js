@@ -12,6 +12,8 @@ export function createAppMetrics() {
     trackErrors: registry.counter('track_errors_total', 'Track playback errors'),
     commandsTotal: registry.counter('commands_total', 'Commands processed by outcome'),
     restRetriesTotal: registry.counter('rest_retries_total', 'REST retries triggered'),
+    restRateLimitedTotal: registry.counter('rest_rate_limited_total', 'REST responses with HTTP 429'),
+    restGlobalRateLimitWaitMs: registry.counter('rest_global_rate_limit_wait_ms_total', 'Total wait time spent in global REST rate limits'),
   };
 }
 

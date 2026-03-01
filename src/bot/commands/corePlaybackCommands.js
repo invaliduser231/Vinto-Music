@@ -9,6 +9,7 @@ import {
   ensureGuild,
   ensureConnectedSession,
   ensureDjAccess,
+  userHasDjAccess,
   enforcePlayCooldown,
   applyVoiceProfileIfConfigured,
   resolveQueueGuard,

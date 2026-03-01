@@ -43,6 +43,8 @@ export async function startApp() {
     logger: logger.child('rest'),
     metrics: {
       restRetriesTotal: metricSet.restRetriesTotal,
+      restRateLimitedTotal: metricSet.restRateLimitedTotal,
+      restGlobalRateLimitWaitMs: metricSet.restGlobalRateLimitWaitMs,
     },
   });
 
@@ -96,7 +98,7 @@ export async function startApp() {
   const gateway = new Gateway({
     url: gatewayUrl,
     token: config.token,
-    intents: 0,
+    intents: config.gatewayIntents,
     logger: logger.child('gateway'),
   });
 

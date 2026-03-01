@@ -25,26 +25,75 @@ function parseRatio(value, fallback) {
   return parsed;
 }
 
+function ensureUrlScheme(value, fallbackScheme) {
+  const trimmed = String(value ?? '').trim();
+  if (!trimmed) return '';
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) return trimmed;
+  return `${fallbackScheme}://${trimmed.replace(/^\/+/, '')}`;
+}
+
+function stripTrailingSlashes(pathname) {
+  if (!pathname || pathname === '/') return '/';
+  const normalized = pathname.replace(/\/+$/g, '');
+  return normalized || '/';
+}
+
 function normalizeApiBase(value) {
   const fallback = 'https://api.fluxer.app/v1';
   if (!value) return fallback;
 
-  if (value.includes('app.fluxer.app') || value.includes('web.fluxer.app/api')) {
+  const candidate = ensureUrlScheme(value, 'https');
+  let parsed;
+  try {
+    parsed = new URL(candidate);
+  } catch {
     return fallback;
   }
 
-  return value;
+  const host = parsed.hostname.toLowerCase();
+  if (host === 'app.fluxer.app' || host === 'web.fluxer.app') {
+    return fallback;
+  }
+
+  parsed.hash = '';
+  const path = stripTrailingSlashes(parsed.pathname);
+  if (host === 'api.fluxer.app') {
+    if (path === '/' || path.toLowerCase() === '/api' || path.toLowerCase() === '/api/v1') {
+      parsed.pathname = '/v1';
+    } else {
+      parsed.pathname = path;
+    }
+  } else {
+    parsed.pathname = path === '/' ? '' : path;
+  }
+
+  return parsed.toString().replace(/\/$/, '');
 }
 
 function normalizeGatewayUrl(value) {
   const fallback = 'wss://gateway.fluxer.app';
   if (!value) return fallback;
 
-  if (value.includes('app.fluxer.app')) {
+  const candidate = ensureUrlScheme(value, 'wss');
+  let parsed;
+  try {
+    parsed = new URL(candidate);
+  } catch {
     return fallback;
   }
 
-  return value;
+  const host = parsed.hostname.toLowerCase();
+  if (host === 'app.fluxer.app' || host === 'api.fluxer.app' || host === 'web.fluxer.app') {
+    return fallback;
+  }
+
+  if (parsed.protocol === 'https:') parsed.protocol = 'wss:';
+  if (parsed.protocol === 'http:') parsed.protocol = 'ws:';
+
+  parsed.hash = '';
+  parsed.pathname = stripTrailingSlashes(parsed.pathname);
+
+  return parsed.toString().replace(/\/$/, '');
 }
 
 function normalizeDnsResultOrder(value) {
@@ -69,6 +118,7 @@ export function loadConfig(env = process.env) {
     logLevel,
     apiBase: normalizeApiBase(env.API_BASE),
     gatewayUrl: normalizeGatewayUrl(env.GATEWAY_URL),
+    gatewayIntents: parseNonNegativeInt(env.GATEWAY_INTENTS, 0),
     dnsResultOrder: normalizeDnsResultOrder(env.DNS_RESULT_ORDER),
     autoGatewayUrl: parseBool(env.AUTO_GATEWAY_URL, true),
     gatewayOnlyMode: parseBool(env.GATEWAY_ONLY_MODE, false),

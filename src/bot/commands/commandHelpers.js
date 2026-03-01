@@ -431,12 +431,20 @@ async function ensureConnectedSession(ctx, explicitChannelId = null) {
   const session = await ctx.sessions.ensure(ctx.guildId, ctx.guildConfig);
   ctx.sessions.bindTextChannel(ctx.guildId, ctx.channelId);
 
-  if (session.connection.connected) return session;
+  const hasUsablePlayer = typeof session.connection?.hasUsablePlayer === 'function'
+    ? session.connection.hasUsablePlayer()
+    : true;
+  if (session.connection.connected && hasUsablePlayer) return session;
 
   try {
     await session.connection.connect(resolvedVoice);
   } catch (err) {
-    if (!hadSession) {
+    const shouldResetSession = (
+      !hadSession
+      || String(err?.message ?? '').toLowerCase().includes('already been destroyed')
+    );
+
+    if (shouldResetSession) {
       await ctx.sessions.destroy(ctx.guildId, 'connect_failed').catch(() => null);
     }
     if (await isBotCurrentlyDeafened(ctx)) {
@@ -1077,6 +1085,7 @@ export {
   consumeSearchSelection,
   clearSearchSelection,
   ensureDjAccess,
+  userHasDjAccess,
   ensureDjAccessByConfig,
   ensureManageGuildAccess,
   ensureSessionTrack,

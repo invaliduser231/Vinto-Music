@@ -13,6 +13,15 @@ const Op = {
   HEARTBEAT_ACK: 11,
 };
 
+const NON_RECOVERABLE_CLOSE_CODES = new Set([
+  4004, // authentication failed
+  4010, // invalid shard
+  4011, // sharding required
+  4012, // invalid API version
+  4013, // invalid intents
+  4014, // disallowed intents
+]);
+
 function withGatewayQuery(url) {
   const parsed = new URL(url);
 
@@ -337,8 +346,8 @@ export class Gateway extends EventEmitter {
       return;
     }
 
-    if (code === 4004) {
-      this.logger?.error?.('Gateway authentication failed (invalid token).');
+    if (NON_RECOVERABLE_CLOSE_CODES.has(code)) {
+      this.logger?.error?.('Gateway closed with non-recoverable code, reconnect aborted', { code });
       return;
     }
 

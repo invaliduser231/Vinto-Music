@@ -1,5 +1,21 @@
 import { sleep } from '../utils/retry.js';
 
+function pickGatewayUrl(payload) {
+  const candidates = [
+    payload?.url,
+    payload?.gateway_url,
+    payload?.gateway?.url,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.startsWith('ws')) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
 export async function verifyApiConnectivity({ config, rest, logger }) {
   if (config.gatewayOnlyMode) {
     logger.info('Skipping REST API startup check in gateway-only mode');
@@ -56,9 +72,26 @@ export async function resolveGatewayUrl({ config, rest, logger }) {
 
   try {
     const data = await rest.getGatewayBot();
-    if (typeof data?.url === 'string' && data.url.startsWith('ws')) {
-      logger.info('Gateway URL resolved from API', { url: data.url });
-      return data.url;
+    const url = pickGatewayUrl(data);
+    if (url) {
+      logger.info('Gateway URL resolved from API', {
+        url,
+        shards: data?.shards ?? null,
+        sessionStartRemaining: data?.session_start_limit?.remaining ?? null,
+        sessionStartTotal: data?.session_start_limit?.total ?? null,
+      });
+      if (Number.isFinite(data?.shards) && data.shards > 1) {
+        logger.warn('Gateway recommends multiple shards, but app currently runs single-shard', {
+          recommendedShards: data.shards,
+        });
+      }
+      if (Number.isFinite(data?.session_start_limit?.remaining) && data.session_start_limit.remaining <= 0) {
+        logger.warn('Gateway session start limit is exhausted', {
+          resetAfterMs: data?.session_start_limit?.reset_after ?? null,
+          maxConcurrency: data?.session_start_limit?.max_concurrency ?? null,
+        });
+      }
+      return url;
     }
   } catch (err) {
     logger.warn('Failed to resolve gateway URL from API, using configured fallback', {

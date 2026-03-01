@@ -8,14 +8,15 @@ class RestError extends Error {
     this.code = options.code ?? null;
     this.retryAfterMs = options.retryAfterMs ?? null;
     this.retryable = options.retryable ?? false;
+    this.globalRateLimit = options.globalRateLimit ?? false;
     this.method = options.method ?? null;
     this.path = options.path ?? null;
     this.details = options.details ?? null;
   }
 }
 
-function isSafeMethod(method) {
-  return ['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase());
+function isRetryFriendlyMethod(method) {
+  return ['GET', 'HEAD', 'OPTIONS', 'PUT', 'DELETE'].includes(method.toUpperCase());
 }
 
 function toQueryString(query) {
@@ -38,6 +39,41 @@ function parseRetryAfterMs(value) {
   if (!Number.isFinite(asNumber) || asNumber < 0) return null;
 
   return Math.ceil(asNumber * 1000);
+}
+
+function parseRateLimitResetMs(value) {
+  if (value == null) return null;
+
+  const asNumber = Number.parseFloat(String(value));
+  if (!Number.isFinite(asNumber) || asNumber < 0) return null;
+
+  const resetAtMs = asNumber >= 1e12 ? asNumber : (asNumber * 1000);
+  return Math.max(0, Math.ceil(resetAtMs - Date.now()));
+}
+
+function parseGlobalRateLimitFlag(value) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['1', 'true', 'yes'].includes(normalized)) return true;
+    if (['0', 'false', 'no'].includes(normalized)) return false;
+  }
+  return false;
+}
+
+function joinBaseAndPath(base, path, query) {
+  const normalizedBase = String(base ?? '').replace(/\/+$/g, '');
+  const normalizedPath = String(path ?? '').startsWith('/') ? String(path) : `/${String(path ?? '')}`;
+  return `${normalizedBase}${normalizedPath}${toQueryString(query)}`;
+}
+
+function resolveRateLimitDelayMs(response, parsedBody) {
+  return (
+    parseRetryAfterMs(response.headers.get('retry-after'))
+    ?? parseRetryAfterMs(parsedBody?.retry_after)
+    ?? parseRetryAfterMs(response.headers.get('x-ratelimit-reset-after'))
+    ?? parseRateLimitResetMs(response.headers.get('x-ratelimit-reset'))
+  );
 }
 
 function nextDelayMs(attempt, baseDelayMs) {
@@ -107,15 +143,17 @@ export class RestClient {
     this.retryBaseDelayMs = options.retryBaseDelayMs ?? 300;
     this.logger = options.logger;
     this.metrics = options.metrics ?? null;
+    this.globalRateLimitUntilMs = 0;
   }
 
   async request(method, path, options = {}) {
     const upperMethod = method.toUpperCase();
-    const url = `${this.base}${path}${toQueryString(options.query)}`;
+    const url = joinBaseAndPath(this.base, path, options.query);
     const retryUnsafe = options.retryUnsafe === true;
 
     let lastErr;
     for (let attempt = 1; attempt <= this.maxRetries; attempt += 1) {
+      await this._waitForGlobalRateLimit(upperMethod, path);
       try {
         return await this._requestOnce(upperMethod, path, url, options);
       } catch (err) {
@@ -128,6 +166,20 @@ export class RestClient {
           });
 
         lastErr = restErr;
+        if (restErr.status === 429) {
+          const scope = restErr.globalRateLimit ? 'global' : 'route';
+          this.metrics?.restRateLimitedTotal?.inc?.(1, {
+            method: upperMethod,
+            path,
+            scope,
+          });
+          if (restErr.globalRateLimit) {
+            const fallbackDelayMs = Math.max(250, this.retryBaseDelayMs);
+            const until = Date.now() + (restErr.retryAfterMs ?? fallbackDelayMs);
+            this.globalRateLimitUntilMs = Math.max(this.globalRateLimitUntilMs, until);
+          }
+        }
+
         const canRetry = this._shouldRetry(restErr, upperMethod, retryUnsafe) && attempt < this.maxRetries;
 
         if (!canRetry) {
@@ -156,16 +208,23 @@ export class RestClient {
 
   async _requestOnce(method, path, url, options) {
     const hasBody = options.body != null;
+    const headers = {
+      Authorization: this.authHeader,
+      ...(options.headers ?? {}),
+    };
+    if (
+      hasBody
+      && !Object.prototype.hasOwnProperty.call(headers, 'Content-Type')
+      && !Object.prototype.hasOwnProperty.call(headers, 'content-type')
+    ) {
+      headers['Content-Type'] = 'application/json';
+    }
 
     let response;
     try {
       response = await fetch(url, {
         method,
-        headers: {
-          Authorization: this.authHeader,
-          'Content-Type': 'application/json',
-          ...(options.headers ?? {}),
-        },
+        headers,
         body: hasBody ? JSON.stringify(options.body) : undefined,
         signal: AbortSignal.timeout(this.timeoutMs),
       });
@@ -180,9 +239,8 @@ export class RestClient {
     const parsedBody = await this._parseBody(response);
 
     if (response.status === 429) {
-      const retryAfterMs =
-        parseRetryAfterMs(response.headers.get('retry-after')) ??
-        parseRetryAfterMs(parsedBody?.retry_after);
+      const retryAfterMs = resolveRateLimitDelayMs(response, parsedBody);
+      const globalRateLimit = parseGlobalRateLimitFlag(parsedBody?.global);
 
       throw new RestError(`[REST] ${method} ${path} -> 429 (${extractErrorMessage(parsedBody, response.statusText)})`, {
         method,
@@ -190,6 +248,7 @@ export class RestClient {
         status: response.status,
         retryAfterMs,
         retryable: true,
+        globalRateLimit,
         details: parsedBody,
       });
     }
@@ -217,8 +276,21 @@ export class RestClient {
     if (error.status === 429) return true;
     if (error.status == null) return true;
 
-    if (isSafeMethod(method)) return true;
+    if (isRetryFriendlyMethod(method)) return true;
     return retryUnsafe;
+  }
+
+  async _waitForGlobalRateLimit(method, path) {
+    const waitMs = Math.max(0, Math.ceil(this.globalRateLimitUntilMs - Date.now()));
+    if (waitMs <= 0) return;
+
+    this.logger?.warn?.('REST global rate limit active, delaying request', {
+      method,
+      path,
+      waitMs,
+    });
+    this.metrics?.restGlobalRateLimitWaitMs?.inc?.(waitMs, { method, path });
+    await sleep(waitMs);
   }
 
   async _parseBody(response) {
@@ -239,7 +311,14 @@ export class RestClient {
   }
 
   async getGatewayBot() {
-    return this.request('GET', '/gateway/bot');
+    try {
+      return await this.request('GET', '/gateway/bot');
+    } catch (err) {
+      if (err instanceof RestError && err.status === 404) {
+        return this.request('GET', '/gateway');
+      }
+      throw err;
+    }
   }
 
   async getChannel(channelId) {
@@ -277,7 +356,7 @@ export class RestClient {
   }
 
   async sendTyping(channelId) {
-    return this.request('POST', `/channels/${channelId}/typing`, { retryUnsafe: false });
+    return this.request('POST', `/channels/${channelId}/typing`, { retryUnsafe: true });
   }
 
   async sendMessage(channelId, payload) {
@@ -286,7 +365,7 @@ export class RestClient {
     try {
       return await this.request('POST', `/channels/${channelId}/messages`, {
         body,
-        retryUnsafe: false,
+        retryUnsafe: true,
       });
     } catch (err) {
       if (
@@ -306,7 +385,7 @@ export class RestClient {
             message_reference: body.message_reference,
             allowed_mentions: body.allowed_mentions,
           },
-          retryUnsafe: false,
+          retryUnsafe: true,
         });
       }
 
@@ -318,21 +397,27 @@ export class RestClient {
     const body = normalizeMessageEditPayload(payload);
     return this.request('PATCH', `/channels/${channelId}/messages/${messageId}`, {
       body,
-      retryUnsafe: false,
+      retryUnsafe: true,
     });
   }
 
-  async addReactionToMessage(channelId, messageId, emoji) {
+  async addReactionToMessage(channelId, messageId, emoji, options = {}) {
     const encoded = encodeURIComponent(String(emoji ?? '').trim());
+    const query = {};
+    if (options?.sessionId != null) query.session_id = options.sessionId;
     return this.request('PUT', `/channels/${channelId}/messages/${messageId}/reactions/${encoded}/@me`, {
-      retryUnsafe: false,
+      query,
+      retryUnsafe: true,
     });
   }
 
-  async removeOwnReactionFromMessage(channelId, messageId, emoji) {
+  async removeOwnReactionFromMessage(channelId, messageId, emoji, options = {}) {
     const encoded = encodeURIComponent(String(emoji ?? '').trim());
+    const query = {};
+    if (options?.sessionId != null) query.session_id = options.sessionId;
     return this.request('DELETE', `/channels/${channelId}/messages/${messageId}/reactions/${encoded}/@me`, {
-      retryUnsafe: false,
+      query,
+      retryUnsafe: true,
     });
   }
 }
