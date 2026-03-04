@@ -1,6 +1,7 @@
 import { ValidationError } from '../../core/errors.js';
 import {
   HISTORY_PAGE_SIZE,
+  PENDING_PAGE_SIZE,
   SEARCH_RESULT_DEFAULT_LIMIT,
   SUPPORT_SERVER_URL,
   createCommand,
@@ -99,6 +100,72 @@ function buildPingPayload(ctx, fields) {
       replied_user: false,
     },
   };
+}
+
+function buildInfoPayload(ctx, title, description, fields = [], options = {}) {
+  if (ctx.config?.enableEmbeds === false) {
+    const lines = [];
+    if (title) lines.push(title);
+    if (description) lines.push(description);
+    for (const field of fields ?? []) {
+      lines.push(`${field.name}: ${field.value}`);
+    }
+    return { content: lines.join('\n').slice(0, 1900) };
+  }
+
+  return {
+    embeds: [
+      buildEmbed({
+        title,
+        description,
+        fields,
+        thumbnailUrl: options.thumbnailUrl ?? null,
+        imageUrl: options.imageUrl ?? null,
+      }),
+    ],
+    allowed_mentions: {
+      parse: [],
+      users: [],
+      roles: [],
+      replied_user: false,
+    },
+  };
+}
+
+function chunkLines(lines, maxChars = 1000) {
+  const normalized = Array.isArray(lines) ? lines.map((line) => String(line ?? '')) : [];
+  if (!normalized.length) return ['-'];
+
+  const pages = [];
+  let current = '';
+  for (const line of normalized) {
+    const candidate = current ? `${current}\n${line}` : line;
+    if (candidate.length <= maxChars) {
+      current = candidate;
+      continue;
+    }
+
+    if (current) pages.push(current);
+    if (line.length <= maxChars) {
+      current = line;
+      continue;
+    }
+
+    for (let i = 0; i < line.length; i += maxChars) {
+      pages.push(line.slice(i, i + maxChars));
+    }
+    current = '';
+  }
+
+  if (current) pages.push(current);
+  return pages.length ? pages : ['-'];
+}
+
+function formatSearchResultLine(track, index) {
+  const title = String(track?.title ?? 'Unknown title').trim() || 'Unknown title';
+  const shortTitle = title.length > 72 ? `${title.slice(0, 69)}...` : title;
+  const duration = String(track?.duration ?? 'Unknown');
+  return `${index}. **${shortTitle}** (${duration})`;
 }
 
 export function registerCorePlaybackCommands(registry) {
@@ -353,11 +420,22 @@ registry.register(createCommand({
         }
 
         const ttlMs = saveSearchSelection(ctx, results);
-        const lines = results.map((track, idx) => `${idx + 1}. ${trackLabel(track)}`);
-        await ctx.reply.info(`Search results for **${query}**`, [
-          { name: 'Pick one', value: lines.join('\n').slice(0, 1000) },
-          { name: 'Next step', value: `Use \`${ctx.prefix}pick <1-${results.length}>\` within ${Math.ceil(ttlMs / 1000)}s.` },
-        ]);
+        const lines = results.map((track, idx) => formatSearchResultLine(track, idx + 1));
+        const payload = buildInfoPayload(
+          ctx,
+          `Search results for ${query}`,
+          null,
+          [
+            { name: 'Results', value: lines.join('\n').slice(0, 1000) || '-' },
+            { name: 'Pick', value: `React with 1-${results.length} within ${Math.ceil(ttlMs / 1000)}s.` },
+          ],
+          { thumbnailUrl: results[0]?.thumbnailUrl ?? null }
+        );
+        const sent = await ctx.rest.sendMessage(ctx.channelId, withCommandReplyReference(ctx, payload));
+        const messageId = sent?.id ?? sent?.message?.id ?? null;
+        if (messageId && ctx.registerSearchReactionSelection) {
+          await ctx.registerSearchReactionSelection(messageId, results, ttlMs);
+        }
       });
     },
   }));
@@ -503,13 +581,23 @@ registry.register(createCommand({
       const totalSec = parseDurationToSeconds(current.duration);
       const progressSec = session.player.getProgressSeconds();
 
-      await ctx.reply.info(`Now playing: ${trackLabel(current)}`, [
-        { name: 'Progress', value: buildProgressBar(progressSec, totalSec ?? Number.NaN) },
-        { name: 'Source', value: current.source ?? 'unknown', inline: true },
-        { name: 'Loop', value: session.player.loopMode, inline: true },
-        { name: 'Volume', value: `${session.player.volumePercent}%`, inline: true },
-        { name: 'Queued', value: String(session.player.pendingTracks.length), inline: true },
-      ]);
+      const payload = buildInfoPayload(
+        ctx,
+        'Now Playing',
+        trackLabel(current),
+        [
+          { name: 'Progress', value: buildProgressBar(progressSec, totalSec ?? Number.NaN) },
+          { name: 'Source', value: current.source ?? 'unknown', inline: true },
+          { name: 'Loop', value: session.player.loopMode, inline: true },
+          { name: 'Volume', value: `${session.player.volumePercent}%`, inline: true },
+          { name: 'Queued', value: String(session.player.pendingTracks.length), inline: true },
+        ],
+        {
+          thumbnailUrl: current.thumbnailUrl ?? null,
+          imageUrl: current.thumbnailUrl ?? null,
+        }
+      );
+      await ctx.rest.sendMessage(ctx.channelId, withCommandReplyReference(ctx, payload));
     },
   }));
 
@@ -622,10 +710,27 @@ registry.register(createCommand({
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
 
-      const page = ctx.args.length ? parseRequiredInteger(ctx.args[0], 'Page') : 1;
-      const queueData = formatQueuePage(session, page);
+      if (ctx.args.length) {
+        const page = parseRequiredInteger(ctx.args[0], 'Page');
+        const queueData = formatQueuePage(session, page);
+        await ctx.reply.info(queueData.description, queueData.fields);
+        return;
+      }
 
-      await ctx.reply.info(queueData.description, queueData.fields);
+      const pendingCount = session.player.pendingTracks.length;
+      const totalPages = Math.max(1, Math.ceil(pendingCount / PENDING_PAGE_SIZE));
+      if (totalPages <= 1) {
+        const queueData = formatQueuePage(session, 1);
+        await ctx.reply.info(queueData.description, queueData.fields);
+        return;
+      }
+
+      const pages = [];
+      for (let page = 1; page <= totalPages; page += 1) {
+        const queueData = formatQueuePage(session, page);
+        pages.push(buildInfoPayload(ctx, 'Queue', queueData.description, queueData.fields));
+      }
+      await ctx.sendPaginated(pages);
     },
   }));
 
@@ -651,16 +756,25 @@ registry.register(createCommand({
         return;
       }
 
-      await ctx.reply.info(
-        `Persistent history page **${persisted.page}/${persisted.totalPages}** • Total tracks: **${persisted.total}**`,
-        [{
-          name: 'Recently Played',
-          value: persisted.items
-            .map((track, idx) => `${(persisted.page - 1) * persisted.pageSize + idx + 1}. ${trackLabel(track)}`)
-            .join('\n')
-            .slice(0, 1000),
-        }]
+      const lines = persisted.items.map(
+        (track, idx) => `${(persisted.page - 1) * persisted.pageSize + idx + 1}. ${trackLabel(track)}`
       );
+      const linePages = chunkLines(lines, 1000);
+      if (linePages.length === 1) {
+        await ctx.reply.info(
+          `Persistent history page **${persisted.page}/${persisted.totalPages}** • Total tracks: **${persisted.total}**`,
+          [{ name: 'Recently Played', value: linePages[0] }]
+        );
+        return;
+      }
+
+      const pages = linePages.map((value, idx) => buildInfoPayload(
+        ctx,
+        `Persistent history ${idx + 1}/${linePages.length}`,
+        `Page **${persisted.page}/${persisted.totalPages}** • Total tracks: **${persisted.total}**`,
+        [{ name: 'Recently Played', value }]
+      ));
+      await ctx.sendPaginated(pages);
     },
   }));
 }

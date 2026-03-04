@@ -44,7 +44,6 @@ function toChannelId(value) {
 
 function defaultSettings(config) {
   return {
-    autoplayEnabled: false,
     dedupeEnabled: Boolean(config.defaultDedupeEnabled),
     stayInVoiceEnabled: Boolean(config.defaultStayInVoiceEnabled),
     voteSkipRatio: toRatio(config.voteSkipRatio, 0.5),
@@ -59,7 +58,6 @@ function settingsFromGuildConfig(config, guildConfig) {
   const source = guildConfig?.settings ?? {};
 
   return {
-    autoplayEnabled: false,
     dedupeEnabled: toBool(source.dedupeEnabled, defaults.dedupeEnabled),
     stayInVoiceEnabled: toBool(source.stayInVoiceEnabled, defaults.stayInVoiceEnabled),
     voteSkipRatio: toRatio(source.voteSkipRatio, defaults.voteSkipRatio),

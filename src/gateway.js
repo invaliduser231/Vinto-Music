@@ -5,6 +5,7 @@ const Op = {
   DISPATCH: 0,
   HEARTBEAT: 1,
   IDENTIFY: 2,
+  PRESENCE_UPDATE: 3,
   VOICE_STATE_UPDATE: 4,
   RESUME: 6,
   RECONNECT: 7,
@@ -70,6 +71,7 @@ export class Gateway extends EventEmitter {
     this.heartbeatLatencyMs = null;
     this.reconnectAttempts = 0;
     this.manualDisconnect = false;
+    this.initialPresence = options.initialPresence ?? null;
   }
 
   getHeartbeatLatencyMs() {
@@ -145,6 +147,12 @@ export class Gateway extends EventEmitter {
       self_mute: false,
       self_deaf: false,
     });
+  }
+
+  updatePresence(presence) {
+    if (!presence || typeof presence !== 'object') return false;
+    this._send(Op.PRESENCE_UPDATE, presence);
+    return true;
   }
 
   _openSocket() {
@@ -281,7 +289,7 @@ export class Gateway extends EventEmitter {
   }
 
   _identify() {
-    this._send(Op.IDENTIFY, {
+    const payload = {
       token: this.token,
       intents: this.intents,
       properties: {
@@ -289,7 +297,13 @@ export class Gateway extends EventEmitter {
         browser: 'fluxer-music-bot',
         device: 'fluxer-music-bot',
       },
-    });
+    };
+
+    if (this.initialPresence && typeof this.initialPresence === 'object') {
+      payload.presence = this.initialPresence;
+    }
+
+    this._send(Op.IDENTIFY, payload);
   }
 
   _resume() {

@@ -17,6 +17,18 @@ import { sanitizeBrokenLocalProxyEnv } from './proxy.js';
 import { verifyApiConnectivity, resolveGatewayUrl } from './connectivity.js';
 import { bindGatewayMetrics, bindSessionMetrics, createAppMetrics } from './metrics.js';
 
+function buildGatewayPresence() {
+  return {
+    since: null,
+    afk: false,
+    status: 'online',
+    activities: [{
+      name: 'midnight jukebox requests',
+      type: 0,
+    }],
+  };
+}
+
 export async function startApp() {
   const startedAt = Date.now();
   const config = loadConfig();
@@ -89,7 +101,6 @@ export async function startApp() {
     defaults: {
       prefix: config.prefix,
       settings: {
-        autoplayEnabled: false,
         dedupeEnabled: config.defaultDedupeEnabled,
         stayInVoiceEnabled: config.defaultStayInVoiceEnabled,
         voteSkipRatio: config.voteSkipRatio,
@@ -111,16 +122,19 @@ export async function startApp() {
     logger: logger.child('music-library'),
     maxPlaylistsPerGuild: config.maxSavedPlaylistsPerGuild,
     maxTracksPerPlaylist: config.maxSavedTracksPerPlaylist,
+    maxSavedTracksPerPlaylist: config.maxSavedTracksPerPlaylist,
     maxFavoritesPerUser: config.maxFavoritesPerUser,
     maxHistoryTracks: config.persistentHistorySize,
   });
   await musicLibrary.init();
 
   const gatewayUrl = await resolveGatewayUrl({ config, rest, logger });
+  const initialPresence = buildGatewayPresence();
   const gateway = new Gateway({
     url: gatewayUrl,
     token: config.token,
     intents: config.gatewayIntents,
+    initialPresence,
     logger: logger.child('gateway'),
   });
 
@@ -185,6 +199,15 @@ export async function startApp() {
 
   gateway.on('READY', (payload) => {
     setBotUserId(payload?.user?.id, 'gateway_ready');
+    if (initialPresence) {
+      gateway.updatePresence(initialPresence);
+    }
+  });
+
+  gateway.on('RESUMED', () => {
+    if (initialPresence) {
+      gateway.updatePresence(initialPresence);
+    }
   });
 
   const monitoringServer = new MonitoringServer({

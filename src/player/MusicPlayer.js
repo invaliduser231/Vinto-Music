@@ -80,6 +80,12 @@ function toCanonicalYouTubeWatchUrl(value) {
   return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
 }
 
+function buildYouTubeThumbnailFromUrl(value) {
+  const videoId = extractYouTubeVideoId(value);
+  if (!videoId) return null;
+  return `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`;
+}
+
 function normalizeYouTubeVideoUrlFromEntry(entry) {
   const webpageUrl = String(entry?.webpage_url ?? '').trim();
   if (webpageUrl && isYouTubeUrl(webpageUrl)) return webpageUrl;
@@ -357,6 +363,53 @@ function sanitizeUrlToSearchQuery(url) {
   }
 }
 
+function normalizeThumbnailUrl(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  if (!isHttpUrl(raw)) return null;
+  return raw.slice(0, 2048);
+}
+
+function pickThumbnailUrlFromItem(item) {
+  if (!item || typeof item !== 'object') return null;
+
+  const directCandidates = [
+    item.thumbnail?.url,
+    item.thumbnailURL,
+    item.thumbnail_url,
+    item.thumbnail,
+    item.image?.url,
+    item.image,
+    item.artwork_url,
+    item.artworkUrl,
+    item.cover_url,
+    item.coverUrl,
+  ];
+
+  for (const candidate of directCandidates) {
+    const normalized = normalizeThumbnailUrl(candidate);
+    if (normalized) return normalized;
+  }
+
+  const listCandidates = [
+    item.thumbnails,
+    item.images,
+    item.video_details?.thumbnails,
+    item.videoDetails?.thumbnails,
+  ];
+
+  for (const list of listCandidates) {
+    if (!Array.isArray(list) || !list.length) continue;
+    for (let i = list.length - 1; i >= 0; i -= 1) {
+      const entry = list[i];
+      const normalized = normalizeThumbnailUrl(entry?.url ?? entry);
+      if (normalized) return normalized;
+    }
+  }
+
+  return null;
+}
+
 export class MusicPlayer extends EventEmitter {
   constructor(voice, options = {}) {
     super();
@@ -413,9 +466,6 @@ export class MusicPlayer extends EventEmitter {
     this.pauseStartedAtMs = null;
     this.totalPausedMs = 0;
     this.currentTrackOffsetSec = 0;
-    this.autoplayBlockedUntil = new Map();
-    this.autoplayBlockMs = Math.max(60_000, Number.parseInt(String(options.autoplayBlockMs ?? 30 * 60 * 1000), 10) || 30 * 60 * 1000);
-    this.autoplayBlockMaxEntries = Math.max(20, Number.parseInt(String(options.autoplayBlockMaxEntries ?? 128), 10) || 128);
   }
 
   _useRuntimeYtDlpCookiesFile() {
@@ -631,41 +681,6 @@ export class MusicPlayer extends EventEmitter {
     return clone;
   }
 
-  async enqueueAutoplayTrack() {
-    this._pruneAutoplayBlocked();
-
-    const seed = this.currentTrack ?? this.getLastHistoryTrack();
-    if (!seed) return null;
-
-    const query = seed.title;
-    const results = await playdl.search(query, {
-      source: { youtube: 'video' },
-      limit: 8,
-    }).catch(() => []);
-
-    if (!results.length) return null;
-
-    for (const result of results) {
-      const candidate = this._buildTrack({
-        title: result.title,
-        url: result.url,
-        duration: result.durationRaw,
-        requestedBy: 'autoplay',
-        source: 'autoplay',
-      });
-
-      if (this._isAutoplayBlocked(candidate)) continue;
-      if (this._hasDuplicateTrack(candidate)) continue;
-      if (seed.url && candidate.url === seed.url) continue;
-
-      this.queue.add(candidate);
-      this.emit('tracksAdded', [candidate]);
-      return candidate;
-    }
-
-    return null;
-  }
-
   canSeekCurrentTrack() {
     if (!this.currentTrack) return false;
     return isYouTubeUrl(this.currentTrack.url);
@@ -831,9 +846,6 @@ export class MusicPlayer extends EventEmitter {
       });
     } catch (err) {
       const normalized = this._normalizePlaybackError(err);
-      if (track?.source === 'autoplay') {
-        this._markAutoplayFailure(track);
-      }
       this.emit('trackError', { track, error: normalized });
       this.logger?.error?.('Playback setup failed', { track: track.title, error: normalized.message });
 
@@ -1059,6 +1071,7 @@ export class MusicPlayer extends EventEmitter {
       title: result[0].title,
       url: result[0].url,
       duration: result[0].durationRaw ?? result[0].duration,
+      thumbnailUrl: pickThumbnailUrlFromItem(result[0]),
       requestedBy,
       source: 'youtube-search',
     })];
@@ -1087,6 +1100,7 @@ export class MusicPlayer extends EventEmitter {
       title: item.title,
       url: item.url,
       duration: item.durationRaw ?? item.duration,
+      thumbnailUrl: pickThumbnailUrlFromItem(item),
       requestedBy,
       source: 'youtube-search',
     }));
@@ -1107,6 +1121,7 @@ export class MusicPlayer extends EventEmitter {
       title: data?.title,
       url: data?.url,
       duration: data?.duration,
+      thumbnailUrl: data?.thumbnailUrl ?? data?.thumbnail_url ?? data?.thumbnail,
       requestedBy,
       source: data?.source ?? 'stored',
     });
@@ -1123,6 +1138,7 @@ export class MusicPlayer extends EventEmitter {
         title: info.video_details.title,
         url,
         duration: info.video_details.durationRaw,
+        thumbnailUrl: pickThumbnailUrlFromItem(info.video_details),
         requestedBy,
         source: 'youtube',
       })];
@@ -1235,6 +1251,7 @@ export class MusicPlayer extends EventEmitter {
       title: video.title,
       url: video.url,
       duration: video.durationRaw,
+      thumbnailUrl: pickThumbnailUrlFromItem(video),
       requestedBy,
       source: 'youtube-playlist',
     }));
@@ -1289,6 +1306,7 @@ export class MusicPlayer extends EventEmitter {
         title,
         url: videoUrl,
         duration,
+        thumbnailUrl: pickThumbnailUrlFromItem(entry),
         requestedBy,
         source: 'youtube-playlist-ytdlp',
       }));
@@ -1426,6 +1444,7 @@ export class MusicPlayer extends EventEmitter {
         title: result[0].title || title,
         url: result[0].url,
         duration: result[0].durationRaw || toDurationLabel(sourceTrack.durationInSec),
+        thumbnailUrl: pickThumbnailUrlFromItem(result[0]),
         requestedBy,
         source,
       }));
@@ -1445,6 +1464,7 @@ export class MusicPlayer extends EventEmitter {
         title: info.video_details.title,
         url,
         duration: info.video_details.durationRaw,
+        thumbnailUrl: pickThumbnailUrlFromItem(info.video_details),
         requestedBy,
         source: 'url',
       })];
@@ -1517,6 +1537,7 @@ export class MusicPlayer extends EventEmitter {
       title: result[0].title || query,
       url: result[0].url,
       duration: result[0].durationRaw,
+      thumbnailUrl: pickThumbnailUrlFromItem(result[0]),
       requestedBy,
       source,
     })];
@@ -1552,12 +1573,14 @@ export class MusicPlayer extends EventEmitter {
     return trimmed;
   }
 
-  _buildTrack({ title, url, duration, requestedBy, source, artist = null, seekStartSec = 0 }) {
+  _buildTrack({ title, url, duration, thumbnailUrl = null, requestedBy, source, artist = null, seekStartSec = 0 }) {
+    const normalizedThumbnail = normalizeThumbnailUrl(thumbnailUrl) ?? buildYouTubeThumbnailFromUrl(url);
     return {
       id: buildTrackId(),
       title: title || 'Unknown title',
       url,
       duration: toDurationLabel(duration),
+      thumbnailUrl: normalizedThumbnail,
       requestedBy,
       source,
       artist: artist ? String(artist).slice(0, 128) : null,
@@ -1590,41 +1613,6 @@ export class MusicPlayer extends EventEmitter {
 
     if (this._trackKey(this.currentTrack) === key) return true;
     return this.pendingTracks.some((track) => this._trackKey(track) === key);
-  }
-
-  _isAutoplayBlocked(track) {
-    const key = this._trackKey(track);
-    if (!key) return false;
-    const expiresAt = this.autoplayBlockedUntil.get(key);
-    if (!expiresAt) return false;
-    if (expiresAt <= Date.now()) {
-      this.autoplayBlockedUntil.delete(key);
-      return false;
-    }
-    return true;
-  }
-
-  _markAutoplayFailure(track) {
-    const key = this._trackKey(track);
-    if (!key) return;
-
-    const expiresAt = Date.now() + this.autoplayBlockMs;
-    this.autoplayBlockedUntil.set(key, expiresAt);
-    while (this.autoplayBlockedUntil.size > this.autoplayBlockMaxEntries) {
-      const oldestKey = this.autoplayBlockedUntil.keys().next().value;
-      if (!oldestKey) break;
-      this.autoplayBlockedUntil.delete(oldestKey);
-    }
-  }
-
-  _pruneAutoplayBlocked() {
-    if (!this.autoplayBlockedUntil.size) return;
-    const now = Date.now();
-    for (const [key, expiresAt] of this.autoplayBlockedUntil.entries()) {
-      if (expiresAt <= now) {
-        this.autoplayBlockedUntil.delete(key);
-      }
-    }
   }
 
   _rememberTrack(track) {
@@ -1926,6 +1914,7 @@ export class MusicPlayer extends EventEmitter {
           title,
           url,
           duration: entry?.duration ?? null,
+          thumbnailUrl: pickThumbnailUrlFromItem(entry),
         };
       })
       .filter(Boolean);

@@ -62,7 +62,6 @@ function cloneConfig(config) {
     guildId: config.guildId,
     prefix: config.prefix,
     settings: {
-      autoplayEnabled: config.settings.autoplayEnabled,
       dedupeEnabled: config.settings.dedupeEnabled,
       stayInVoiceEnabled: config.settings.stayInVoiceEnabled,
       voteSkipRatio: config.settings.voteSkipRatio,
@@ -102,7 +101,6 @@ export class GuildConfigStore {
     this.defaults = {
       prefix: options.defaults?.prefix ?? '!',
       settings: {
-        autoplayEnabled: Boolean(options.defaults?.settings?.autoplayEnabled),
         dedupeEnabled: Boolean(options.defaults?.settings?.dedupeEnabled),
         stayInVoiceEnabled: Boolean(options.defaults?.settings?.stayInVoiceEnabled),
         voteSkipRatio: toRatio(options.defaults?.settings?.voteSkipRatio, 0.5),
@@ -185,7 +183,6 @@ export class GuildConfigStore {
         $set: {
           prefix: next.prefix,
           settings: {
-            autoplayEnabled: next.settings.autoplayEnabled,
             dedupeEnabled: next.settings.dedupeEnabled,
             stayInVoiceEnabled: next.settings.stayInVoiceEnabled,
             voteSkipRatio: next.settings.voteSkipRatio,
@@ -218,10 +215,6 @@ export class GuildConfigStore {
 
     const settingsPatch = patch.settings ?? null;
     if (settingsPatch && typeof settingsPatch === 'object') {
-      if (settingsPatch.autoplayEnabled !== undefined) {
-        next.settings.autoplayEnabled = toBool(settingsPatch.autoplayEnabled, next.settings.autoplayEnabled);
-      }
-
       if (settingsPatch.dedupeEnabled !== undefined) {
         next.settings.dedupeEnabled = toBool(settingsPatch.dedupeEnabled, next.settings.dedupeEnabled);
       }
@@ -267,7 +260,6 @@ export class GuildConfigStore {
       guildId,
       prefix: normalizeStoredPrefix(doc?.prefix, this.defaults.prefix, this.logger, guildId),
       settings: {
-        autoplayEnabled: toBool(settings.autoplayEnabled, this.defaults.settings.autoplayEnabled),
         dedupeEnabled: toBool(settings.dedupeEnabled, this.defaults.settings.dedupeEnabled),
         stayInVoiceEnabled: toBool(settings.stayInVoiceEnabled, this.defaults.settings.stayInVoiceEnabled),
         voteSkipRatio: toRatio(settings.voteSkipRatio, this.defaults.settings.voteSkipRatio),
@@ -286,7 +278,6 @@ export class GuildConfigStore {
     const as = a.settings;
     const bs = b.settings;
 
-    if (as.autoplayEnabled !== bs.autoplayEnabled) return false;
     if (as.dedupeEnabled !== bs.dedupeEnabled) return false;
     if (as.stayInVoiceEnabled !== bs.stayInVoiceEnabled) return false;
     if (as.voteSkipRatio !== bs.voteSkipRatio) return false;

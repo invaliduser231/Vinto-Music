@@ -1,4 +1,5 @@
 import { ValidationError } from '../../core/errors.js';
+import { buildEmbed } from '../messageFormatter.js';
 
 const USER_MENTION_PATTERN = /^<@!?(\d+)>$/;
 const CHANNEL_MENTION_PATTERN = /^<#(\d+)>$/;
@@ -55,6 +56,54 @@ function pendingImportKey(ctx) {
 function formatTaste(taste, limit = 8) {
   if (!Array.isArray(taste) || !taste.length) return 'No taste profile yet.';
   return taste.slice(0, limit).map((entry) => `${entry.term} (${entry.count})`).join(', ');
+}
+
+function chunkLines(lines, maxChars = 1000) {
+  const normalized = Array.isArray(lines) ? lines.map((line) => String(line ?? '')) : [];
+  if (!normalized.length) return ['-'];
+
+  const pages = [];
+  let current = '';
+  for (const line of normalized) {
+    const candidate = current ? `${current}\n${line}` : line;
+    if (candidate.length <= maxChars) {
+      current = candidate;
+      continue;
+    }
+    if (current) pages.push(current);
+    if (line.length <= maxChars) {
+      current = line;
+      continue;
+    }
+    for (let i = 0; i < line.length; i += maxChars) {
+      pages.push(line.slice(i, i + maxChars));
+    }
+    current = '';
+  }
+  if (current) pages.push(current);
+  return pages.length ? pages : ['-'];
+}
+
+function buildInfoPayload(ctx, title, description, fieldName, fieldValue) {
+  if (ctx.config?.enableEmbeds === false) {
+    return {
+      content: [title, description, `${fieldName}:`, fieldValue].filter(Boolean).join('\n').slice(0, 1900),
+    };
+  }
+
+  return {
+    embeds: [buildEmbed({
+      title,
+      description,
+      fields: [{ name: fieldName, value: fieldValue }],
+    })],
+    allowed_mentions: {
+      parse: [],
+      users: [],
+      roles: [],
+      replied_user: false,
+    },
+  };
 }
 
 export function registerAdvancedCommands(registry, h) {
@@ -225,10 +274,20 @@ export function registerAdvancedCommands(registry, h) {
           await ctx.reply.warning('No queue templates configured.');
           return;
         }
-        await ctx.reply.info('Queue templates', [{
-          name: 'Templates',
-          value: templates.map((entry, idx) => `${idx + 1}. ${entry.name} (${entry.tracks.length} tracks)`).join('\n').slice(0, 1000),
-        }]);
+        const lines = templates.map((entry, idx) => `${idx + 1}. ${entry.name} (${entry.tracks.length} tracks)`);
+        const pages = chunkLines(lines, 1000);
+        if (pages.length === 1) {
+          await ctx.reply.info('Queue templates', [{ name: 'Templates', value: pages[0] }]);
+          return;
+        }
+
+        await ctx.sendPaginated(pages.map((value, idx) => buildInfoPayload(
+          ctx,
+          `Queue templates (${idx + 1}/${pages.length})`,
+          null,
+          'Templates',
+          value
+        )));
         return;
       }
 
@@ -265,10 +324,20 @@ export function registerAdvancedCommands(registry, h) {
           await ctx.reply.warning('Template not found.');
           return;
         }
-        await ctx.reply.info(`Template **${tpl.name}**`, [{
-          name: 'Tracks',
-          value: tpl.tracks.slice(0, 12).map((track, idx) => `${idx + 1}. ${trackLabel(track)}`).join('\n').slice(0, 1000),
-        }]);
+        const lines = tpl.tracks.map((track, idx) => `${idx + 1}. ${trackLabel(track)}`);
+        const pages = chunkLines(lines, 1000);
+        if (pages.length === 1) {
+          await ctx.reply.info(`Template **${tpl.name}**`, [{ name: 'Tracks', value: pages[0] }]);
+          return;
+        }
+
+        await ctx.sendPaginated(pages.map((value, idx) => buildInfoPayload(
+          ctx,
+          `Template ${tpl.name} (${idx + 1}/${pages.length})`,
+          null,
+          'Tracks',
+          value
+        )));
         return;
       }
 
@@ -310,10 +379,20 @@ export function registerAdvancedCommands(registry, h) {
         await ctx.reply.warning('No chart data yet.');
         return;
       }
-      await ctx.reply.info(`Top tracks (${days}d)`, [{
-        name: 'Tracks',
-        value: top.map((entry, idx) => `${idx + 1}. ${entry.title} (${entry.plays})`).join('\n').slice(0, 1000),
-      }]);
+      const lines = top.map((entry, idx) => `${idx + 1}. ${entry.title} (${entry.plays})`);
+      const pages = chunkLines(lines, 1000);
+      if (pages.length === 1) {
+        await ctx.reply.info(`Top tracks (${days}d)`, [{ name: 'Tracks', value: pages[0] }]);
+        return;
+      }
+
+      await ctx.sendPaginated(pages.map((value, idx) => buildInfoPayload(
+        ctx,
+        `Top tracks (${days}d) (${idx + 1}/${pages.length})`,
+        null,
+        'Tracks',
+        value
+      )));
     },
   }));
 
@@ -338,8 +417,14 @@ export function registerAdvancedCommands(registry, h) {
 
       if (action === 'now') {
         const recap = await library.buildGuildRecap(ctx.guildId, 7);
-        const tracks = recap.topTracks.slice(0, 5).map((entry, idx) => `${idx + 1}. ${entry.title} (${entry.plays})`).join('\n') || 'No data';
-        const req = recap.topRequesters.slice(0, 5).map((entry, idx) => `${idx + 1}. <@${entry.userId}> (${entry.plays})`).join('\n') || 'No data';
+        const tracks = chunkLines(
+          recap.topTracks.slice(0, 5).map((entry, idx) => `${idx + 1}. ${entry.title} (${entry.plays})`),
+          1000
+        )[0] || 'No data';
+        const req = chunkLines(
+          recap.topRequesters.slice(0, 5).map((entry, idx) => `${idx + 1}. <@${entry.userId}> (${entry.plays})`),
+          1000
+        )[0] || 'No data';
         await ctx.reply.info('Weekly recap (preview)', [
           { name: 'Total Plays', value: String(recap.playCount), inline: true },
           { name: 'Top Tracks', value: tracks },

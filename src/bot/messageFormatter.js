@@ -43,6 +43,8 @@ export function buildEmbed({
   description,
   color = COLORS.brand,
   fields,
+  thumbnailUrl,
+  imageUrl,
   footer,
 }) {
   const embed = {
@@ -59,6 +61,16 @@ export function buildEmbed({
       value: truncate(String(field.value ?? '-'), 1024),
       inline: Boolean(field.inline),
     }));
+  }
+
+  const safeThumbnailUrl = String(thumbnailUrl ?? '').trim();
+  if (/^https?:\/\//i.test(safeThumbnailUrl)) {
+    embed.thumbnail = { url: truncate(safeThumbnailUrl, 2048) };
+  }
+
+  const safeImageUrl = String(imageUrl ?? '').trim();
+  if (/^https?:\/\//i.test(safeImageUrl)) {
+    embed.image = { url: truncate(safeImageUrl, 2048) };
   }
 
   const footerText = footer ? `${BOT_BRAND} | ${String(footer)}` : BOT_BRAND;

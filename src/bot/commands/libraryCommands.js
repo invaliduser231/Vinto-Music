@@ -1,4 +1,53 @@
 import { ValidationError } from '../../core/errors.js';
+import { buildEmbed } from '../messageFormatter.js';
+
+function chunkLines(lines, maxChars = 1000) {
+  const normalized = Array.isArray(lines) ? lines.map((line) => String(line ?? '')) : [];
+  if (!normalized.length) return ['-'];
+
+  const pages = [];
+  let current = '';
+  for (const line of normalized) {
+    const candidate = current ? `${current}\n${line}` : line;
+    if (candidate.length <= maxChars) {
+      current = candidate;
+      continue;
+    }
+    if (current) pages.push(current);
+    if (line.length <= maxChars) {
+      current = line;
+      continue;
+    }
+    for (let i = 0; i < line.length; i += maxChars) {
+      pages.push(line.slice(i, i + maxChars));
+    }
+    current = '';
+  }
+  if (current) pages.push(current);
+  return pages.length ? pages : ['-'];
+}
+
+function buildInfoPayload(ctx, title, description, fieldName, fieldValue) {
+  if (ctx.config?.enableEmbeds === false) {
+    return {
+      content: [title, description, `${fieldName}:`, fieldValue].filter(Boolean).join('\n').slice(0, 1900),
+    };
+  }
+
+  return {
+    embeds: [buildEmbed({
+      title,
+      description,
+      fields: [{ name: fieldName, value: fieldValue }],
+    })],
+    allowed_mentions: {
+      parse: [],
+      users: [],
+      roles: [],
+      replied_user: false,
+    },
+  };
+}
 
 export function registerLibraryCommands(registry, h) {
   const {
@@ -36,20 +85,27 @@ export function registerLibraryCommands(registry, h) {
           return;
         }
 
-        await ctx.reply.info(
-          `Playlists page **${result.page}/${result.totalPages}** • Total: **${result.total}**`,
-          [{
-            name: 'Guild playlists',
-            value: result.items
-              .map((entry, idx) => {
-                const absolute = (result.page - 1) * result.pageSize + idx + 1;
-                const suffix = Number.isFinite(entry.trackCount) ? ` (${entry.trackCount} tracks)` : '';
-                return `${absolute}. **${entry.name}**${suffix}`;
-              })
-              .join('\n')
-              .slice(0, 1000),
-          }]
-        );
+        const lines = result.items.map((entry, idx) => {
+          const absolute = (result.page - 1) * result.pageSize + idx + 1;
+          const suffix = Number.isFinite(entry.trackCount) ? ` (${entry.trackCount} tracks)` : '';
+          return `${absolute}. **${entry.name}**${suffix}`;
+        });
+        const pages = chunkLines(lines, 1000);
+        if (pages.length === 1) {
+          await ctx.reply.info(
+            `Playlists page **${result.page}/${result.totalPages}** • Total: **${result.total}**`,
+            [{ name: 'Guild playlists', value: pages[0] }]
+          );
+          return;
+        }
+
+        await ctx.sendPaginated(pages.map((value, idx) => buildInfoPayload(
+          ctx,
+          `Guild playlists (${idx + 1}/${pages.length})`,
+          `Page **${result.page}/${result.totalPages}** • Total: **${result.total}**`,
+          'Guild playlists',
+          value
+        )));
         return;
       }
 
@@ -105,16 +161,23 @@ export function registerLibraryCommands(registry, h) {
         const start = (safePage - 1) * h.PLAYLIST_PAGE_SIZE;
         const items = playlist.tracks.slice(start, start + h.PLAYLIST_PAGE_SIZE);
 
-        await ctx.reply.info(
-          `Playlist **${playlist.name}** • Page **${safePage}/${totalPages}** • Tracks: **${playlist.tracks.length}**`,
-          [{
-            name: 'Tracks',
-            value: items
-              .map((track, idx) => `${start + idx + 1}. ${trackLabel(track)}`)
-              .join('\n')
-              .slice(0, 1000),
-          }]
-        );
+        const lines = items.map((track, idx) => `${start + idx + 1}. ${trackLabel(track)}`);
+        const pages = chunkLines(lines, 1000);
+        if (pages.length === 1) {
+          await ctx.reply.info(
+            `Playlist **${playlist.name}** • Page **${safePage}/${totalPages}** • Tracks: **${playlist.tracks.length}**`,
+            [{ name: 'Tracks', value: pages[0] }]
+          );
+          return;
+        }
+
+        await ctx.sendPaginated(pages.map((value, idx) => buildInfoPayload(
+          ctx,
+          `Playlist ${playlist.name} (${idx + 1}/${pages.length})`,
+          `Page **${safePage}/${totalPages}** • Tracks: **${playlist.tracks.length}**`,
+          'Tracks',
+          value
+        )));
         return;
       }
 
@@ -278,16 +341,23 @@ export function registerLibraryCommands(registry, h) {
         return;
       }
 
-      await ctx.reply.info(
-        `Favorites page **${result.page}/${result.totalPages}** • Total: **${result.total}**`,
-        [{
-          name: 'Your favorites',
-          value: result.items
-            .map((track, idx) => `${(result.page - 1) * result.pageSize + idx + 1}. ${trackLabel(track)}`)
-            .join('\n')
-            .slice(0, 1000),
-        }]
-      );
+      const lines = result.items.map((track, idx) => `${(result.page - 1) * result.pageSize + idx + 1}. ${trackLabel(track)}`);
+      const pages = chunkLines(lines, 1000);
+      if (pages.length === 1) {
+        await ctx.reply.info(
+          `Favorites page **${result.page}/${result.totalPages}** • Total: **${result.total}**`,
+          [{ name: 'Your favorites', value: pages[0] }]
+        );
+        return;
+      }
+
+      await ctx.sendPaginated(pages.map((value, idx) => buildInfoPayload(
+        ctx,
+        `Favorites (${idx + 1}/${pages.length})`,
+        `Page **${result.page}/${result.totalPages}** • Total: **${result.total}**`,
+        'Your favorites',
+        value
+      )));
     },
   }));
 

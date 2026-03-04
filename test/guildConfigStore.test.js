@@ -49,7 +49,6 @@ function buildStore() {
     defaults: {
       prefix: '!',
       settings: {
-        autoplayEnabled: false,
         dedupeEnabled: false,
         stayInVoiceEnabled: false,
         voteSkipRatio: 0.5,
@@ -69,7 +68,6 @@ test('guild config store returns defaults for missing guild', async () => {
   const cfg = await store.get('guild-1');
   assert.equal(cfg.guildId, 'guild-1');
   assert.equal(cfg.prefix, '!');
-  assert.equal(cfg.settings.autoplayEnabled, false);
   assert.deepEqual(cfg.settings.djRoleIds, []);
 });
 
@@ -80,7 +78,6 @@ test('guild config store persists and normalizes settings updates', async () => 
   const updated = await store.update('guild-1', {
     prefix: '>>',
     settings: {
-      autoplayEnabled: true,
       dedupeEnabled: true,
       stayInVoiceEnabled: true,
       voteSkipRatio: 0.75,
@@ -90,7 +87,6 @@ test('guild config store persists and normalizes settings updates', async () => 
   });
 
   assert.equal(updated.prefix, '>>');
-  assert.equal(updated.settings.autoplayEnabled, true);
   assert.equal(updated.settings.dedupeEnabled, true);
   assert.equal(updated.settings.stayInVoiceEnabled, true);
   assert.equal(updated.settings.voteSkipRatio, 0.75);

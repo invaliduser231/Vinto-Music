@@ -13,38 +13,6 @@ export function registerConfigCommands(registry, h) {
   } = h;
 
   registry.register(createCommand({
-    name: 'autoplay',
-    aliases: ['ap'],
-    description: 'Autoplay is temporarily disabled.',
-    usage: 'autoplay [on|off]',
-    async execute(ctx) {
-      ensureGuild(ctx);
-      await getGuildConfigOrThrow(ctx);
-      await ensureManageGuildAccess(ctx, 'change autoplay');
-
-      if (!ctx.args.length) {
-        await ctx.reply.info('Autoplay is temporarily disabled.');
-        return;
-      }
-
-      const value = parseOnOff(ctx.args[0], null);
-      if (value == null) {
-        throw new ValidationError('Use `on` or `off`.');
-      }
-
-      if (value) {
-        await ctx.reply.warning('Autoplay is temporarily disabled and cannot be enabled right now.');
-        return;
-      }
-
-      await updateGuildConfig(ctx, {
-        settings: { autoplayEnabled: false },
-      });
-      await ctx.reply.success('Autoplay is disabled.');
-    },
-  }));
-
-  registry.register(createCommand({
     name: 'dedupe',
     description: 'Toggle duplicate prevention when adding tracks.',
     usage: 'dedupe [on|off]',
@@ -281,7 +249,6 @@ export function registerConfigCommands(registry, h) {
 
       await ctx.reply.info('Guild configuration', [
         { name: 'Prefix', value: guildConfig.prefix, inline: true },
-        { name: 'Autoplay', value: 'disabled', inline: true },
         { name: 'Dedupe', value: guildConfig.settings.dedupeEnabled ? 'on' : 'off', inline: true },
         { name: '24/7', value: guildConfig.settings.stayInVoiceEnabled ? 'on' : 'off', inline: true },
         { name: 'Vote Ratio', value: String(guildConfig.settings.voteSkipRatio), inline: true },

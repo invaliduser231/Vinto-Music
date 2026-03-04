@@ -43,6 +43,7 @@ function normalizeTrack(track, fallbackRequester = null) {
   const url = String(track?.url ?? '').trim();
   const duration = String(track?.duration ?? 'Unknown').trim() || 'Unknown';
   const source = String(track?.source ?? 'unknown').trim() || 'unknown';
+  const thumbnailUrlRaw = String(track?.thumbnailUrl ?? track?.thumbnail_url ?? track?.thumbnail ?? '').trim();
   const requestedBy = track?.requestedBy != null
     ? String(track.requestedBy)
     : (fallbackRequester ? String(fallbackRequester) : null);
@@ -56,6 +57,7 @@ function normalizeTrack(track, fallbackRequester = null) {
     url: url.slice(0, 1024),
     duration: duration.slice(0, 32),
     source: source.slice(0, 64),
+    thumbnailUrl: /^https?:\/\//i.test(thumbnailUrlRaw) ? thumbnailUrlRaw.slice(0, 2048) : null,
     requestedBy: requestedBy ? requestedBy.slice(0, 64) : null,
     savedAt: new Date(),
   };
@@ -89,6 +91,10 @@ export class MusicLibraryStore {
 
     this.maxPlaylistsPerGuild = toPositiveInt(options.maxPlaylistsPerGuild, 100);
     this.maxTracksPerPlaylist = toPositiveInt(options.maxTracksPerPlaylist, 500);
+    this.maxSavedTracksPerPlaylist = toPositiveInt(
+      options.maxSavedTracksPerPlaylist,
+      this.maxTracksPerPlaylist
+    );
     this.maxFavoritesPerUser = toPositiveInt(options.maxFavoritesPerUser, 500);
     this.maxHistoryTracks = toPositiveInt(options.maxHistoryTracks, 200);
   }
@@ -121,6 +127,7 @@ export class MusicLibraryStore {
     this.logger?.info?.('Music library store ready', {
       maxPlaylistsPerGuild: this.maxPlaylistsPerGuild,
       maxTracksPerPlaylist: this.maxTracksPerPlaylist,
+      maxSavedTracksPerPlaylist: this.maxSavedTracksPerPlaylist,
       maxFavoritesPerUser: this.maxFavoritesPerUser,
       maxHistoryTracks: this.maxHistoryTracks,
       featureCollectionsEnabled: Boolean(this.guildFeatures && this.userProfiles && this.guildRecaps),
@@ -413,6 +420,7 @@ export class MusicLibraryStore {
         title: track?.title ?? 'Unknown title',
         url: track?.url ?? '',
         duration: track?.duration ?? 'Unknown',
+        thumbnailUrl: track?.thumbnailUrl ?? null,
         plays: 0,
       };
       entry.plays += 1;

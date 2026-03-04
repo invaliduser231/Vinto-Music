@@ -583,7 +583,7 @@ function formatQueuePage(session, page) {
 
   const pendingDurationSec = sumTrackDurationsSeconds(pending);
   return {
-    description: `Loop: **${session.player.loopMode}** • Volume: **${session.player.volumePercent}%** • Pending duration: **${formatSeconds(pendingDurationSec)}** • Autoplay: **disabled** • Dedupe: **${session.settings.dedupeEnabled ? 'on' : 'off'}** • 24/7: **${session.settings.stayInVoiceEnabled ? 'on' : 'off'}**`,
+    description: `Loop: **${session.player.loopMode}** • Volume: **${session.player.volumePercent}%** • Pending duration: **${formatSeconds(pendingDurationSec)}** • Dedupe: **${session.settings.dedupeEnabled ? 'on' : 'off'}** • 24/7: **${session.settings.stayInVoiceEnabled ? 'on' : 'off'}**`,
     fields,
   };
 }
@@ -1120,6 +1120,7 @@ function buildHelpPages(ctx) {
   return pages;
 }
 export {
+  PENDING_PAGE_SIZE,
   HISTORY_PAGE_SIZE,
   PLAYLIST_PAGE_SIZE,
   FAVORITES_PAGE_SIZE,

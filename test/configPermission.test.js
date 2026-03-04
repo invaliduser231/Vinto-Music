@@ -4,10 +4,10 @@ import assert from 'node:assert/strict';
 import { registerCommands } from '../src/bot/commands/index.js';
 import { CommandRegistry } from '../src/bot/commandRegistry.js';
 
-function buildAutoplayCommand() {
+function buildDedupeCommand() {
   const registry = new CommandRegistry();
   registerCommands(registry);
-  return registry.resolve('autoplay');
+  return registry.resolve('dedupe');
 }
 
 function baseGuildConfig() {
@@ -15,7 +15,6 @@ function baseGuildConfig() {
     guildId: 'guild-1',
     prefix: '!',
     settings: {
-      autoplayEnabled: false,
       dedupeEnabled: false,
       stayInVoiceEnabled: false,
       voteSkipRatio: 0.5,
@@ -27,10 +26,10 @@ function baseGuildConfig() {
 }
 
 test('config command allows users with manage guild permission', async () => {
-  const autoplay = buildAutoplayCommand();
+  const dedupe = buildDedupeCommand();
   let replied = false;
 
-  await autoplay.execute({
+  await dedupe.execute({
     guildId: 'guild-1',
     args: [],
     message: {
@@ -60,10 +59,10 @@ test('config command allows users with manage guild permission', async () => {
 });
 
 test('config command rejects users without manage guild permission', async () => {
-  const autoplay = buildAutoplayCommand();
+  const dedupe = buildDedupeCommand();
 
   await assert.rejects(
-    () => autoplay.execute({
+    () => dedupe.execute({
       guildId: 'guild-1',
       args: [],
       message: {
@@ -88,10 +87,10 @@ test('config command rejects users without manage guild permission', async () =>
 });
 
 test('config command allows REST role-based manage guild fallback', async () => {
-  const autoplay = buildAutoplayCommand();
+  const dedupe = buildDedupeCommand();
   let replied = false;
 
-  await autoplay.execute({
+  await dedupe.execute({
     guildId: 'guild-1',
     authorId: 'user-1',
     args: [],
@@ -130,10 +129,10 @@ test('config command allows REST role-based manage guild fallback', async () => 
 });
 
 test('config command rejects REST role fallback without manage guild bit', async () => {
-  const autoplay = buildAutoplayCommand();
+  const dedupe = buildDedupeCommand();
 
   await assert.rejects(
-    () => autoplay.execute({
+    () => dedupe.execute({
       guildId: 'guild-2',
       authorId: 'user-2',
       args: [],

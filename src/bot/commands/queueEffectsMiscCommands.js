@@ -20,6 +20,68 @@ import {
   formatUptimeCompact,
 } from './commandHelpers.js';
 
+function splitTextIntoPages(text, maxChars = 900) {
+  const value = String(text ?? '').trim();
+  if (!value) return [];
+  if (value.length <= maxChars) return [value];
+
+  const pages = [];
+  const lines = value.split('\n');
+  let current = '';
+
+  for (const lineRaw of lines) {
+    const line = String(lineRaw ?? '');
+    const candidate = current ? `${current}\n${line}` : line;
+    if (candidate.length <= maxChars) {
+      current = candidate;
+      continue;
+    }
+
+    if (current) {
+      pages.push(current);
+      current = '';
+    }
+
+    if (line.length <= maxChars) {
+      current = line;
+      continue;
+    }
+
+    for (let i = 0; i < line.length; i += maxChars) {
+      pages.push(line.slice(i, i + maxChars));
+    }
+  }
+
+  if (current) pages.push(current);
+  return pages.filter(Boolean);
+}
+
+function buildLyricsPagePayload(ctx, title, source, pageText, pageIndex, totalPages) {
+  if (ctx.config?.enableEmbeds === false) {
+    const header = `${title} (${pageIndex}/${totalPages})`;
+    return {
+      content: `${header}\nSource: ${source}\n\n${pageText}`.slice(0, 1900),
+    };
+  }
+
+  return {
+    embeds: [{
+      title: `${title} (${pageIndex}/${totalPages})`,
+      fields: [
+        { name: 'Source', value: String(source), inline: true },
+        { name: 'Lyrics', value: String(pageText) },
+      ],
+      timestamp: new Date().toISOString(),
+    }],
+    allowed_mentions: {
+      parse: [],
+      users: [],
+      roles: [],
+      replied_user: false,
+    },
+  };
+}
+
 export function registerQueueEffectsAndMiscCommands(registry) {
   registry.register(createCommand({
     name: 'remove',
@@ -263,9 +325,21 @@ export function registerQueueEffectsAndMiscCommands(registry) {
         return;
       }
 
-      await ctx.reply.info(`Lyrics for **${effectiveQuery}**`, [
-        { name: `Source: ${result.source}`, value: result.lyrics.slice(0, 1000) },
-      ]);
+      const pages = splitTextIntoPages(result.lyrics, 900);
+      if (!pages.length) {
+        await ctx.reply.warning(`No lyrics found for: **${effectiveQuery}**`);
+        return;
+      }
+
+      const payloads = pages.map((pageText, idx) => buildLyricsPagePayload(
+        ctx,
+        `Lyrics for ${effectiveQuery}`,
+        result.source,
+        pageText,
+        idx + 1,
+        pages.length
+      ));
+      await ctx.sendPaginated(payloads);
     },
   }));
 

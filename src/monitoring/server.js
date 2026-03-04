@@ -17,8 +17,9 @@ export class MonitoringServer {
     if (this.server) return true;
 
     this.server = http.createServer((req, res) => {
-      const url = req.url ?? '/';
-      if (url === '/healthz' || url === '/readyz') {
+      const parsed = new URL(req.url ?? '/', 'http://monitor.local');
+      const path = parsed.pathname ?? '/';
+      if (path === '/healthz' || path === '/readyz') {
         const health = this.getHealth();
         const status = health?.ok ? 200 : 503;
         const body = JSON.stringify({
@@ -34,7 +35,7 @@ export class MonitoringServer {
         return;
       }
 
-      if (url === '/metrics') {
+      if (path === '/metrics') {
         const payload = this.metrics?.renderPrometheus?.() ?? '';
         res.writeHead(200, {
           'Content-Type': 'text/plain; version=0.0.4',
