@@ -106,7 +106,7 @@ export function makeResponder(rest, options = {}) {
   const useEmbeds = options.enableEmbeds !== false;
 
   return {
-    async info(channelId, text, details = null, replyOptions = null) {
+    async info(channelId, text, details = null, replyOptions = null, embedOptions = null) {
       const payload = createMessagePayload(
         useEmbeds ? null : text,
         buildEmbed({
@@ -114,6 +114,8 @@ export function makeResponder(rest, options = {}) {
           description: text,
           color: COLORS.info,
           fields: details,
+          thumbnailUrl: embedOptions?.thumbnailUrl ?? null,
+          imageUrl: embedOptions?.imageUrl ?? null,
         }),
         useEmbeds,
         replyOptions
@@ -121,7 +123,7 @@ export function makeResponder(rest, options = {}) {
       return rest.sendMessage(channelId, payload);
     },
 
-    async success(channelId, text, details = null, replyOptions = null) {
+    async success(channelId, text, details = null, replyOptions = null, embedOptions = null) {
       const payload = createMessagePayload(
         useEmbeds ? null : text,
         buildEmbed({
@@ -129,6 +131,8 @@ export function makeResponder(rest, options = {}) {
           description: text,
           color: COLORS.success,
           fields: details,
+          thumbnailUrl: embedOptions?.thumbnailUrl ?? null,
+          imageUrl: embedOptions?.imageUrl ?? null,
         }),
         useEmbeds,
         replyOptions
@@ -136,7 +140,7 @@ export function makeResponder(rest, options = {}) {
       return rest.sendMessage(channelId, payload);
     },
 
-    async warning(channelId, text, details = null, replyOptions = null) {
+    async warning(channelId, text, details = null, replyOptions = null, embedOptions = null) {
       const payload = createMessagePayload(
         useEmbeds ? null : text,
         buildEmbed({
@@ -144,6 +148,8 @@ export function makeResponder(rest, options = {}) {
           description: text,
           color: COLORS.warning,
           fields: details,
+          thumbnailUrl: embedOptions?.thumbnailUrl ?? null,
+          imageUrl: embedOptions?.imageUrl ?? null,
         }),
         useEmbeds,
         replyOptions
@@ -151,7 +157,7 @@ export function makeResponder(rest, options = {}) {
       return rest.sendMessage(channelId, payload);
     },
 
-    async error(channelId, text, details = null, replyOptions = null) {
+    async error(channelId, text, details = null, replyOptions = null, embedOptions = null) {
       const payload = createMessagePayload(
         useEmbeds ? null : text,
         buildEmbed({
@@ -159,6 +165,8 @@ export function makeResponder(rest, options = {}) {
           description: text,
           color: COLORS.error,
           fields: details,
+          thumbnailUrl: embedOptions?.thumbnailUrl ?? null,
+          imageUrl: embedOptions?.imageUrl ?? null,
         }),
         useEmbeds,
         replyOptions

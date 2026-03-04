@@ -435,10 +435,18 @@ export class CommandRouter {
       },
 
       reply: {
-        info: async (text, fields = null) => this._safeReply(channelId, 'info', text, fields, commandReplyOptions),
-        success: async (text, fields = null) => this._safeReply(channelId, 'success', text, fields, commandReplyOptions),
-        warning: async (text, fields = null) => this._safeReply(channelId, 'warning', text, fields, commandReplyOptions),
-        error: async (text, fields = null) => this._safeReply(channelId, 'error', text, fields, commandReplyOptions),
+        info: async (text, fields = null, embedOptions = null) => this._safeReply(
+          channelId, 'info', text, fields, commandReplyOptions, embedOptions
+        ),
+        success: async (text, fields = null, embedOptions = null) => this._safeReply(
+          channelId, 'success', text, fields, commandReplyOptions, embedOptions
+        ),
+        warning: async (text, fields = null, embedOptions = null) => this._safeReply(
+          channelId, 'warning', text, fields, commandReplyOptions, embedOptions
+        ),
+        error: async (text, fields = null, embedOptions = null) => this._safeReply(
+          channelId, 'error', text, fields, commandReplyOptions, embedOptions
+        ),
         plain: async (text) => this._safeReply(channelId, 'plain', text, null, commandReplyOptions),
       },
     };
@@ -480,7 +488,13 @@ export class CommandRouter {
       await this._safeReply(
         channelId,
         'info',
-        `Now playing: **${track.title}** (${track.duration})`
+        `Now playing: **${track.title}** (${track.duration})`,
+        null,
+        null,
+        {
+          thumbnailUrl: track?.thumbnailUrl ?? null,
+          imageUrl: track?.thumbnailUrl ?? null,
+        }
       );
       await this._sendSessionPanelUpdate(session, 'track_start');
       await this._emitWebhookEvent(session, 'track_start', `Now playing: ${summarizeTrack(track)}`);
@@ -927,12 +941,12 @@ export class CommandRouter {
     });
   }
 
-  async _safeReply(channelId, type, text, fields = null, replyOptions = null) {
+  async _safeReply(channelId, type, text, fields = null, replyOptions = null, embedOptions = null) {
     try {
-      if (type === 'info') return await this.responder.info(channelId, text, fields, replyOptions);
-      if (type === 'success') return await this.responder.success(channelId, text, fields, replyOptions);
-      if (type === 'warning') return await this.responder.warning(channelId, text, fields, replyOptions);
-      if (type === 'error') return await this.responder.error(channelId, text, fields, replyOptions);
+      if (type === 'info') return await this.responder.info(channelId, text, fields, replyOptions, embedOptions);
+      if (type === 'success') return await this.responder.success(channelId, text, fields, replyOptions, embedOptions);
+      if (type === 'warning') return await this.responder.warning(channelId, text, fields, replyOptions, embedOptions);
+      if (type === 'error') return await this.responder.error(channelId, text, fields, replyOptions, embedOptions);
       return await this.responder.plain(channelId, text, replyOptions);
     } catch (err) {
       const isUnknownGuild = (
