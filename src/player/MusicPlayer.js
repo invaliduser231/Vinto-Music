@@ -1,9 +1,12 @@
 import { EventEmitter } from 'events';
 import { spawn } from 'child_process';
+import { createCipheriv, createDecipheriv, createHash, getCiphers } from 'node:crypto';
 import { copyFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
+import { Readable, Transform } from 'node:stream';
 import ffmpegPath from 'ffmpeg-static';
+import { Blowfish } from 'egoroof-blowfish';
 import playdl from 'play-dl';
 import { Queue } from './Queue.js';
 import { ValidationError } from '../core/errors.js';
@@ -34,6 +37,111 @@ const EQ_PRESETS = {
 };
 const EQ_BANDS = [90, 250, 1000, 4000, 12000];
 const YT_PLAYLIST_RESOLVERS = new Set(['ytdlp', 'playdl']);
+const DEEZER_STRIPE_CHUNK_SIZE = 2048;
+const DEEZER_BLOWFISH_IV = Buffer.from([0, 1, 2, 3, 4, 5, 6, 7]);
+const DEEZER_FILE_KEY = Buffer.from('jo6aey6haid2Teih', 'ascii');
+const DEEZER_BLOWFISH_SECRET = 'g4el58wc0zvf9na1';
+const DEEZER_BF_CBC_SUPPORTED = getCiphers().includes('bf-cbc');
+const DEEZER_MEDIA_QUALITY_MAP = new Map([
+  ['FLAC', 9],
+  ['MP3_320', 3],
+  ['MP3_256', 3],
+  ['MP3_128', 1],
+]);
+
+function md5Hex(value, encoding = 'ascii') {
+  const hash = createHash('md5');
+  hash.update(value, encoding);
+  return hash.digest('hex');
+}
+
+function getDeezerBlowfishKey(trackId) {
+  const idMd5 = md5Hex(String(trackId ?? '').trim(), 'ascii');
+  const key = Buffer.alloc(16);
+
+  for (let i = 0; i < 16; i += 1) {
+    key[i] = (
+      idMd5.charCodeAt(i)
+      ^ idMd5.charCodeAt(i + 16)
+      ^ DEEZER_BLOWFISH_SECRET.charCodeAt(i)
+    ) & 0xff;
+  }
+
+  return key;
+}
+
+function decryptDeezerChunk(chunk, blowfishKey) {
+  if (!DEEZER_BF_CBC_SUPPORTED) {
+    const cipher = new Blowfish(blowfishKey, Blowfish.MODE.CBC, Blowfish.PADDING.NULL);
+    cipher.setIv(DEEZER_BLOWFISH_IV);
+    return Buffer.from(cipher.decode(chunk, Blowfish.TYPE.UINT8_ARRAY));
+  }
+
+  const decipher = createDecipheriv('bf-cbc', blowfishKey, DEEZER_BLOWFISH_IV);
+  decipher.setAutoPadding(false);
+  return Buffer.concat([decipher.update(chunk), decipher.final()]);
+}
+
+function getDeezerSongFileName(track, quality) {
+  const md5Origin = String(track?.MD5_ORIGIN ?? '').trim();
+  const songId = String(track?.SNG_ID ?? '').trim();
+  const mediaVersion = String(track?.MEDIA_VERSION ?? '').trim();
+  const step1 = [md5Origin, String(quality), songId, mediaVersion].join('\u00A4');
+
+  let step2 = `${md5Hex(step1, 'ascii')}\u00A4${step1}\u00A4`;
+  while (step2.length % 16 !== 0) {
+    step2 += ' ';
+  }
+
+  const cipher = createCipheriv('aes-128-ecb', DEEZER_FILE_KEY, null);
+  return cipher.update(step2, 'ascii').toString('hex');
+}
+
+function buildDeezerLegacyDownloadUrl(track, quality) {
+  const md5Origin = String(track?.MD5_ORIGIN ?? '').trim();
+  if (!md5Origin) return null;
+  const cdn = md5Origin[0];
+  const fileName = getDeezerSongFileName(track, quality);
+  return `http://e-cdn-proxy-${cdn}.deezer.com/mobile/1/${fileName}`;
+}
+
+class DeezerBfStripeDecryptTransform extends Transform {
+  constructor(trackId) {
+    super();
+    this.trackId = String(trackId ?? '').trim();
+    this.blowfishKey = getDeezerBlowfishKey(this.trackId);
+    this.pending = Buffer.alloc(0);
+    this.blockIndex = 0;
+  }
+
+  _transform(chunk, _encoding, callback) {
+    try {
+      this.pending = this.pending.length ? Buffer.concat([this.pending, chunk]) : Buffer.from(chunk);
+      while (this.pending.length >= DEEZER_STRIPE_CHUNK_SIZE) {
+        const block = this.pending.subarray(0, DEEZER_STRIPE_CHUNK_SIZE);
+        this.pending = this.pending.subarray(DEEZER_STRIPE_CHUNK_SIZE);
+
+        if (this.blockIndex % 3 === 0) {
+          this.push(decryptDeezerChunk(block, this.blowfishKey));
+        } else {
+          this.push(block);
+        }
+        this.blockIndex += 1;
+      }
+      callback();
+    } catch (err) {
+      callback(err instanceof Error ? err : new Error(String(err)));
+    }
+  }
+
+  _flush(callback) {
+    if (this.pending.length) {
+      this.push(this.pending);
+      this.pending = Buffer.alloc(0);
+    }
+    callback();
+  }
+}
 
 function isHttpUrl(value) {
   try {
@@ -130,6 +238,48 @@ function isSoundCloudUrl(value) {
   }
 }
 
+function toSoundCloudDurationLabel(value) {
+  if (value == null) return 'Unknown';
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (value > 10_000) {
+      return toDurationLabel(Math.floor(value / 1000));
+    }
+    return toDurationLabel(value);
+  }
+
+  const parsed = Number.parseFloat(String(value));
+  if (Number.isFinite(parsed)) {
+    if (parsed > 10_000) {
+      return toDurationLabel(Math.floor(parsed / 1000));
+    }
+    return toDurationLabel(parsed);
+  }
+
+  return toDurationLabel(value);
+}
+
+function toDeezerDurationLabel(value) {
+  if (value == null) return 'Unknown';
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (value > 10_000) {
+      return toDurationLabel(Math.floor(value / 1000));
+    }
+    return toDurationLabel(value);
+  }
+
+  const parsed = Number.parseFloat(String(value));
+  if (Number.isFinite(parsed)) {
+    if (parsed > 10_000) {
+      return toDurationLabel(Math.floor(parsed / 1000));
+    }
+    return toDurationLabel(parsed);
+  }
+
+  return toDurationLabel(value);
+}
+
 function isDeezerUrl(value) {
   try {
     const parsed = new URL(value);
@@ -146,6 +296,57 @@ function isSpotifyUrl(value) {
   } catch {
     return false;
   }
+}
+
+function extractDeezerTrackId(value) {
+  try {
+    const parsed = new URL(value);
+    const parts = String(parsed.pathname ?? '')
+      .split('/')
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+
+    const trackIdx = parts.findIndex((segment) => segment.toLowerCase() === 'track');
+    if (trackIdx >= 0) {
+      const next = parts[trackIdx + 1] ?? '';
+      if (/^\d+$/.test(next)) return next;
+    }
+
+    const direct = parts.find((segment) => /^\d+$/.test(segment)) ?? null;
+    return direct;
+  } catch {
+    return null;
+  }
+}
+
+function isAudiusUrl(value) {
+  try {
+    const parsed = new URL(value);
+    return parsed.hostname === 'audius.co' || parsed.hostname.endsWith('.audius.co');
+  } catch {
+    return false;
+  }
+}
+
+function toAudiusDurationLabel(value) {
+  if (value == null) return 'Unknown';
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (value > 10_000) {
+      return toDurationLabel(Math.floor(value / 1000));
+    }
+    return toDurationLabel(value);
+  }
+
+  const parsed = Number.parseFloat(String(value));
+  if (Number.isFinite(parsed)) {
+    if (parsed > 10_000) {
+      return toDurationLabel(Math.floor(parsed / 1000));
+    }
+    return toDurationLabel(parsed);
+  }
+
+  return toDurationLabel(value);
 }
 
 function clamp(value, min, max) {
@@ -182,14 +383,6 @@ function pickArtistName(track) {
   return null;
 }
 
-function isSpotifyAuthorizationError(err) {
-  const message = String(err?.message ?? err ?? '').toLowerCase();
-  return (
-    message.includes('spotify data is missing')
-    || message.includes('forgot to do authorization')
-    || (message.includes('spotify') && message.includes('authorization'))
-  );
-}
 
 function isSoundCloudAuthorizationError(err) {
   const message = String(err?.message ?? err ?? '').toLowerCase();
@@ -198,14 +391,6 @@ function isSoundCloudAuthorizationError(err) {
     || message.includes('did you forget to do authorization')
     || (message.includes('soundcloud') && message.includes('authorization'))
   );
-}
-
-function spotifyAuthorizationHelp(sourceType) {
-  if (sourceType === 'track') {
-    return 'Spotify track lookup needs Spotify authorization in play-dl. For now use a normal search query or YouTube URL.';
-  }
-
-  return 'Spotify playlist/album lookup needs Spotify authorization in play-dl. For now use YouTube/SoundCloud playlist URLs or add tracks individually.';
 }
 
 function soundCloudAuthorizationHelp() {
@@ -322,6 +507,7 @@ function normalizeYouTubePlaylistResolver(value) {
   return 'ytdlp';
 }
 
+
 function sanitizeUrlToSearchQuery(url) {
   try {
     const parsed = new URL(url);
@@ -384,6 +570,13 @@ function pickThumbnailUrlFromItem(item) {
     item.artworkUrl,
     item.cover_url,
     item.coverUrl,
+    item.artwork?.url,
+    item.artwork?.['1000x1000'],
+    item.artwork?.['480x480'],
+    item.artwork?.['150x150'],
+    item.profile_picture?.['1000x1000'],
+    item.profile_picture?.['480x480'],
+    item.profile_picture?.['150x150'],
   ];
 
   for (const candidate of directCandidates) {
@@ -438,6 +631,10 @@ export class MusicPlayer extends EventEmitter {
     this.enableYtPlayback = options.enableYtPlayback !== false;
     this.enableSpotifyImport = options.enableSpotifyImport !== false;
     this.enableDeezerImport = options.enableDeezerImport !== false;
+    this.deezerArl = String(options.deezerArl ?? process.env.DEEZER_ARL ?? '').trim() || null;
+    this._deezerCookieHeader = this.deezerArl ? `arl=${this.deezerArl}` : null;
+    this.soundcloudClientId = String(options.soundcloudClientId ?? process.env.SOUNDCLOUD_CLIENT_ID ?? '').trim() || null;
+    this.soundcloudAutoClientId = options.soundcloudAutoClientId !== false;
     this.youtubePlaylistResolver = normalizeYouTubePlaylistResolver(
       options.youtubePlaylistResolver ?? process.env.YOUTUBE_PLAYLIST_RESOLVER
     );
@@ -453,6 +650,8 @@ export class MusicPlayer extends EventEmitter {
     this.ffmpeg = null;
     this.sourceProc = null;
     this.sourceStream = null;
+    this.deezerDecryptStream = null;
+    this._deezerStreamMetaByTrackId = new Map();
     this.pipelineErrorHandlers = [];
 
     this.playing = false;
@@ -466,6 +665,10 @@ export class MusicPlayer extends EventEmitter {
     this.pauseStartedAtMs = null;
     this.totalPausedMs = 0;
     this.currentTrackOffsetSec = 0;
+    this.soundcloudClientIdResolvedAt = this.soundcloudClientId ? Date.now() : 0;
+
+    this._lastYtDlpDiagnostics = null;
+    this._lastFfmpegArgs = null;
   }
 
   _useRuntimeYtDlpCookiesFile() {
@@ -832,6 +1035,12 @@ export class MusicPlayer extends EventEmitter {
 
       if (isYouTubeUrl(track.url)) {
         await this._startYouTubePipeline(track.url, track.seekStartSec ?? 0);
+      } else if (String(track.source ?? '').startsWith('audius')) {
+        await this._startAudiusPipeline(track, track.seekStartSec ?? 0);
+      } else if (track?.deezerTrackId || String(track.source ?? '').startsWith('deezer-direct')) {
+        await this._startDeezerPipeline(track, track.seekStartSec ?? 0);
+      } else if (String(track.source ?? '').startsWith('soundcloud')) {
+        await this._startSoundCloudPipeline(track, track.seekStartSec ?? 0);
       } else {
         await this._startPlayDlPipeline(track.url, 0);
       }
@@ -1035,6 +1244,9 @@ export class MusicPlayer extends EventEmitter {
       case 'dz_album':
         return this._resolveDeezerCollection(url, requestedBy);
       default:
+        if (isAudiusUrl(url)) {
+          return this._resolveAudiusByUrl(url, requestedBy);
+        }
         if (isSoundCloudUrl(url)) {
           return this._resolveSoundCloudByGuess(url, requestedBy);
         }
@@ -1050,6 +1262,11 @@ export class MusicPlayer extends EventEmitter {
   }
 
   async _resolveSearchTrack(query, requestedBy) {
+    if (this.deezerArl && this.enableDeezerImport) {
+      const deezer = await this._searchDeezerTracks(query, 1, requestedBy).catch(() => []);
+      if (deezer.length) return deezer;
+    }
+
     if (!this.enableYtSearch) {
       throw new ValidationError('YouTube search is currently disabled by bot configuration.');
     }
@@ -1057,27 +1274,39 @@ export class MusicPlayer extends EventEmitter {
       throw new ValidationError('YouTube playback is currently disabled by bot configuration.');
     }
 
-    const result = await playdl.search(query, { source: { youtube: 'video' }, limit: 1 }).catch(async (err) => {
-      if (!isPlayDlBrowseFailure(err)) throw err;
-      this.logger?.warn?.('play-dl search failed, trying yt-dlp search fallback', {
-        query,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      return this._searchWithYtDlp(query, 1);
-    });
-    if (!result.length) return [];
+    return this._searchYouTubeTracks(query, 1, requestedBy);
+  }
 
-    return [this._buildTrack({
-      title: result[0].title,
-      url: result[0].url,
-      duration: result[0].durationRaw ?? result[0].duration,
-      thumbnailUrl: pickThumbnailUrlFromItem(result[0]),
-      requestedBy,
-      source: 'youtube-search',
-    })];
+  getDiagnostics() {
+    return {
+      playing: this.playing,
+      paused: this.paused,
+      skipRequested: this.skipRequested,
+      loopMode: this.loopMode,
+      progressSec: this.getProgressSeconds(),
+      volumePercent: this.volumePercent,
+      filterPreset: this.filterPreset,
+      eqPreset: this.eqPreset,
+      tempoRatio: this.tempoRatio,
+      pitchSemitones: this.pitchSemitones,
+      pendingCount: this.queue.pendingSize,
+      hasCurrentTrack: Boolean(this.currentTrack),
+      sourceProcPid: this.sourceProc?.pid ?? null,
+      ffmpegPid: this.ffmpeg?.pid ?? null,
+      ffmpegArgs: Array.isArray(this._lastFfmpegArgs) ? [...this._lastFfmpegArgs] : null,
+      ytdlp: this._lastYtDlpDiagnostics ? { ...this._lastYtDlpDiagnostics } : null,
+    };
   }
 
   async searchCandidates(query, limit = 5, options = {}) {
+    const requestedBy = options.requestedBy ?? null;
+    const safeLimit = Math.max(1, Math.min(10, Number.parseInt(String(limit), 10) || 5));
+
+    if (this.deezerArl && this.enableDeezerImport) {
+      const deezer = await this._searchDeezerTracks(query, safeLimit, requestedBy).catch(() => []);
+      if (deezer.length) return deezer;
+    }
+
     if (!this.enableYtSearch) {
       throw new ValidationError('YouTube search is currently disabled by bot configuration.');
     }
@@ -1085,17 +1314,20 @@ export class MusicPlayer extends EventEmitter {
       throw new ValidationError('YouTube playback is currently disabled by bot configuration.');
     }
 
-    const requestedBy = options.requestedBy ?? null;
-    const safeLimit = Math.max(1, Math.min(10, Number.parseInt(String(limit), 10) || 5));
-    const results = await playdl.search(query, { source: { youtube: 'video' }, limit: safeLimit }).catch(async (err) => {
+    return this._searchYouTubeTracks(query, safeLimit, requestedBy);
+  }
+
+  async _searchYouTubeTracks(query, limit, requestedBy) {
+    const results = await playdl.search(query, { source: { youtube: 'video' }, limit }).catch(async (err) => {
       if (!isPlayDlBrowseFailure(err)) throw err;
       this.logger?.warn?.('play-dl searchCandidates failed, trying yt-dlp search fallback', {
         query,
-        limit: safeLimit,
+        limit,
         error: err instanceof Error ? err.message : String(err),
       });
-      return this._searchWithYtDlp(query, safeLimit);
+      return this._searchWithYtDlp(query, limit);
     });
+
     return results.map((item) => this._buildTrack({
       title: item.title,
       url: item.url,
@@ -1104,6 +1336,25 @@ export class MusicPlayer extends EventEmitter {
       requestedBy,
       source: 'youtube-search',
     }));
+  }
+
+  async _searchDeezerTracks(query, limit, requestedBy) {
+    const safeQuery = String(query ?? '').trim();
+    const safeLimit = Math.max(1, Math.min(10, Number.parseInt(String(limit), 10) || 5));
+    if (!safeQuery || !this.deezerArl || !this.enableDeezerImport) return [];
+
+    const payload = await this._deezerApiRequest(`/search/track?q=${encodeURIComponent(safeQuery)}`).catch(() => null);
+    const items = Array.isArray(payload?.data) ? payload.data : [];
+    const tracks = [];
+    for (const item of items) {
+      if (tracks.length >= safeLimit) break;
+      const track = this._buildDeezerTrackFromMetadata(item, requestedBy, 'deezer-search-direct');
+      if (track?.deezerTrackId) {
+        tracks.push(track);
+      }
+    }
+
+    return tracks;
   }
 
   async previewTracks(query, options = {}) {
@@ -1124,6 +1375,11 @@ export class MusicPlayer extends EventEmitter {
       thumbnailUrl: data?.thumbnailUrl ?? data?.thumbnail_url ?? data?.thumbnail,
       requestedBy,
       source: data?.source ?? 'stored',
+      soundcloudTrackId: data?.soundcloudTrackId ?? data?.soundcloud_track_id ?? null,
+      audiusTrackId: data?.audiusTrackId ?? data?.audius_track_id ?? null,
+      deezerTrackId: data?.deezerTrackId ?? data?.deezer_track_id ?? null,
+      deezerPreviewUrl: data?.deezerPreviewUrl ?? data?.deezer_preview_url ?? null,
+      deezerFullStreamUrl: data?.deezerFullStreamUrl ?? data?.deezer_full_stream_url ?? null,
     });
   }
 
@@ -1315,7 +1571,156 @@ export class MusicPlayer extends EventEmitter {
     return tracks;
   }
 
+  async _audiusApiRequest(pathname, query = {}, timeoutMs = 10_000) {
+    const endpoint = new URL(pathname, 'https://api.audius.co/v1');
+    for (const [key, value] of Object.entries(query ?? {})) {
+      if (value == null) continue;
+      endpoint.searchParams.set(key, String(value));
+    }
+
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(timeoutMs),
+    }).catch(() => null);
+
+    if (!response?.ok) {
+      throw new Error(`Audius API request failed (${response?.status ?? 'network'}): ${endpoint.pathname}`);
+    }
+
+    return response.json();
+  }
+
+  _pickAudiusEntity(payload) {
+    if (!payload || typeof payload !== 'object') return null;
+    const data = payload?.data;
+    if (Array.isArray(data)) return data[0] ?? null;
+    if (data && typeof data === 'object') return data;
+    if (Array.isArray(payload)) return payload[0] ?? null;
+    if (payload?.id != null) return payload;
+    return null;
+  }
+
+  _pickAudiusTrackIdFromTrack(track) {
+    const explicit = String(track?.audiusTrackId ?? '').trim();
+    if (explicit) return explicit;
+    return null;
+  }
+
+  _buildAudiusPermalink(meta) {
+    const direct = String(meta?.permalink ?? meta?.permalink_url ?? meta?.url ?? '').trim();
+    if (direct && isHttpUrl(direct)) return direct;
+
+    const handle = String(meta?.user?.handle ?? '').trim();
+    const slug = String(meta?.permalink ?? '').trim();
+    if (handle && slug) {
+      return `https://audius.co/${encodeURIComponent(handle)}/${encodeURIComponent(slug)}`;
+    }
+
+    return null;
+  }
+
+  _buildAudiusTrackFromMetadata(meta, requestedBy, source = 'audius-direct') {
+    const permalink = this._buildAudiusPermalink(meta);
+    if (!permalink) return null;
+
+    const title = String(meta?.title ?? 'Audius track').trim() || 'Audius track';
+    const duration = toAudiusDurationLabel(meta?.duration ?? null);
+    const artist = String(meta?.user?.name ?? meta?.user?.handle ?? '').trim() || null;
+    const thumbnailUrl = pickThumbnailUrlFromItem(meta);
+    const trackId = meta?.id != null ? String(meta.id) : null;
+
+    return this._buildTrack({
+      title,
+      url: permalink,
+      duration,
+      thumbnailUrl,
+      requestedBy,
+      source,
+      artist,
+      audiusTrackId: trackId,
+    });
+  }
+
+  async _resolveAudiusByUrl(url, requestedBy) {
+    const payload = await this._audiusApiRequest('/resolve', { url }).catch(() => null);
+    const entity = this._pickAudiusEntity(payload);
+    if (!entity) {
+      return this._resolveFromUrlFallbackSearch(url, requestedBy, 'audius-fallback');
+    }
+
+    const kind = String(entity?.kind ?? '').toLowerCase();
+    if (kind === 'playlist' || kind === 'album' || kind === 'system_playlist' || entity?.playlist_name || Array.isArray(entity?.tracks)) {
+      return this._resolveAudiusPlaylist(entity, requestedBy, url);
+    }
+
+    const track = this._buildAudiusTrackFromMetadata(entity, requestedBy, 'audius-direct');
+    if (track) return [track];
+
+    return this._resolveFromUrlFallbackSearch(url, requestedBy, 'audius-fallback');
+  }
+
+  async _resolveAudiusPlaylist(entity, requestedBy, fallbackUrl = null) {
+    const playlistId = String(entity?.id ?? '').trim();
+    let tracksRaw = Array.isArray(entity?.tracks) ? entity.tracks : [];
+
+    if ((!tracksRaw || tracksRaw.length === 0) && playlistId) {
+      const trackListPayload = await this._audiusApiRequest(`/playlists/${encodeURIComponent(playlistId)}/tracks`, {
+        limit: this.maxPlaylistTracks,
+        offset: 0,
+      }).catch(() => null);
+      tracksRaw = Array.isArray(trackListPayload?.data) ? trackListPayload.data : [];
+    }
+
+    const tracks = [];
+    for (const entry of tracksRaw) {
+      if (tracks.length >= this.maxPlaylistTracks) break;
+      const track = this._buildAudiusTrackFromMetadata(entry, requestedBy, 'audius-playlist-direct');
+      if (track) tracks.push(track);
+    }
+
+    if (tracks.length) return tracks;
+    if (fallbackUrl) {
+      return this._resolveFromUrlFallbackSearch(fallbackUrl, requestedBy, 'audius-playlist-fallback');
+    }
+    throw new ValidationError('Could not resolve Audius playlist tracks.');
+  }
+
+  async _resolveAudiusStreamUrl(track) {
+    const trackId = this._pickAudiusTrackIdFromTrack(track);
+    if (!trackId) {
+      throw new Error('Missing Audius track id.');
+    }
+
+    const payload = await this._audiusApiRequest(`/tracks/${encodeURIComponent(trackId)}/stream`, {
+      no_redirect: true,
+    }).catch(() => null);
+
+    const directUrl = String(payload?.data?.url ?? payload?.data ?? '').trim();
+    if (directUrl && isHttpUrl(directUrl)) return directUrl;
+
+    return `https://api.audius.co/v1/tracks/${encodeURIComponent(trackId)}/stream`;
+  }
+
+  async _startAudiusPipeline(track, seekSec = 0) {
+    const streamUrl = await this._resolveAudiusStreamUrl(track);
+    this.ffmpeg = await this._spawnProcess(this.ffmpegBin, this._ffmpegHttpArgs(streamUrl, seekSec), {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    this._bindPipelineErrorHandler(this.ffmpeg.stdout, 'ffmpeg.stdout');
+  }
+
   async _resolveSoundCloudTrack(url, requestedBy) {
+    try {
+      const direct = await this._resolveSoundCloudTrackDirect(url, requestedBy);
+      if (direct.length) return direct;
+    } catch (err) {
+      this.logger?.warn?.('Direct SoundCloud track resolve failed, falling back to play-dl resolver', {
+        url,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
     let data;
     try {
       data = await playdl.soundcloud(url);
@@ -1331,10 +1736,20 @@ export class MusicPlayer extends EventEmitter {
       return this._resolveFromUrlFallbackSearch(url, requestedBy, 'soundcloud-fallback');
     }
 
-    return this._resolveCrossSourceToYouTube([data], requestedBy, 'soundcloud');
+    return [this._buildSoundCloudTrackFromMetadata(data, requestedBy, 'soundcloud-direct')];
   }
 
   async _resolveSoundCloudPlaylist(url, requestedBy) {
+    try {
+      const direct = await this._resolveSoundCloudPlaylistDirect(url, requestedBy);
+      if (direct.length) return direct;
+    } catch (err) {
+      this.logger?.warn?.('Direct SoundCloud playlist resolve failed, falling back to play-dl resolver', {
+        url,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
     let data;
     try {
       data = await playdl.soundcloud(url);
@@ -1351,57 +1766,41 @@ export class MusicPlayer extends EventEmitter {
     }
 
     const tracks = await data.all_tracks();
-    return this._resolveCrossSourceToYouTube(
-      tracks.slice(0, this.maxPlaylistTracks),
-      requestedBy,
-      'soundcloud-playlist'
-    );
+    return tracks
+      .slice(0, this.maxPlaylistTracks)
+      .map((track) => this._buildSoundCloudTrackFromMetadata(track, requestedBy, 'soundcloud-playlist-direct'))
+      .filter(Boolean);
   }
 
   async _resolveSpotifyTrack(url, requestedBy) {
     if (!this.enableSpotifyImport) {
       throw new ValidationError('Spotify import is currently disabled by bot configuration.');
     }
-
-    let data;
-    try {
-      data = await playdl.spotify(url);
-    } catch (err) {
-      if (isSpotifyAuthorizationError(err)) {
-        throw new ValidationError(spotifyAuthorizationHelp('track'));
-      }
-      throw err;
-    }
-
-    if (!data || data.type !== 'track') return [];
-
-    return this._resolveCrossSourceToYouTube([data], requestedBy, 'spotify');
+    throw new ValidationError('Spotify support is coming soon.');
   }
 
   async _resolveSpotifyCollection(url, requestedBy) {
     if (!this.enableSpotifyImport) {
       throw new ValidationError('Spotify import is currently disabled by bot configuration.');
     }
-
-    let data;
-    try {
-      data = await playdl.spotify(url);
-    } catch (err) {
-      if (isSpotifyAuthorizationError(err)) {
-        throw new ValidationError(spotifyAuthorizationHelp('collection'));
-      }
-      throw err;
-    }
-
-    if (!data || (data.type !== 'playlist' && data.type !== 'album')) return [];
-
-    const tracks = await data.all_tracks();
-    return this._resolveCrossSourceToYouTube(tracks.slice(0, this.maxPlaylistTracks), requestedBy, `spotify-${data.type}`);
+    throw new ValidationError('Spotify support is coming soon.');
   }
 
   async _resolveDeezerTrack(url, requestedBy) {
     if (!this.enableDeezerImport) {
       throw new ValidationError('Deezer import is currently disabled by bot configuration.');
+    }
+
+    if (this.deezerArl) {
+      try {
+        const direct = await this._resolveDeezerTrackDirect(url, requestedBy);
+        if (direct.length) return direct;
+      } catch (err) {
+        this.logger?.warn?.('Direct Deezer track resolve failed, falling back to mapped source', {
+          url,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     const data = await playdl.deezer(url);
@@ -1415,11 +1814,570 @@ export class MusicPlayer extends EventEmitter {
       throw new ValidationError('Deezer import is currently disabled by bot configuration.');
     }
 
+    if (this.deezerArl) {
+      try {
+        const direct = await this._resolveDeezerCollectionDirect(url, requestedBy);
+        if (direct.length) return direct;
+      } catch (err) {
+        this.logger?.warn?.('Direct Deezer collection resolve failed, falling back to mapped source', {
+          url,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
     const data = await playdl.deezer(url);
     if (!data || (data.type !== 'playlist' && data.type !== 'album')) return [];
 
     const tracks = await data.all_tracks();
     return this._resolveCrossSourceToYouTube(tracks.slice(0, this.maxPlaylistTracks), requestedBy, `deezer-${data.type}`);
+  }
+
+  async _deezerApiRequest(pathname, timeoutMs = 10_000) {
+    const endpoint = new URL(pathname, 'https://api.deezer.com');
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(timeoutMs),
+    }).catch(() => null);
+
+    if (!response?.ok) {
+      throw new Error(`Deezer API request failed (${response?.status ?? 'network'}): ${endpoint.pathname}`);
+    }
+
+    return response.json();
+  }
+
+  _buildDeezerTrackFromMetadata(meta, requestedBy, source = 'deezer-direct') {
+    const trackId = String(meta?.id ?? '').trim();
+    if (!trackId) return null;
+
+    const title = String(meta?.title ?? 'Deezer track').trim() || 'Deezer track';
+    const artist = String(meta?.artist?.name ?? '').trim() || null;
+    const duration = toDeezerDurationLabel(meta?.duration ?? null);
+    const deezerUrl = String(meta?.link ?? '').trim() || `https://www.deezer.com/track/${encodeURIComponent(trackId)}`;
+    const previewUrl = String(meta?.preview ?? '').trim() || null;
+    const thumbnailUrl = pickThumbnailUrlFromItem(meta);
+
+    return this._buildTrack({
+      title,
+      url: deezerUrl,
+      duration,
+      thumbnailUrl,
+      requestedBy,
+      source,
+      artist,
+      deezerTrackId: trackId,
+      deezerPreviewUrl: previewUrl,
+    });
+  }
+
+  async _resolveDeezerTrackDirect(url, requestedBy) {
+    const trackId = extractDeezerTrackId(url);
+    if (!trackId) {
+      throw new Error('Could not extract Deezer track id from URL.');
+    }
+
+    const payload = await this._deezerApiRequest(`/track/${encodeURIComponent(trackId)}`);
+    const track = this._buildDeezerTrackFromMetadata(payload, requestedBy, 'deezer-direct');
+    if (track?.deezerTrackId) {
+      const fullUrl = await this._resolveDeezerFullStreamUrlWithArl(track.deezerTrackId);
+      track.deezerFullStreamUrl = fullUrl;
+      track.deezerPreviewUrl = null;
+    }
+    return track ? [track] : [];
+  }
+
+  async _resolveDeezerCollectionDirect(url, requestedBy) {
+    let payload = null;
+    let isPlaylist = false;
+
+    const parsed = new URL(url);
+    const parts = String(parsed.pathname ?? '').split('/').map((segment) => segment.trim()).filter(Boolean);
+    const playlistIdx = parts.findIndex((segment) => segment.toLowerCase() === 'playlist');
+    const albumIdx = parts.findIndex((segment) => segment.toLowerCase() === 'album');
+
+    if (playlistIdx >= 0 && /^\d+$/.test(parts[playlistIdx + 1] ?? '')) {
+      isPlaylist = true;
+      payload = await this._deezerApiRequest(`/playlist/${encodeURIComponent(parts[playlistIdx + 1])}`);
+    } else if (albumIdx >= 0 && /^\d+$/.test(parts[albumIdx + 1] ?? '')) {
+      payload = await this._deezerApiRequest(`/album/${encodeURIComponent(parts[albumIdx + 1])}`);
+    } else {
+      throw new Error('Could not extract Deezer playlist/album id from URL.');
+    }
+
+    const rawTracks = Array.isArray(payload?.tracks?.data) ? payload.tracks.data : [];
+    const tracks = [];
+    for (const entry of rawTracks) {
+      if (tracks.length >= this.maxPlaylistTracks) break;
+      const track = this._buildDeezerTrackFromMetadata(
+        entry,
+        requestedBy,
+        isPlaylist ? 'deezer-direct-playlist' : 'deezer-direct-album'
+      );
+      if (!track) continue;
+
+      try {
+        const fullUrl = await this._resolveDeezerFullStreamUrlWithArl(track.deezerTrackId);
+        track.deezerFullStreamUrl = fullUrl;
+        track.deezerPreviewUrl = null;
+        tracks.push(track);
+      } catch (err) {
+        this.logger?.warn?.('Skipping Deezer direct track without full stream token', {
+          trackId: track.deezerTrackId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    return tracks;
+  }
+
+  async _deezerGatewayCall(method, apiToken = 'null', args = {}, timeoutMs = 10_000) {
+    if (!this.deezerArl) {
+      throw new Error('DEEZER_ARL is not configured.');
+    }
+
+    const endpoint = new URL('https://www.deezer.com/ajax/gw-light.php');
+    endpoint.searchParams.set('method', method);
+    endpoint.searchParams.set('input', '3');
+    endpoint.searchParams.set('api_version', '1.0');
+    endpoint.searchParams.set('api_token', apiToken);
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json',
+        cookie: this._getDeezerCookieHeader(),
+        referer: 'https://www.deezer.com/',
+        origin: 'https://www.deezer.com',
+        'user-agent': 'Mozilla/5.0',
+      },
+      body: JSON.stringify(args ?? {}),
+      signal: AbortSignal.timeout(timeoutMs),
+    }).catch(() => null);
+
+    if (!response?.ok) {
+      throw new Error(`Deezer gateway call failed (${response?.status ?? 'network'}): ${method}`);
+    }
+    this._updateDeezerCookieHeader(response);
+
+    const body = await response.json();
+    const deezerError = this._extractDeezerError(body?.error);
+    if (deezerError) {
+      throw new Error(`Deezer gateway ${method} returned error: ${deezerError}`);
+    }
+    return body;
+  }
+
+  _getDeezerCookieHeader() {
+    return this._deezerCookieHeader || `arl=${this.deezerArl}`;
+  }
+
+  _updateDeezerCookieHeader(response) {
+    if (!response?.headers || !this.deezerArl) return;
+
+    const setCookies = typeof response.headers.getSetCookie === 'function'
+      ? response.headers.getSetCookie()
+      : [];
+
+    const cookieMap = new Map();
+    for (const pair of String(this._deezerCookieHeader || `arl=${this.deezerArl}`).split(';')) {
+      const segment = pair.trim();
+      if (!segment) continue;
+      const eq = segment.indexOf('=');
+      if (eq <= 0) continue;
+      const key = segment.slice(0, eq).trim();
+      const value = segment.slice(eq + 1).trim();
+      if (key && value) cookieMap.set(key, value);
+    }
+    if (!cookieMap.has('arl')) {
+      cookieMap.set('arl', this.deezerArl);
+    }
+
+    for (const raw of setCookies) {
+      const first = String(raw ?? '').split(';')[0]?.trim() || '';
+      if (!first) continue;
+      const eq = first.indexOf('=');
+      if (eq <= 0) continue;
+      const key = first.slice(0, eq).trim();
+      const value = first.slice(eq + 1).trim();
+      if (key && value) cookieMap.set(key, value);
+    }
+
+    this._deezerCookieHeader = Array.from(cookieMap.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
+  }
+
+  _extractDeezerError(errorValue) {
+    if (!errorValue) return null;
+    if (Array.isArray(errorValue)) {
+      if (!errorValue.length) return null;
+      const first = errorValue[0];
+      return typeof first === 'string' ? first : JSON.stringify(first);
+    }
+    if (typeof errorValue === 'string') {
+      return errorValue.trim() || null;
+    }
+    if (typeof errorValue === 'object') {
+      const entries = Object.entries(errorValue);
+      if (!entries.length) return null;
+      const [key, val] = entries[0];
+      if (typeof val === 'string' && val.trim()) {
+        return `${key}: ${val.trim()}`;
+      }
+      return key;
+    }
+    return String(errorValue);
+  }
+
+  _extractFirstHttpUrl(value) {
+    if (!value) return null;
+    if (typeof value === 'string') {
+      return isHttpUrl(value) ? value : null;
+    }
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        const candidate = this._extractFirstHttpUrl(entry);
+        if (candidate) return candidate;
+      }
+      return null;
+    }
+    if (typeof value === 'object') {
+      for (const entry of Object.values(value)) {
+        const candidate = this._extractFirstHttpUrl(entry);
+        if (candidate) return candidate;
+      }
+    }
+    return null;
+  }
+
+  _pickDeezerPreferredFormat(candidate) {
+    const upper = String(candidate ?? '').trim().toUpperCase();
+    if (DEEZER_MEDIA_QUALITY_MAP.has(upper)) return upper;
+    return 'MP3_320';
+  }
+
+  _resolveDeezerMediaVariantFromResponse(body) {
+    const items = Array.isArray(body?.data) ? body.data : [];
+    let best = null;
+
+    const scoreVariant = (candidate) => {
+      const cipher = String(candidate?.cipherType ?? '').toUpperCase();
+      const format = this._pickDeezerPreferredFormat(candidate?.format);
+      if (cipher === 'NONE' && format === 'FLAC') return 500;
+      if (cipher === 'NONE' && format === 'MP3_320') return 400;
+      if (cipher === 'NONE' && format === 'MP3_128') return 300;
+      if (cipher === 'BF_CBC_STRIPE' && format === 'FLAC') return 250;
+      if (cipher === 'BF_CBC_STRIPE' && format === 'MP3_320') return 200;
+      if (cipher === 'BF_CBC_STRIPE' && format === 'MP3_128') return 100;
+      return 10;
+    };
+
+    for (const item of items) {
+      const medias = Array.isArray(item?.media) ? item.media : [];
+      for (const media of medias) {
+        const cipherType = String(media?.cipher?.type ?? media?.cipher ?? '').trim().toUpperCase();
+        const sources = Array.isArray(media?.sources) ? media.sources : [];
+        for (const source of sources) {
+          const url = String(source?.url ?? '').trim();
+          if (!isHttpUrl(url)) continue;
+          const candidate = {
+            url,
+            cipherType: cipherType || 'NONE',
+            format: String(source?.format ?? media?.format ?? '').trim().toUpperCase() || null,
+          };
+          if (!best || scoreVariant(candidate) > scoreVariant(best)) {
+            best = candidate;
+          }
+        }
+      }
+    }
+
+    return best;
+  }
+
+  _extractFirstStringByKey(value, targetKey) {
+    if (!value || !targetKey) return null;
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        const found = this._extractFirstStringByKey(entry, targetKey);
+        if (found) return found;
+      }
+      return null;
+    }
+    if (typeof value !== 'object') return null;
+
+    for (const [key, entry] of Object.entries(value)) {
+      if (key === targetKey && typeof entry === 'string') {
+        const trimmed = entry.trim();
+        if (trimmed) return trimmed;
+      }
+    }
+    for (const entry of Object.values(value)) {
+      const found = this._extractFirstStringByKey(entry, targetKey);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  async _resolveDeezerSongData(apiToken, trackId) {
+    const safeTrackId = String(trackId ?? '').trim();
+    if (!safeTrackId) return null;
+
+    const requests = [
+      this._deezerGatewayCall('song.getData', apiToken, { sng_id: safeTrackId }).catch(() => null),
+      this._deezerGatewayCall('deezer.pageTrack', apiToken, { sng_id: safeTrackId }).catch(() => null),
+      this._deezerGatewayCall('song.getListData', apiToken, { sng_ids: [safeTrackId] }).catch(() => null),
+    ];
+
+    for (const request of requests) {
+      const payload = await request;
+      if (!payload) continue;
+      const results = payload?.results ?? {};
+      const dataCandidate = results?.DATA ?? results?.data?.[0] ?? results ?? null;
+      const md5Origin = String(dataCandidate?.MD5_ORIGIN ?? '').trim();
+      const songId = String(dataCandidate?.SNG_ID ?? safeTrackId).trim();
+      const mediaVersion = String(dataCandidate?.MEDIA_VERSION ?? '').trim();
+
+      if (md5Origin && songId && mediaVersion) {
+        return {
+          MD5_ORIGIN: md5Origin,
+          SNG_ID: songId,
+          MEDIA_VERSION: mediaVersion,
+        };
+      }
+    }
+
+    return null;
+  }
+
+  async _resolveDeezerLegacyEncryptedStreamUrl(apiToken, trackId, preferredFormat = null) {
+    const track = await this._resolveDeezerSongData(apiToken, trackId);
+    if (!track) return null;
+
+    const preferred = this._pickDeezerPreferredFormat(preferredFormat);
+    const qualityOrder = [preferred, 'MP3_320', 'MP3_128', 'FLAC'];
+    const seen = new Set();
+
+    for (const format of qualityOrder) {
+      if (seen.has(format)) continue;
+      seen.add(format);
+      const quality = DEEZER_MEDIA_QUALITY_MAP.get(format);
+      if (!quality) continue;
+      const url = buildDeezerLegacyDownloadUrl(track, quality);
+      if (isHttpUrl(url)) {
+        return { url, cipherType: 'BF_CBC_STRIPE', format };
+      }
+    }
+
+    return null;
+  }
+
+  async _resolveDeezerFullStreamUrlWithArl(trackId) {
+    const safeTrackId = String(trackId ?? '').trim();
+    if (!safeTrackId) {
+      throw new Error('Missing Deezer track id.');
+    }
+
+    const userData = await this._deezerGatewayCall('deezer.getUserData', 'null', {});
+    const results = userData?.results ?? {};
+    const apiToken = String(results?.checkForm ?? '').trim();
+    const licenseToken = String(results?.USER?.OPTIONS?.license_token ?? results?.OPTIONS?.license_token ?? '').trim();
+    if (!apiToken || !licenseToken) {
+      throw new Error('Deezer ARL session did not provide API/license tokens.');
+    }
+
+    const trackToken = await this._resolveDeezerTrackToken(apiToken, safeTrackId);
+    if (!trackToken) {
+      throw new Error('Missing Deezer track token (likely unavailable for this account/region).');
+    }
+
+    const formats = [
+      { cipher: 'NONE', format: 'MP3_128' },
+      { cipher: 'NONE', format: 'MP3_320' },
+      { cipher: 'BF_CBC_STRIPE', format: 'MP3_128' },
+      { cipher: 'BF_CBC_STRIPE', format: 'MP3_320' },
+    ];
+    const payload = {
+      license_token: licenseToken,
+      media: [{ type: 'FULL', formats }],
+      track_tokens: [trackToken],
+    };
+
+    const response = await fetch('https://media.deezer.com/v1/get_url', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json',
+        cookie: this._getDeezerCookieHeader(),
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10_000),
+    }).catch(() => null);
+
+    if (!response?.ok) {
+      throw new Error(`Deezer media URL call failed (${response?.status ?? 'network'})`);
+    }
+    this._updateDeezerCookieHeader(response);
+
+    const body = await response.json().catch(() => null);
+    const variant = this._resolveDeezerMediaVariantFromResponse(body);
+    if (variant?.url) {
+      this._deezerStreamMetaByTrackId.set(safeTrackId, {
+        url: variant.url,
+        cipherType: variant.cipherType || 'NONE',
+        format: variant.format || null,
+      });
+      return variant.url;
+    }
+
+    const legacy = await this._resolveDeezerLegacyEncryptedStreamUrl(apiToken, safeTrackId).catch(() => null);
+    if (legacy?.url) {
+      this._deezerStreamMetaByTrackId.set(safeTrackId, {
+        url: legacy.url,
+        cipherType: legacy.cipherType || 'BF_CBC_STRIPE',
+        format: legacy.format || null,
+      });
+      return legacy.url;
+    }
+
+    throw new Error('No Deezer stream URL available from media API or legacy fallback.');
+  }
+
+  async _resolveDeezerTrackToken(apiToken, trackId) {
+    const safeTrackId = String(trackId ?? '').trim();
+    if (!safeTrackId) return null;
+
+    const candidates = [];
+
+    candidates.push(
+      this._deezerGatewayCall('song.getListData', apiToken, { sng_ids: [safeTrackId] }).catch(() => null)
+    );
+    candidates.push(
+      this._deezerGatewayCall('deezer.pageTrack', apiToken, { sng_id: safeTrackId }).catch(() => null)
+    );
+    candidates.push(
+      this._deezerGatewayCall('song.getData', apiToken, { sng_id: safeTrackId }).catch(() => null)
+    );
+
+    for (const promise of candidates) {
+      const payload = await promise;
+      if (!payload) continue;
+
+      const direct = String(payload?.results?.TRACK_TOKEN ?? '').trim();
+      if (direct) return direct;
+
+      const listToken = String(payload?.results?.data?.[0]?.TRACK_TOKEN ?? '').trim();
+      if (listToken) return listToken;
+
+      const pageToken = String(
+        payload?.results?.DATA?.TRACK_TOKEN
+        ?? payload?.results?.SONGS?.data?.[0]?.TRACK_TOKEN
+        ?? ''
+      ).trim();
+      if (pageToken) return pageToken;
+
+      const recursive = this._extractFirstStringByKey(payload?.results ?? payload, 'TRACK_TOKEN');
+      if (recursive) return recursive;
+    }
+
+    return null;
+  }
+
+  async _resolveDeezerStreamUrl(track) {
+    const trackId = String(track?.deezerTrackId ?? '').trim();
+    const pinned = String(track?.deezerFullStreamUrl ?? '').trim();
+    const cachedMeta = trackId ? this._deezerStreamMetaByTrackId.get(trackId) : null;
+
+    if (pinned && isHttpUrl(pinned)) {
+      if (cachedMeta && cachedMeta.url === pinned) {
+        return {
+          url: pinned,
+          cipherType: cachedMeta.cipherType || 'NONE',
+          format: cachedMeta.format || null,
+          trackId,
+        };
+      }
+      return {
+        url: pinned,
+        cipherType: 'NONE',
+        format: null,
+        trackId,
+      };
+    }
+
+    if (this.deezerArl && trackId) {
+      const url = await this._resolveDeezerFullStreamUrlWithArl(trackId);
+      const meta = this._deezerStreamMetaByTrackId.get(trackId);
+      return {
+        url,
+        cipherType: meta?.cipherType || 'NONE',
+        format: meta?.format || null,
+        trackId,
+      };
+    }
+
+    throw new Error('No playable Deezer full stream URL available.');
+  }
+
+  async _startDeezerEncryptedPipeline(streamUrl, trackId, seekSec = 0) {
+    const headers = { accept: '*/*' };
+    if (this.deezerArl) {
+      headers.cookie = this._getDeezerCookieHeader();
+    }
+
+    const connectAbort = new AbortController();
+    const connectTimeout = setTimeout(() => {
+      connectAbort.abort(new Error('Timed out while connecting to Deezer stream.'));
+    }, 15_000);
+
+    const response = await fetch(streamUrl, {
+      method: 'GET',
+      headers,
+      signal: connectAbort.signal,
+    }).catch(() => null);
+    clearTimeout(connectTimeout);
+
+    if (!response?.ok || !response.body) {
+      throw new Error(`Failed to fetch encrypted Deezer stream (${response?.status ?? 'network'})`);
+    }
+    this._updateDeezerCookieHeader(response);
+
+    const rawStream = Readable.fromWeb(response.body);
+    const decryptStream = new DeezerBfStripeDecryptTransform(trackId);
+    this.sourceStream = rawStream;
+    this.deezerDecryptStream = decryptStream;
+
+    this.ffmpeg = await this._spawnProcess(this.ffmpegBin, this._ffmpegArgs(seekSec), {
+      stdio: ['pipe', 'pipe', 'ignore'],
+    });
+
+    this._bindPipelineErrorHandler(rawStream, 'deezer.raw');
+    this._bindPipelineErrorHandler(decryptStream, 'deezer.decrypt');
+    this._bindPipelineErrorHandler(this.ffmpeg.stdin, 'ffmpeg.stdin');
+    this._bindPipelineErrorHandler(this.ffmpeg.stdout, 'ffmpeg.stdout');
+
+    rawStream.on('error', () => {
+      this.ffmpeg?.kill('SIGKILL');
+    });
+    decryptStream.on('error', () => {
+      this.ffmpeg?.kill('SIGKILL');
+    });
+
+    rawStream.pipe(decryptStream).pipe(this.ffmpeg.stdin);
+  }
+
+  async _startDeezerPipeline(track, seekSec = 0) {
+    const stream = await this._resolveDeezerStreamUrl(track);
+    if (stream.cipherType === 'BF_CBC_STRIPE') {
+      await this._startDeezerEncryptedPipeline(stream.url, stream.trackId || track?.deezerTrackId, seekSec);
+      return;
+    }
+
+    this.ffmpeg = await this._spawnProcess(this.ffmpegBin, this._ffmpegHttpArgs(stream.url, seekSec), {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    this._bindPipelineErrorHandler(this.ffmpeg.stdout, 'ffmpeg.stdout');
   }
 
   async _resolveCrossSourceToYouTube(sourceTracks, requestedBy, source) {
@@ -1508,9 +2466,6 @@ export class MusicPlayer extends EventEmitter {
       }
       return await this._resolveSpotifyTrack(url, requestedBy);
     } catch (err) {
-      if (isSpotifyAuthorizationError(err)) {
-        throw new ValidationError(spotifyAuthorizationHelp('collection'));
-      }
       throw err;
     }
   }
@@ -1573,8 +2528,24 @@ export class MusicPlayer extends EventEmitter {
     return trimmed;
   }
 
-  _buildTrack({ title, url, duration, thumbnailUrl = null, requestedBy, source, artist = null, seekStartSec = 0 }) {
+  _buildTrack({
+    title,
+    url,
+    duration,
+    thumbnailUrl = null,
+    requestedBy,
+    source,
+    artist = null,
+    soundcloudTrackId = null,
+    audiusTrackId = null,
+    deezerTrackId = null,
+    deezerPreviewUrl = null,
+    deezerFullStreamUrl = null,
+    seekStartSec = 0,
+  }) {
     const normalizedThumbnail = normalizeThumbnailUrl(thumbnailUrl) ?? buildYouTubeThumbnailFromUrl(url);
+    const normalizedDeezerPreview = normalizeThumbnailUrl(deezerPreviewUrl);
+    const normalizedDeezerFull = normalizeThumbnailUrl(deezerFullStreamUrl);
     return {
       id: buildTrackId(),
       title: title || 'Unknown title',
@@ -1584,9 +2555,221 @@ export class MusicPlayer extends EventEmitter {
       requestedBy,
       source,
       artist: artist ? String(artist).slice(0, 128) : null,
+      soundcloudTrackId: soundcloudTrackId ? String(soundcloudTrackId) : null,
+      audiusTrackId: audiusTrackId ? String(audiusTrackId) : null,
+      deezerTrackId: deezerTrackId ? String(deezerTrackId) : null,
+      deezerPreviewUrl: normalizedDeezerPreview,
+      deezerFullStreamUrl: normalizedDeezerFull,
       queuedAt: Date.now(),
       seekStartSec: Math.max(0, Number.parseInt(String(seekStartSec), 10) || 0),
     };
+  }
+
+  async _ensureSoundCloudClientId() {
+    if (this.soundcloudClientId) return this.soundcloudClientId;
+    if (!this.soundcloudAutoClientId) {
+      throw new ValidationError('SoundCloud is not configured (missing SOUNDCLOUD_CLIENT_ID).');
+    }
+
+    try {
+      const clientId = await playdl.getFreeClientID();
+      if (!clientId) {
+        throw new Error('empty client id');
+      }
+      this.soundcloudClientId = String(clientId).trim();
+      this.soundcloudClientIdResolvedAt = Date.now();
+      this.logger?.info?.('Resolved SoundCloud client id for direct playback');
+      return this.soundcloudClientId;
+    } catch (err) {
+      throw new ValidationError(`Failed to resolve SoundCloud client id: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  async _soundCloudResolve(url) {
+    const clientId = await this._ensureSoundCloudClientId();
+    const endpoint = new URL('https://api-v2.soundcloud.com/resolve');
+    endpoint.searchParams.set('url', String(url));
+    endpoint.searchParams.set('client_id', clientId);
+
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(10_000),
+    }).catch(() => null);
+    if (!response?.ok) {
+      throw new Error(`resolve failed (${response?.status ?? 'network'})`);
+    }
+
+    return response.json();
+  }
+
+  async _fetchSoundCloudTrackById(trackId) {
+    const clientId = await this._ensureSoundCloudClientId();
+    const endpoint = new URL(`https://api-v2.soundcloud.com/tracks/${encodeURIComponent(String(trackId))}`);
+    endpoint.searchParams.set('client_id', clientId);
+
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(10_000),
+    }).catch(() => null);
+    if (!response?.ok) {
+      throw new Error(`track lookup failed (${response?.status ?? 'network'})`);
+    }
+
+    return response.json();
+  }
+
+  async _resolveSoundCloudTranscodingUrl(trackPayload) {
+    const clientId = await this._ensureSoundCloudClientId();
+    const transcodings = Array.isArray(trackPayload?.media?.transcodings)
+      ? trackPayload.media.transcodings
+      : [];
+    if (!transcodings.length) {
+      throw new Error('no transcodings in SoundCloud payload');
+    }
+
+    const ranked = [
+      ...transcodings.filter((entry) => entry?.format?.protocol === 'progressive'),
+      ...transcodings.filter((entry) => entry?.format?.protocol === 'hls'),
+    ];
+    if (!ranked.length) {
+      throw new Error('no usable SoundCloud transcodings');
+    }
+
+    let lastError = null;
+    for (const transcoding of ranked) {
+      const lookupUrl = String(transcoding?.url ?? '').trim();
+      if (!lookupUrl) continue;
+
+      const endpoint = new URL(lookupUrl);
+      endpoint.searchParams.set('client_id', clientId);
+      const response = await fetch(endpoint, {
+        method: 'GET',
+        headers: { accept: 'application/json' },
+        signal: AbortSignal.timeout(10_000),
+      }).catch(() => null);
+      if (!response?.ok) {
+        lastError = new Error(`transcoding lookup failed (${response?.status ?? 'network'})`);
+        continue;
+      }
+
+      const body = await response.json().catch(() => null);
+      const streamUrl = String(body?.url ?? '').trim();
+      if (!streamUrl || !isHttpUrl(streamUrl)) {
+        lastError = new Error('transcoding lookup returned no stream url');
+        continue;
+      }
+      return streamUrl;
+    }
+
+    throw lastError ?? new Error('no playable SoundCloud stream URL');
+  }
+
+  _buildSoundCloudTrackFromMetadata(meta, requestedBy, source = 'soundcloud-direct') {
+    const permalink = String(meta?.permalink_url ?? meta?.url ?? '').trim();
+    if (!permalink || !isHttpUrl(permalink)) return null;
+
+    const title = String(meta?.title ?? 'SoundCloud track').trim() || 'SoundCloud track';
+    const duration = toSoundCloudDurationLabel(meta?.duration ?? meta?.durationInSec ?? null);
+    const artist = String(meta?.user?.username ?? meta?.publisher_metadata?.artist ?? '').trim() || null;
+    const thumbnailUrl = pickThumbnailUrlFromItem(meta) ?? normalizeThumbnailUrl(meta?.artwork_url);
+    const trackId = meta?.id != null ? String(meta.id) : null;
+
+    return this._buildTrack({
+      title,
+      url: permalink,
+      duration,
+      thumbnailUrl,
+      requestedBy,
+      source,
+      artist,
+      soundcloudTrackId: trackId,
+    });
+  }
+
+  async _resolveSoundCloudTrackDirect(url, requestedBy) {
+    const payload = await this._soundCloudResolve(url);
+    const kind = String(payload?.kind ?? '').toLowerCase();
+    if (kind !== 'track') {
+      throw new Error(`resolved object is not a track (${kind || 'unknown'})`);
+    }
+
+    const track = this._buildSoundCloudTrackFromMetadata(payload, requestedBy, 'soundcloud-direct');
+    return track ? [track] : [];
+  }
+
+  async _resolveSoundCloudPlaylistDirect(url, requestedBy) {
+    const payload = await this._soundCloudResolve(url);
+    const kind = String(payload?.kind ?? '').toLowerCase();
+    if (kind !== 'playlist' && kind !== 'system-playlist') {
+      throw new Error(`resolved object is not a playlist (${kind || 'unknown'})`);
+    }
+
+    const tracks = Array.isArray(payload?.tracks) ? payload.tracks : [];
+    const resolved = [];
+    for (const entry of tracks) {
+      if (resolved.length >= this.maxPlaylistTracks) break;
+      const track = this._buildSoundCloudTrackFromMetadata(entry, requestedBy, 'soundcloud-playlist-direct');
+      if (track) resolved.push(track);
+    }
+
+    return resolved;
+  }
+
+  async _resolveSoundCloudStreamUrl(track) {
+    const sourceUrl = String(track?.url ?? '').trim();
+    const trackId = String(track?.soundcloudTrackId ?? '').trim() || null;
+
+    let payload = null;
+    if (trackId) {
+      payload = await this._fetchSoundCloudTrackById(trackId).catch(() => null);
+    }
+    if (!payload && sourceUrl) {
+      payload = await this._soundCloudResolve(sourceUrl).catch(() => null);
+    }
+    if (!payload) {
+      throw new Error('SoundCloud track resolve failed');
+    }
+
+    return this._resolveSoundCloudTranscodingUrl(payload);
+  }
+
+  async _startSoundCloudPipeline(track, seekSec = 0) {
+    const streamUrl = await this._resolveSoundCloudStreamUrl(track);
+    this.ffmpeg = await this._spawnProcess(this.ffmpegBin, this._ffmpegHttpArgs(streamUrl, seekSec), {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    this._bindPipelineErrorHandler(this.ffmpeg.stdout, 'ffmpeg.stdout');
+  }
+
+  _ffmpegHttpArgs(inputUrl, seekSec = 0) {
+    const normalizedVolume = clamp(this.volumePercent, this.minVolumePercent, this.maxVolumePercent);
+    const volumeFactor = (normalizedVolume / 100).toFixed(2);
+    const filterChain = this._buildAudioFilterChain(volumeFactor);
+    const seek = Math.max(0, Number.parseInt(String(seekSec), 10) || 0);
+
+    const args = [
+      '-reconnect', '1',
+      '-reconnect_streamed', '1',
+      '-reconnect_delay_max', '5',
+    ];
+
+    if (seek > 0) {
+      args.push('-ss', String(seek));
+    }
+
+    args.push(
+      '-i', inputUrl,
+      '-ac', '2',
+      '-ar', '48000',
+      '-af', filterChain,
+      '-f', 's16le',
+      '-acodec', 'pcm_s16le',
+      'pipe:1',
+    );
+
+    return args;
   }
 
   _cloneTrack(track, overrides = {}) {
@@ -1683,14 +2866,11 @@ export class MusicPlayer extends EventEmitter {
     const attempts = this.ytdlpYoutubeClient
       ? [
           { format: 'bestaudio/best', includeClientArg: true },
-          { format: 'best', includeClientArg: true },
           { format: 'bestaudio/best', includeClientArg: false },
-          { format: 'best', includeClientArg: false },
           { format: null, includeClientArg: false },
         ]
       : [
           { format: 'bestaudio/best', includeClientArg: false },
-          { format: 'best', includeClientArg: false },
           { format: null, includeClientArg: false },
         ];
 
@@ -1717,16 +2897,41 @@ export class MusicPlayer extends EventEmitter {
   }
 
   async _startYtDlpPipelineWithFormat(url, seekSec = 0, formatSelector = 'bestaudio/best', includeClientArg = true) {
+    this._lastYtDlpDiagnostics = {
+      formatSelector: formatSelector ?? null,
+      includeClientArg: Boolean(includeClientArg),
+      selectedFormats: null,
+      selectedItag: null,
+      updatedAt: new Date().toISOString(),
+    };
+
     this.sourceProc = await this._spawnYtDlp(url, formatSelector, includeClientArg);
     this.sourceProc.stderr?.setEncoding?.('utf8');
 
     let stderr = '';
+    let stderrBuffer = '';
+    const ytdlpVerboseEnabled = this._isYtDlpVerboseEnabled();
     const onStderr = (chunk) => {
-      stderr = `${stderr}${chunk}`.slice(-4096);
+      const text = String(chunk ?? '');
+      stderr = `${stderr}${text}`.slice(-4096);
+      this._trackYtDlpFormatSelection(text);
+
+      if (!ytdlpVerboseEnabled) return;
+      stderrBuffer = `${stderrBuffer}${text}`;
+      const lines = stderrBuffer.split(/\r?\n/);
+      stderrBuffer = lines.pop() ?? '';
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed) {
+          this.logger?.info?.('yt-dlp verbose', { line: trimmed });
+        }
+      }
     };
     this.sourceProc.stderr?.on?.('data', onStderr);
 
-    this.ffmpeg = await this._spawnProcess(this.ffmpegBin, this._ffmpegArgs(seekSec), {
+    const ffmpegArgs = this._ffmpegArgs(seekSec);
+    this._lastFfmpegArgs = [...ffmpegArgs];
+    this.ffmpeg = await this._spawnProcess(this.ffmpegBin, ffmpegArgs, {
       stdio: ['pipe', 'pipe', 'ignore'],
     });
 
@@ -1751,6 +2956,12 @@ export class MusicPlayer extends EventEmitter {
       }
       throw err;
     } finally {
+      if (ytdlpVerboseEnabled) {
+        const trailing = stderrBuffer.trim();
+        if (trailing) {
+          this.logger?.info?.('yt-dlp verbose', { line: trailing });
+        }
+      }
       this.sourceProc.stderr?.off?.('data', onStderr);
     }
   }
@@ -1810,16 +3021,19 @@ export class MusicPlayer extends EventEmitter {
   }
 
   async _spawnYtDlp(url, formatSelector = 'bestaudio/best', includeClientArg = true) {
+    const ytdlpVerboseEnabled = this._isYtDlpVerboseEnabled();
     const commonArgs = [
       '--ignore-config',
       '--no-playlist',
-      '--quiet',
       '--no-warnings',
       '--no-progress',
       '--extractor-retries', '3',
       '--fragment-retries', '3',
       '--retry-sleep', 'fragment:1:3',
     ];
+    if (!ytdlpVerboseEnabled) {
+      commonArgs.push('--quiet');
+    }
 
     if (formatSelector) {
       commonArgs.push('-f', formatSelector);
@@ -1866,6 +3080,41 @@ export class MusicPlayer extends EventEmitter {
     }
 
     throw new Error(`yt-dlp not found (${lastErr?.message ?? 'command not available'})`);
+  }
+
+  _isYtDlpVerboseEnabled() {
+    if (!Array.isArray(this.ytdlpExtraArgs) || !this.ytdlpExtraArgs.length) return false;
+    return this.ytdlpExtraArgs.some((arg) => {
+      const token = String(arg ?? '').trim();
+      return token === '--verbose' || token === '-v';
+    });
+  }
+
+  _trackYtDlpFormatSelection(stderrChunk) {
+    const text = String(stderrChunk ?? '');
+    if (!text) return;
+
+    const selectedMatch = text.match(/Downloading\s+\d+\s+format\(s\):\s*([^\r\n]+)/i);
+    if (selectedMatch?.[1]) {
+      const selectedFormats = String(selectedMatch[1]).trim();
+      const itagMatch = selectedFormats.match(/\b(\d{2,4})\b/);
+      this._lastYtDlpDiagnostics = {
+        ...(this._lastYtDlpDiagnostics ?? {}),
+        selectedFormats,
+        selectedItag: itagMatch?.[1] ?? this._lastYtDlpDiagnostics?.selectedItag ?? null,
+        updatedAt: new Date().toISOString(),
+      };
+      return;
+    }
+
+    const itagMatch = text.match(/[?&]itag=(\d{2,4})\b/i);
+    if (itagMatch?.[1]) {
+      this._lastYtDlpDiagnostics = {
+        ...(this._lastYtDlpDiagnostics ?? {}),
+        selectedItag: itagMatch[1],
+        updatedAt: new Date().toISOString(),
+      };
+    }
   }
 
   async _searchWithYtDlp(query, limit = 1) {
@@ -2081,6 +3330,29 @@ export class MusicPlayer extends EventEmitter {
     }
 
     try {
+      if (this.sourceStream && this.deezerDecryptStream) {
+        this.sourceStream.unpipe(this.deezerDecryptStream);
+      }
+    } catch {
+      // ignore pipe teardown errors
+    }
+
+    try {
+      if (this.deezerDecryptStream && this.ffmpeg?.stdin) {
+        this.deezerDecryptStream.unpipe(this.ffmpeg.stdin);
+      }
+    } catch {
+      // ignore pipe teardown errors
+    }
+
+    try {
+      this.deezerDecryptStream?.destroy?.();
+    } catch {
+      // ignore deezer decrypt stream teardown errors
+    }
+    this.deezerDecryptStream = null;
+
+    try {
       this.sourceStream?.destroy?.();
     } catch {
       // ignore source stream teardown errors
@@ -2103,6 +3375,7 @@ export class MusicPlayer extends EventEmitter {
 
   _clearPipelineState() {
     this._clearPipelineErrorHandlers();
+    this.deezerDecryptStream = null;
     this.sourceStream = null;
   }
 

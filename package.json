@@ -25,9 +25,10 @@
     "deezer"
   ],
   "dependencies": {
-    "@sentry/node": "^10.42.0",
     "@livekit/rtc-node": "^0.13.24",
+    "@sentry/node": "^10.42.0",
     "dotenv": "^17.3.1",
+    "egoroof-blowfish": "^4.0.2",
     "ffmpeg-static": "^5.3.0",
     "mongodb": "^7.1.0",
     "play-dl": "^1.9.7",
