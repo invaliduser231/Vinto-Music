@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-03-04
+
 - Bot command and playback UX improvements:
   - removed autoplay command/settings and deleted remaining autoplay playback logic
   - added reaction-based `search` picking (`1️⃣`-`🔟`) while keeping `pick` compatibility
