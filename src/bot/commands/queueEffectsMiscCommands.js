@@ -615,7 +615,12 @@ export function registerQueueEffectsAndMiscCommands(registry) {
     async execute(ctx) {
       const query = ctx.args.join(' ').trim();
       const session = ctx.guildId ? ctx.sessions.get(ctx.guildId) : null;
-      const fallback = session?.player?.currentTrack?.title ?? null;
+      const currentTrack = session?.player?.currentTrack ?? null;
+      const fallbackTitle = String(currentTrack?.title ?? '').trim();
+      const fallbackArtist = String(currentTrack?.artist ?? '').trim();
+      const fallback = fallbackArtist && fallbackTitle
+        ? `${fallbackArtist} - ${fallbackTitle}`
+        : (fallbackTitle || null);
       const effectiveQuery = query || fallback;
 
       if (!effectiveQuery) {
