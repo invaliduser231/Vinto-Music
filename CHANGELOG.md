@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.4.1] - 2026-03-05
+
+- Lyrics matching reliability:
+  - improved `lyrics` fallback to use `artist - title` for the current track instead of title-only lookups
+  - added artist metadata propagation for YouTube and stored tracks so lyrics requests have better context
+  - changed LRCLIB selection from first-hit to best-match scoring (artist/title/query similarity)
+  - kept provider fallback behavior (`lrclib.net` -> `lyrics.ovh`) when no strong LRCLIB match exists
+- Tests:
+  - added `lyricsService` tests for ranking behavior and provider fallback
+  - added command test coverage for `lyrics` fallback query composition
+
 ## [0.4.0] - 2026-03-05
 
 - Player source pipeline and resolver updates:
