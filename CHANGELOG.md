@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [0.4.0] - 2026-03-05
 
 - Player source pipeline and resolver updates:
   - added direct playback pipelines for Deezer, Audius, and SoundCloud tracks
