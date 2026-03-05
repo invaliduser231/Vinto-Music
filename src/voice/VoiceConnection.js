@@ -418,91 +418,43 @@ export class VoiceConnection {
 
   async _pumpPcmStream(stream, source, token) {
     let pending = Buffer.alloc(0);
-    let startedCapturing = false;
-    let lastFrameBytes = null;
-    let consecutiveConcealmentFrames = 0;
-    let streamEnded = false;
-    let streamError = null;
     const stats = this._pumpStats ?? this._createPumpStats();
-    const startupPrefillFrames = Math.max(1, Math.ceil(STARTUP_PREFILL_MS / FRAME_DURATION_MS));
-    const startupPrefillBytes = startupPrefillFrames * BYTES_PER_FRAME;
-    const silenceFrameBytes = Buffer.alloc(BYTES_PER_FRAME);
-
-    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-    const readTask = (async () => {
-      try {
-        for await (const chunk of stream) {
-          if (token !== this.audioPumpToken) break;
-          const asBuffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-          if (!asBuffer.length) continue;
-
-          stats.bytesIn += asBuffer.length;
-          pending = pending.length ? Buffer.concat([pending, asBuffer]) : asBuffer;
-          stats.pendingBufferBytes = pending.length;
-        }
-      } catch (err) {
-        streamError = err;
-      } finally {
-        streamEnded = true;
-      }
-    })();
 
     try {
-      while (token === this.audioPumpToken) {
+      for await (const chunk of stream) {
         if (token !== this.audioPumpToken) break;
         await this._waitWhilePaused(token);
         if (token !== this.audioPumpToken) break;
 
-        if (streamError) {
-          throw streamError;
-        }
+        const asBuffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        if (!asBuffer.length) continue;
+        stats.bytesIn += asBuffer.length;
 
-        let frameBytes = null;
-        let isConcealment = false;
+        pending = pending.length ? Buffer.concat([pending, asBuffer]) : asBuffer;
+        stats.pendingBufferBytes = pending.length;
 
-        if (pending.length >= BYTES_PER_FRAME) {
-          frameBytes = pending.subarray(0, BYTES_PER_FRAME);
+        while (pending.length >= BYTES_PER_FRAME && token === this.audioPumpToken) {
+          await this._waitWhilePaused(token);
+          if (token !== this.audioPumpToken) break;
+
+          const frameBytes = pending.subarray(0, BYTES_PER_FRAME);
           pending = pending.subarray(BYTES_PER_FRAME);
+
+          const samples = new Int16Array(frameBytes.buffer, frameBytes.byteOffset, SAMPLES_PER_FRAME);
+          const frame = new AudioFrame(new Int16Array(samples), SAMPLE_RATE, CHANNELS, SAMPLES_PER_CHANNEL);
+
+          if (source.queuedDuration > 500) {
+            stats.backpressureWaits += 1;
+            await source.waitForPlayout();
+          }
+          if (Number.isFinite(source.queuedDuration)) {
+            stats.maxQueuedDurationMs = Math.max(stats.maxQueuedDurationMs, Number(source.queuedDuration));
+          }
+
+          await source.captureFrame(frame);
+          stats.framesCaptured += 1;
           stats.pendingBufferBytes = pending.length;
-          lastFrameBytes = Buffer.from(frameBytes);
-          consecutiveConcealmentFrames = 0;
-        } else if (!startedCapturing && pending.length < startupPrefillBytes) {
-          if (streamEnded) break;
-          await sleep(PUMP_IDLE_WAIT_MS);
-          continue;
-        } else if (!streamEnded && startedCapturing && consecutiveConcealmentFrames < CONCEALMENT_MAX_FRAMES) {
-          frameBytes = lastFrameBytes ?? silenceFrameBytes;
-          isConcealment = true;
-          consecutiveConcealmentFrames += 1;
-        } else {
-          if (streamEnded) break;
-          await sleep(PUMP_IDLE_WAIT_MS);
-          continue;
         }
-
-        const samples = new Int16Array(frameBytes.buffer, frameBytes.byteOffset, SAMPLES_PER_FRAME);
-        const frame = new AudioFrame(new Int16Array(samples), SAMPLE_RATE, CHANNELS, SAMPLES_PER_CHANNEL);
-
-        const queuedDurationMs = Number.isFinite(source.queuedDuration)
-          ? Number(source.queuedDuration)
-          : 0;
-        if (queuedDurationMs > MAX_QUEUE_MS) {
-          stats.backpressureWaits += 1;
-          await source.waitForPlayout();
-        } else if (queuedDurationMs >= TARGET_QUEUE_MS) {
-          await source.waitForPlayout();
-        }
-        if (Number.isFinite(source.queuedDuration)) {
-          stats.maxQueuedDurationMs = Math.max(stats.maxQueuedDurationMs, Number(source.queuedDuration));
-        }
-
-        await source.captureFrame(frame);
-        stats.framesCaptured += 1;
-        if (isConcealment) {
-          stats.concealedFrames += 1;
-        }
-        startedCapturing = true;
       }
 
       if (pending.length > 0 && token === this.audioPumpToken) {
@@ -515,7 +467,6 @@ export class VoiceConnection {
         stats.framesCaptured += 1;
         stats.pendingBufferBytes = 0;
       }
-      await readTask.catch(() => null);
     } finally {
       if (token === this.audioPumpToken) {
         this.currentAudioStream = null;
