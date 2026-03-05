@@ -572,7 +572,7 @@ registry.register(createCommand({
     async execute(ctx) {
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
-      const current = session.player.currentTrack;
+      const current = session.player.displayTrack ?? session.player.currentTrack;
 
       if (!current) {
         await ctx.reply.warning('Nothing is currently playing.');

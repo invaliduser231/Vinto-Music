@@ -540,7 +540,7 @@ async function resolveQueueGuard(ctx) {
 
 function formatQueuePage(session, page) {
   const pending = session.player.pendingTracks;
-  const current = session.player.currentTrack;
+  const current = session.player.displayTrack ?? session.player.currentTrack;
 
   if (!current && pending.length === 0) {
     return {
@@ -1048,7 +1048,8 @@ async function ensureManageGuildAccess(ctx, actionLabel) {
 }
 
 function ensureSessionTrack(ctx, session) {
-  if (!session.player.currentTrack) {
+  const current = session?.player?.displayTrack ?? session?.player?.currentTrack ?? null;
+  if (!current) {
     throw new ValidationError('Nothing is currently playing.');
   }
 }

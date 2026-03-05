@@ -622,7 +622,12 @@ export class CommandRouter {
       const features = await this.library.getGuildFeatureConfig(guildId).catch(() => null);
       if (!features) return;
 
-      const channelId = features.sessionPanelChannelId ?? session.textChannelId ?? session.settings.musicLogChannelId ?? null;
+      const configuredPanelChannelId = features.sessionPanelChannelId ?? null;
+      const configuredPanelMessageId = features.sessionPanelMessageId ?? null;
+      // Session panel is opt-in. If no panel channel/message is configured, skip updates entirely.
+      if (!configuredPanelChannelId && !configuredPanelMessageId) return;
+
+      const channelId = configuredPanelChannelId ?? session.textChannelId ?? session.settings.musicLogChannelId ?? null;
       if (!channelId) return;
 
       const current = session.player.currentTrack;

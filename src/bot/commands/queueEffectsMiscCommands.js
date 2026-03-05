@@ -48,11 +48,11 @@ function buildDiagSnapshot(session, playerDiagnostics, voiceDiagnostics) {
 
   return {
     capturedAt: nowTs,
-    track: session?.player?.currentTrack
+    track: (session?.player?.displayTrack ?? session?.player?.currentTrack)
       ? {
-          id: session.player.currentTrack.id ?? null,
-          title: session.player.currentTrack.title ?? null,
-          source: session.player.currentTrack.source ?? null,
+          id: (session.player.displayTrack ?? session.player.currentTrack).id ?? null,
+          title: (session.player.displayTrack ?? session.player.currentTrack).title ?? null,
+          source: (session.player.displayTrack ?? session.player.currentTrack).source ?? null,
         }
       : null,
     player: playerDiagnostics ?? null,
@@ -271,7 +271,7 @@ export function registerQueueEffectsAndMiscCommands(registry) {
 
         const session = getSessionOrThrow(ctx);
         ensureSessionTrack(ctx, session);
-        const targetTrack = session.player.currentTrack;
+        const targetTrack = session.player.displayTrack ?? session.player.currentTrack;
         const aggregate = createTrackDiagAggregate(targetTrack);
         let intervalHandle = null;
 

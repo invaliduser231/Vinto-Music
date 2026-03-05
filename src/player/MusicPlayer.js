@@ -779,6 +779,8 @@ export class MusicPlayer extends EventEmitter {
     this.pauseStartedAtMs = null;
     this.totalPausedMs = 0;
     this.currentTrackOffsetSec = 0;
+    this.lastKnownTrack = null;
+    this.lastKnownTrackAtMs = 0;
     this.soundcloudClientIdResolvedAt = this.soundcloudClientId ? Date.now() : 0;
 
     this._lastYtDlpDiagnostics = null;
@@ -819,6 +821,15 @@ export class MusicPlayer extends EventEmitter {
 
   get currentTrack() {
     return this.queue.current;
+  }
+
+  get displayTrack() {
+    if (this.currentTrack) return this.currentTrack;
+    const recentEnough = this.lastKnownTrackAtMs > 0 && (Date.now() - this.lastKnownTrackAtMs) <= 30_000;
+    if (this.voice?.isStreaming && this.lastKnownTrack && recentEnough) {
+      return this.lastKnownTrack;
+    }
+    return null;
   }
 
   get pendingTracks() {
@@ -1161,6 +1172,8 @@ export class MusicPlayer extends EventEmitter {
 
       await this.voice.sendAudio(this.ffmpeg.stdout);
       this._startPlaybackClock(track.seekStartSec ?? 0);
+      this.lastKnownTrack = track;
+      this.lastKnownTrackAtMs = Date.now();
       this.emit('trackStart', track);
       this.logger?.info?.('Playback started', { title: track.title, url: track.url, seek: track.seekStartSec ?? 0 });
 
