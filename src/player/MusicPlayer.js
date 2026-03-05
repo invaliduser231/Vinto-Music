@@ -1376,11 +1376,6 @@ export class MusicPlayer extends EventEmitter {
   }
 
   async _resolveSearchTrack(query, requestedBy) {
-    if (this.deezerArl && this.enableDeezerImport) {
-      const deezer = await this._searchDeezerTracks(query, 1, requestedBy).catch(() => []);
-      if (deezer.length) return deezer;
-    }
-
     if (!this.enableYtSearch) {
       throw new ValidationError('YouTube search is currently disabled by bot configuration.');
     }
@@ -1388,7 +1383,15 @@ export class MusicPlayer extends EventEmitter {
       throw new ValidationError('YouTube playback is currently disabled by bot configuration.');
     }
 
-    return this._searchYouTubeTracks(query, 1, requestedBy);
+    const youtube = await this._searchYouTubeTracks(query, 1, requestedBy).catch(() => []);
+    if (youtube.length) return youtube;
+
+    if (this.deezerArl && this.enableDeezerImport) {
+      const deezer = await this._searchDeezerTracks(query, 1, requestedBy).catch(() => []);
+      if (deezer.length) return deezer;
+    }
+
+    return [];
   }
 
   getDiagnostics() {
@@ -1416,11 +1419,6 @@ export class MusicPlayer extends EventEmitter {
     const requestedBy = options.requestedBy ?? null;
     const safeLimit = Math.max(1, Math.min(10, Number.parseInt(String(limit), 10) || 5));
 
-    if (this.deezerArl && this.enableDeezerImport) {
-      const deezer = await this._searchDeezerTracks(query, safeLimit, requestedBy).catch(() => []);
-      if (deezer.length) return deezer;
-    }
-
     if (!this.enableYtSearch) {
       throw new ValidationError('YouTube search is currently disabled by bot configuration.');
     }
@@ -1428,7 +1426,15 @@ export class MusicPlayer extends EventEmitter {
       throw new ValidationError('YouTube playback is currently disabled by bot configuration.');
     }
 
-    return this._searchYouTubeTracks(query, safeLimit, requestedBy);
+    const youtube = await this._searchYouTubeTracks(query, safeLimit, requestedBy).catch(() => []);
+    if (youtube.length) return youtube;
+
+    if (this.deezerArl && this.enableDeezerImport) {
+      const deezer = await this._searchDeezerTracks(query, safeLimit, requestedBy).catch(() => []);
+      if (deezer.length) return deezer;
+    }
+
+    return [];
   }
 
   async _searchYouTubeTracks(query, limit, requestedBy) {

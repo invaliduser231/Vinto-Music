@@ -13,7 +13,7 @@ function createPlayer(overrides = {}) {
   });
 }
 
-test('text search resolves from Deezer first when Deezer direct is available', async () => {
+test('text search resolves from YouTube first when both YouTube and Deezer are available', async () => {
   const player = createPlayer();
   let deezerCalls = 0;
   let youtubeCalls = 0;
@@ -33,27 +33,6 @@ test('text search resolves from Deezer first when Deezer direct is available', a
   };
   player._searchYouTubeTracks = async () => {
     youtubeCalls += 1;
-    return [];
-  };
-
-  const tracks = await player._resolveSearchTrack('kool savas berlin', 'user-1');
-  assert.equal(tracks.length, 1);
-  assert.equal(tracks[0].source, 'deezer-search-direct');
-  assert.equal(deezerCalls, 1);
-  assert.equal(youtubeCalls, 0);
-});
-
-test('text search falls back to YouTube when Deezer search yields no results', async () => {
-  const player = createPlayer();
-  let deezerCalls = 0;
-  let youtubeCalls = 0;
-
-  player._searchDeezerTracks = async () => {
-    deezerCalls += 1;
-    return [];
-  };
-  player._searchYouTubeTracks = async () => {
-    youtubeCalls += 1;
     return [
       player._buildTrack({
         title: 'Berlin (YouTube)',
@@ -68,6 +47,36 @@ test('text search falls back to YouTube when Deezer search yields no results', a
   const tracks = await player._resolveSearchTrack('kool savas berlin', 'user-1');
   assert.equal(tracks.length, 1);
   assert.equal(tracks[0].source, 'youtube-search');
+  assert.equal(youtubeCalls, 1);
+  assert.equal(deezerCalls, 0);
+});
+
+test('text search falls back to Deezer when YouTube search yields no results', async () => {
+  const player = createPlayer();
+  let deezerCalls = 0;
+  let youtubeCalls = 0;
+
+  player._searchYouTubeTracks = async () => {
+    youtubeCalls += 1;
+    return [];
+  };
+  player._searchDeezerTracks = async () => {
+    deezerCalls += 1;
+    return [
+      player._buildTrack({
+        title: 'Berlin',
+        url: 'https://www.deezer.com/track/3135556',
+        duration: 180,
+        requestedBy: 'user-1',
+        source: 'deezer-search-direct',
+        deezerTrackId: '3135556',
+      }),
+    ];
+  };
+
+  const tracks = await player._resolveSearchTrack('kool savas berlin', 'user-1');
+  assert.equal(tracks.length, 1);
+  assert.equal(tracks[0].source, 'deezer-search-direct');
   assert.equal(deezerCalls, 1);
   assert.equal(youtubeCalls, 1);
 });
