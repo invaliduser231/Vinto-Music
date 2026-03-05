@@ -546,6 +546,17 @@ export class CommandRouter {
     this.sessions.on('queueEmpty', async ({ session }) => {
       const activeSession = this.sessions.get(session?.guildId);
       if (activeSession && activeSession !== session) return;
+      const player = session?.player ?? null;
+      const connection = session?.connection ?? null;
+      if (player?.playing || player?.currentTrack || connection?.isStreaming) {
+        this.logger?.debug?.('Skipping queueEmpty announcement while playback is still active', {
+          guildId: session?.guildId ?? null,
+          playing: Boolean(player?.playing),
+          hasCurrentTrack: Boolean(player?.currentTrack),
+          isStreaming: Boolean(connection?.isStreaming),
+        });
+        return;
+      }
 
       const channelId = this._resolveEventChannelId(session);
       if (!channelId) return;

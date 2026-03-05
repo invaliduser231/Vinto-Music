@@ -185,6 +185,16 @@ export class SessionManager extends EventEmitter {
 
     player.on('queueEmpty', () => {
       if (this.sessions.get(guildId) !== session) return;
+      if (this._isSessionPlaybackActive(session)) {
+        this.logger?.debug?.('Ignoring queueEmpty event while playback is still active', {
+          guildId,
+          playing: Boolean(session?.player?.playing),
+          hasCurrentTrack: Boolean(session?.player?.currentTrack),
+          isStreaming: Boolean(session?.connection?.isStreaming),
+        });
+        return;
+      }
+
       this._stopPlaybackDiagnostics(session);
       this.touch(guildId);
       this._handleQueueEmpty(session).catch((err) => {
