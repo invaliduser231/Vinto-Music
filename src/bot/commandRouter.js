@@ -84,6 +84,26 @@ const SESSION_PANEL_REACTIONS = [
 ];
 const SEND_PERMISSION_PREFLIGHT_BYPASS = new Set(['ping', 'help']);
 
+function parseMentionCommand(content, botUserId) {
+  const id = String(botUserId ?? '').trim();
+  if (!content || !id) return null;
+
+  const prefixes = [`<@${id}>`, `<@!${id}>`];
+  for (const prefix of prefixes) {
+    const parsed = parseCommand(content, prefix);
+    if (parsed) return parsed;
+  }
+
+  return null;
+}
+
+function isDirectBotMention(content, botUserId) {
+  const id = String(botUserId ?? '').trim();
+  const text = String(content ?? '').trim();
+  if (!id || !text) return false;
+  return text === `<@${id}>` || text === `<@!${id}>`;
+}
+
 function summarizeTrack(track) {
   if (!track) return 'Unknown track';
   const by = track.requestedBy ? ` by <@${track.requestedBy}>` : '';
@@ -192,23 +212,29 @@ export class CommandRouter {
     const guildConfig = await this._resolveGuildConfig(guildId);
     const configuredPrefix = guildConfig?.prefix ?? this.config.prefix;
     const fallbackPrefix = this.config.prefix;
+    if (isDirectBotMention(message.content, this.botUserId)) {
+      await this._safeReply(
+        message.channel_id,
+        'info',
+        `Use \`${configuredPrefix}help\` to see all commands.`,
+        null,
+        buildCommandReplyOptions(message)
+      );
+      return;
+    }
 
     let parsed = parseCommand(message.content, configuredPrefix);
     if (!parsed && this.config.allowDefaultPrefixFallback && configuredPrefix !== fallbackPrefix) {
       parsed = parseCommand(message.content, fallbackPrefix);
+    }
+    if (!parsed) {
+      parsed = parseMentionCommand(message.content, this.botUserId);
     }
     if (!parsed) return;
 
     const command = this.registry.resolve(parsed.name);
     if (!command) {
       this.metrics?.commandsTotal?.inc?.(1, { command: parsed.name.toLowerCase(), outcome: 'unknown' });
-      await this._safeReply(
-        message.channel_id,
-        'warning',
-        `Unknown command: \`${parsed.name}\``,
-        null,
-        buildCommandReplyOptions(message)
-      );
       return;
     }
 
