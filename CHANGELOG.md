@@ -13,8 +13,12 @@ All notable changes to this project are documented in this file.
   - centralized duplicated command response/progress payload helpers in a shared `responseUtils` module
 - Maintenance:
   - enforced the rule that no file in `src/` or `test/` exceeds 2000 lines
+- Gateway and live processing:
+  - improved invalid-session recovery to delay resume/identify retries correctly and clear stale retry timers during shutdown
+  - added a live PCM audio processor with runtime volume, EQ, and filter preset transitions for stream-safe audio shaping
 - Tests:
   - verified player, command, and config flows after the refactor with targeted regression coverage
+  - added live audio processor coverage for runtime volume changes and live-filter preset support detection
 
 ## [0.4.2] - 2026-03-06
 

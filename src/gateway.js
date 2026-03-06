@@ -62,6 +62,7 @@ export class Gateway extends EventEmitter {
     this.reconnectTimeoutHandle = null;
     this.connectOpenTimeoutHandle = null;
     this.helloTimeoutHandle = null;
+    this.invalidSessionTimeoutHandle = null;
 
     this.sequence = null;
     this.sessionId = null;
@@ -261,8 +262,25 @@ export class Gateway extends EventEmitter {
           this.sequence = null;
         }
 
-        setTimeout(() => {
-          this._reconnectNow();
+        if (this.invalidSessionTimeoutHandle) {
+          clearTimeout(this.invalidSessionTimeoutHandle);
+          this.invalidSessionTimeoutHandle = null;
+        }
+
+        this.invalidSessionTimeoutHandle = setTimeout(() => {
+          this.invalidSessionTimeoutHandle = null;
+
+          if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            this._scheduleReconnect('invalid_session_socket_closed');
+            return;
+          }
+
+          if (Boolean(d) && this.sessionId && this.sequence != null) {
+            this._resume();
+            return;
+          }
+
+          this._identify();
         }, randomBetween(1_000, 5_000));
         break;
 
@@ -428,6 +446,11 @@ export class Gateway extends EventEmitter {
     if (this.reconnectTimeoutHandle) {
       clearTimeout(this.reconnectTimeoutHandle);
       this.reconnectTimeoutHandle = null;
+    }
+
+    if (this.invalidSessionTimeoutHandle) {
+      clearTimeout(this.invalidSessionTimeoutHandle);
+      this.invalidSessionTimeoutHandle = null;
     }
 
     if (this.connectOpenTimeoutHandle) {
