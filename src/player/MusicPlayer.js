@@ -42,12 +42,22 @@ const DEEZER_BLOWFISH_IV = Buffer.from([0, 1, 2, 3, 4, 5, 6, 7]);
 const DEEZER_FILE_KEY = Buffer.from('jo6aey6haid2Teih', 'ascii');
 const DEEZER_BLOWFISH_SECRET = 'g4el58wc0zvf9na1';
 const DEEZER_BF_CBC_SUPPORTED = getCiphers().includes('bf-cbc');
+const DEEZER_ALLOWED_TRACK_FORMATS = new Set([
+  'FLAC',
+  'MP3_320',
+  'MP3_256',
+  'MP3_128',
+  'MP3_64',
+  'AAC_64',
+]);
+const DEEZER_LAVASRC_DEFAULT_FORMATS = ['MP3_128', 'MP3_64'];
 const DEEZER_MEDIA_QUALITY_MAP = new Map([
   ['FLAC', 9],
   ['MP3_320', 3],
   ['MP3_256', 3],
   ['MP3_128', 1],
 ]);
+const DEEZER_SESSION_TOKEN_TTL_MS = 3_600_000;
 const DEEZER_STREAM_RETRY_LIMIT = 8;
 const DEEZER_STREAM_BASE_BACKOFF_MS = 250;
 const DEEZER_STREAM_MAX_BACKOFF_MS = 2_000;
@@ -284,6 +294,28 @@ function toCanonicalYouTubeWatchUrl(value) {
   return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
 }
 
+function inferYouTubeWatchUrlFromPlaylist(value) {
+  try {
+    const parsed = new URL(value);
+    const host = parsed.hostname.toLowerCase();
+    if (!host.includes('youtube.com') && !host.includes('youtu.be')) return null;
+
+    const explicit = toCanonicalYouTubeWatchUrl(value);
+    if (explicit) return explicit;
+
+    const listId = String(parsed.searchParams.get('list') ?? '').trim();
+    if (!listId || !listId.toUpperCase().startsWith('RD')) return null;
+
+    const match = listId.match(/([A-Za-z0-9_-]{11})$/);
+    if (!match?.[1]) return null;
+
+    const videoId = match[1];
+    return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}&list=${encodeURIComponent(listId)}`;
+  } catch {
+    return null;
+  }
+}
+
 function buildYouTubeThumbnailFromUrl(value) {
   const videoId = extractYouTubeVideoId(value);
   if (!videoId) return null;
@@ -320,9 +352,26 @@ function getYouTubePlaylistId(value) {
 }
 
 function toCanonicalYouTubePlaylistUrl(value) {
-  const listId = getYouTubePlaylistId(value);
-  if (!listId) return null;
-  return `https://www.youtube.com/playlist?list=${encodeURIComponent(listId)}`;
+  try {
+    const parsed = new URL(value);
+    const host = parsed.hostname.toLowerCase();
+    if (!host.includes('youtube.com') && !host.includes('youtu.be')) return null;
+
+    const listId = String(parsed.searchParams.get('list') ?? '').trim();
+    if (!listId) return null;
+
+    const videoId = String(parsed.searchParams.get('v') ?? '').trim();
+    const requiresWatchContext = listId.toUpperCase().startsWith('RD')
+      || String(parsed.searchParams.get('start_radio') ?? '').trim() === '1';
+
+    if (videoId && requiresWatchContext) {
+      return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}&list=${encodeURIComponent(listId)}`;
+    }
+
+    return `https://www.youtube.com/playlist?list=${encodeURIComponent(listId)}`;
+  } catch {
+    return null;
+  }
 }
 
 function isSoundCloudUrl(value) {
@@ -587,6 +636,21 @@ function parseCsvArgs(value) {
     .filter(Boolean);
 }
 
+function normalizeDeezerTrackFormats(formatsValue) {
+  const raw = Array.isArray(formatsValue) ? formatsValue : parseCsvArgs(formatsValue);
+  const normalized = [];
+  const seen = new Set();
+
+  for (const entry of raw) {
+    const format = String(entry ?? '').trim().toUpperCase();
+    if (!format || seen.has(format) || !DEEZER_ALLOWED_TRACK_FORMATS.has(format)) continue;
+    seen.add(format);
+    normalized.push(format);
+  }
+
+  return normalized.length ? normalized : [...DEEZER_LAVASRC_DEFAULT_FORMATS];
+}
+
 function normalizeYtDlpArgs(args) {
   const input = Array.isArray(args) ? args : [];
   if (!input.length) return [];
@@ -774,7 +838,11 @@ export class MusicPlayer extends EventEmitter {
     this.enableSpotifyImport = options.enableSpotifyImport !== false;
     this.enableDeezerImport = options.enableDeezerImport !== false;
     this.deezerArl = String(options.deezerArl ?? process.env.DEEZER_ARL ?? '').trim() || null;
+    this.deezerTrackFormats = normalizeDeezerTrackFormats(
+      options.deezerTrackFormats ?? process.env.DEEZER_TRACK_FORMATS ?? null
+    );
     this._deezerCookieHeader = this.deezerArl ? `arl=${this.deezerArl}` : null;
+    this._deezerSessionTokens = null;
     this.soundcloudClientId = String(options.soundcloudClientId ?? process.env.SOUNDCLOUD_CLIENT_ID ?? '').trim() || null;
     this.soundcloudAutoClientId = options.soundcloudAutoClientId !== false;
     this.youtubePlaylistResolver = normalizeYouTubePlaylistResolver(
@@ -1176,6 +1244,7 @@ export class MusicPlayer extends EventEmitter {
 
     const track = this.queue.next();
     if (!track) {
+      this._stopVoiceStream();
       this.emit('queueEmpty');
       return;
     }
@@ -1226,6 +1295,7 @@ export class MusicPlayer extends EventEmitter {
         return;
       }
 
+      this._stopVoiceStream();
       this.emit('queueEmpty');
     }
   }
@@ -1309,6 +1379,7 @@ export class MusicPlayer extends EventEmitter {
     this.pendingSeekTrack = null;
     this.queue.clear();
     this._cleanupProcesses();
+    this._stopVoiceStream();
     this.playing = false;
     this.paused = false;
     this._resetPlaybackClock();
@@ -1366,6 +1437,7 @@ export class MusicPlayer extends EventEmitter {
       return;
     }
 
+    this._stopVoiceStream();
     this.emit('queueEmpty');
   }
 
@@ -1393,7 +1465,7 @@ export class MusicPlayer extends EventEmitter {
         return this._resolveSingleYouTubeTrack(url, requestedBy);
       case 'yt_playlist':
         return this._resolveYouTubePlaylistTracks(playlistUrl ?? url, requestedBy, {
-          fallbackWatchUrl: toCanonicalYouTubeWatchUrl(url),
+          fallbackWatchUrl: toCanonicalYouTubeWatchUrl(url) ?? inferYouTubeWatchUrlFromPlaylist(url),
         });
       case 'so_track':
         return this._resolveSoundCloudTrack(url, requestedBy);
@@ -1458,6 +1530,7 @@ export class MusicPlayer extends EventEmitter {
       eqPreset: this.eqPreset,
       tempoRatio: this.tempoRatio,
       pitchSemitones: this.pitchSemitones,
+      deezerTrackFormats: [...this.deezerTrackFormats],
       pendingCount: this.queue.pendingSize,
       hasCurrentTrack: Boolean(this.currentTrack),
       sourceProcPid: this.sourceProc?.pid ?? null,
@@ -1645,7 +1718,7 @@ export class MusicPlayer extends EventEmitter {
       }
     }
 
-    const watchUrl = options.fallbackWatchUrl ?? toCanonicalYouTubeWatchUrl(url);
+    const watchUrl = options.fallbackWatchUrl ?? inferYouTubeWatchUrlFromPlaylist(url) ?? toCanonicalYouTubeWatchUrl(url);
     if (watchUrl) {
       return this._resolveSingleYouTubeTrack(watchUrl, requestedBy);
     }
@@ -2163,7 +2236,10 @@ export class MusicPlayer extends EventEmitter {
 
     const setCookies = typeof response.headers.getSetCookie === 'function'
       ? response.headers.getSetCookie()
-      : [];
+      : (() => {
+          const single = response.headers.get('set-cookie');
+          return single ? [single] : [];
+        })();
 
     const cookieMap = new Map();
     for (const pair of String(this._deezerCookieHeader || `arl=${this.deezerArl}`).split(';')) {
@@ -2190,6 +2266,52 @@ export class MusicPlayer extends EventEmitter {
     }
 
     this._deezerCookieHeader = Array.from(cookieMap.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
+  }
+
+  _readDeezerCookieValue(name) {
+    const target = String(name ?? '').trim();
+    if (!target) return null;
+
+    const header = String(this._deezerCookieHeader || `arl=${this.deezerArl ?? ''}`);
+    for (const pair of header.split(';')) {
+      const segment = pair.trim();
+      if (!segment) continue;
+      const eq = segment.indexOf('=');
+      if (eq <= 0) continue;
+      const key = segment.slice(0, eq).trim();
+      if (key !== target) continue;
+      const value = segment.slice(eq + 1).trim();
+      if (value) return value;
+    }
+    return null;
+  }
+
+  async _getDeezerSessionTokens(forceRefresh = false) {
+    if (!this.deezerArl) {
+      throw new Error('DEEZER_ARL is not configured.');
+    }
+
+    const now = Date.now();
+    if (!forceRefresh && this._deezerSessionTokens && this._deezerSessionTokens.expiresAtMs > now) {
+      return this._deezerSessionTokens;
+    }
+
+    const userData = await this._deezerGatewayCall('deezer.getUserData', 'null', {});
+    const results = userData?.results ?? {};
+    const apiToken = String(results?.checkForm ?? '').trim();
+    const licenseToken = String(results?.USER?.OPTIONS?.license_token ?? results?.OPTIONS?.license_token ?? '').trim();
+    if (!apiToken || !licenseToken) {
+      throw new Error('Deezer ARL session did not provide API/license tokens.');
+    }
+
+    this._deezerSessionTokens = {
+      apiToken,
+      licenseToken,
+      sessionId: this._readDeezerCookieValue('sid'),
+      dzrUniqId: this._readDeezerCookieValue('dzr_uniq_id'),
+      expiresAtMs: now + DEEZER_SESSION_TOKEN_TTL_MS,
+    };
+    return this._deezerSessionTokens;
   }
 
   _extractDeezerError(errorValue) {
@@ -2238,46 +2360,28 @@ export class MusicPlayer extends EventEmitter {
   _pickDeezerPreferredFormat(candidate) {
     const upper = String(candidate ?? '').trim().toUpperCase();
     if (DEEZER_MEDIA_QUALITY_MAP.has(upper)) return upper;
-    return 'MP3_320';
+    return 'MP3_128';
   }
 
   _resolveDeezerMediaVariantFromResponse(body) {
-    const items = Array.isArray(body?.data) ? body.data : [];
-    let best = null;
+    const firstItem = Array.isArray(body?.data) ? body.data[0] : null;
+    const firstMedia = Array.isArray(firstItem?.media) ? firstItem.media[0] : null;
+    if (!firstMedia || typeof firstMedia !== 'object') return null;
 
-    const scoreVariant = (candidate) => {
-      const cipher = String(candidate?.cipherType ?? '').toUpperCase();
-      const format = this._pickDeezerPreferredFormat(candidate?.format);
-      if (cipher === 'NONE' && format === 'FLAC') return 500;
-      if (cipher === 'NONE' && format === 'MP3_320') return 400;
-      if (cipher === 'NONE' && format === 'MP3_128') return 300;
-      if (cipher === 'BF_CBC_STRIPE' && format === 'FLAC') return 250;
-      if (cipher === 'BF_CBC_STRIPE' && format === 'MP3_320') return 200;
-      if (cipher === 'BF_CBC_STRIPE' && format === 'MP3_128') return 100;
-      return 10;
-    };
-
-    for (const item of items) {
-      const medias = Array.isArray(item?.media) ? item.media : [];
-      for (const media of medias) {
-        const cipherType = String(media?.cipher?.type ?? media?.cipher ?? '').trim().toUpperCase();
-        const sources = Array.isArray(media?.sources) ? media.sources : [];
-        for (const source of sources) {
-          const url = String(source?.url ?? '').trim();
-          if (!isHttpUrl(url)) continue;
-          const candidate = {
-            url,
-            cipherType: cipherType || 'NONE',
-            format: String(source?.format ?? media?.format ?? '').trim().toUpperCase() || null,
-          };
-          if (!best || scoreVariant(candidate) > scoreVariant(best)) {
-            best = candidate;
-          }
-        }
-      }
+    const firstSource = Array.isArray(firstMedia.sources) ? firstMedia.sources[0] : null;
+    let selectedSource = firstSource ?? null;
+    let url = String(selectedSource?.url ?? '').trim();
+    if (!isHttpUrl(url) && Array.isArray(firstMedia.sources)) {
+      selectedSource = firstMedia.sources.find((entry) => isHttpUrl(String(entry?.url ?? '').trim())) ?? null;
+      url = String(selectedSource?.url ?? '').trim();
     }
+    if (!isHttpUrl(url)) return null;
 
-    return best;
+    return {
+      url,
+      cipherType: String(firstMedia?.cipher?.type ?? firstMedia?.cipher ?? 'BF_CBC_STRIPE').trim().toUpperCase() || 'BF_CBC_STRIPE',
+      format: String(firstMedia?.format ?? selectedSource?.format ?? '').trim().toUpperCase() || null,
+    };
   }
 
   _extractFirstStringByKey(value, targetKey) {
@@ -2363,59 +2467,70 @@ export class MusicPlayer extends EventEmitter {
       throw new Error('Missing Deezer track id.');
     }
 
-    const userData = await this._deezerGatewayCall('deezer.getUserData', 'null', {});
-    const results = userData?.results ?? {};
-    const apiToken = String(results?.checkForm ?? '').trim();
-    const licenseToken = String(results?.USER?.OPTIONS?.license_token ?? results?.OPTIONS?.license_token ?? '').trim();
-    if (!apiToken || !licenseToken) {
-      throw new Error('Deezer ARL session did not provide API/license tokens.');
+    const formats = this.deezerTrackFormats.map((format) => ({ cipher: 'BF_CBC_STRIPE', format }));
+    let lastMediaError = null;
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const tokens = await this._getDeezerSessionTokens(attempt > 0);
+      const trackToken = await this._resolveDeezerTrackToken(tokens.apiToken, safeTrackId);
+      if (!trackToken) {
+        if (attempt === 0) {
+          this._deezerSessionTokens = null;
+          continue;
+        }
+        throw new Error('Missing Deezer track token (likely unavailable for this account/region).');
+      }
+
+      const payload = {
+        license_token: tokens.licenseToken,
+        media: [{ type: 'FULL', formats }],
+        track_tokens: [trackToken],
+      };
+
+      const response = await fetch('https://media.deezer.com/v1/get_url', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json',
+          cookie: this._getDeezerCookieHeader(),
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(10_000),
+      }).catch(() => null);
+
+      if (!response?.ok) {
+        lastMediaError = new Error(`Deezer media URL call failed (${response?.status ?? 'network'})`);
+        if (attempt === 0) {
+          this._deezerSessionTokens = null;
+          continue;
+        }
+        break;
+      }
+      this._updateDeezerCookieHeader(response);
+
+      const body = await response.json().catch(() => null);
+      const variant = this._resolveDeezerMediaVariantFromResponse(body);
+      if (variant?.url) {
+        this._deezerStreamMetaByTrackId.set(safeTrackId, {
+          url: variant.url,
+          cipherType: variant.cipherType || 'BF_CBC_STRIPE',
+          format: variant.format || null,
+        });
+        return variant.url;
+      }
+
+      lastMediaError = new Error('Deezer media URL response did not contain a playable source.');
+      if (attempt === 0) {
+        this._deezerSessionTokens = null;
+        continue;
+      }
+      break;
     }
 
-    const trackToken = await this._resolveDeezerTrackToken(apiToken, safeTrackId);
-    if (!trackToken) {
-      throw new Error('Missing Deezer track token (likely unavailable for this account/region).');
-    }
-
-    const formats = [
-      { cipher: 'NONE', format: 'MP3_128' },
-      { cipher: 'NONE', format: 'MP3_320' },
-      { cipher: 'BF_CBC_STRIPE', format: 'MP3_128' },
-      { cipher: 'BF_CBC_STRIPE', format: 'MP3_320' },
-    ];
-    const payload = {
-      license_token: licenseToken,
-      media: [{ type: 'FULL', formats }],
-      track_tokens: [trackToken],
-    };
-
-    const response = await fetch('https://media.deezer.com/v1/get_url', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        accept: 'application/json',
-        cookie: this._getDeezerCookieHeader(),
-      },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(10_000),
-    }).catch(() => null);
-
-    if (!response?.ok) {
-      throw new Error(`Deezer media URL call failed (${response?.status ?? 'network'})`);
-    }
-    this._updateDeezerCookieHeader(response);
-
-    const body = await response.json().catch(() => null);
-    const variant = this._resolveDeezerMediaVariantFromResponse(body);
-    if (variant?.url) {
-      this._deezerStreamMetaByTrackId.set(safeTrackId, {
-        url: variant.url,
-        cipherType: variant.cipherType || 'NONE',
-        format: variant.format || null,
-      });
-      return variant.url;
-    }
-
-    const legacy = await this._resolveDeezerLegacyEncryptedStreamUrl(apiToken, safeTrackId).catch(() => null);
+    const apiToken = this._deezerSessionTokens?.apiToken ?? null;
+    const legacy = apiToken
+      ? await this._resolveDeezerLegacyEncryptedStreamUrl(apiToken, safeTrackId, this.deezerTrackFormats[0]).catch(() => null)
+      : null;
     if (legacy?.url) {
       this._deezerStreamMetaByTrackId.set(safeTrackId, {
         url: legacy.url,
@@ -2425,47 +2540,21 @@ export class MusicPlayer extends EventEmitter {
       return legacy.url;
     }
 
-    throw new Error('No Deezer stream URL available from media API or legacy fallback.');
+    throw lastMediaError ?? new Error('No Deezer stream URL available from media API or legacy fallback.');
   }
 
   async _resolveDeezerTrackToken(apiToken, trackId) {
     const safeTrackId = String(trackId ?? '').trim();
     if (!safeTrackId) return null;
 
-    const candidates = [];
+    const payload = await this._deezerGatewayCall('song.getData', apiToken, { sng_id: safeTrackId }).catch(() => null);
+    if (!payload) return null;
 
-    candidates.push(
-      this._deezerGatewayCall('song.getListData', apiToken, { sng_ids: [safeTrackId] }).catch(() => null)
-    );
-    candidates.push(
-      this._deezerGatewayCall('deezer.pageTrack', apiToken, { sng_id: safeTrackId }).catch(() => null)
-    );
-    candidates.push(
-      this._deezerGatewayCall('song.getData', apiToken, { sng_id: safeTrackId }).catch(() => null)
-    );
+    const direct = String(payload?.results?.TRACK_TOKEN ?? '').trim();
+    if (direct) return direct;
 
-    for (const promise of candidates) {
-      const payload = await promise;
-      if (!payload) continue;
-
-      const direct = String(payload?.results?.TRACK_TOKEN ?? '').trim();
-      if (direct) return direct;
-
-      const listToken = String(payload?.results?.data?.[0]?.TRACK_TOKEN ?? '').trim();
-      if (listToken) return listToken;
-
-      const pageToken = String(
-        payload?.results?.DATA?.TRACK_TOKEN
-        ?? payload?.results?.SONGS?.data?.[0]?.TRACK_TOKEN
-        ?? ''
-      ).trim();
-      if (pageToken) return pageToken;
-
-      const recursive = this._extractFirstStringByKey(payload?.results ?? payload, 'TRACK_TOKEN');
-      if (recursive) return recursive;
-    }
-
-    return null;
+    const recursive = this._extractFirstStringByKey(payload?.results ?? payload, 'TRACK_TOKEN');
+    return recursive || null;
   }
 
   async _resolveDeezerStreamUrl(track) {
@@ -2798,8 +2887,15 @@ export class MusicPlayer extends EventEmitter {
   }
 
   async _normalizeInputUrl(url) {
-    const trimmed = String(url ?? '').trim();
+    let trimmed = String(url ?? '').trim();
     if (!isHttpUrl(trimmed)) return trimmed;
+
+    const htmlDecoded = trimmed
+      .replace(/&amp;/gi, '&')
+      .replace(/&#38;/gi, '&');
+    if (htmlDecoded !== trimmed && isHttpUrl(htmlDecoded)) {
+      trimmed = htmlDecoded;
+    }
 
     try {
       const parsed = new URL(trimmed);
@@ -3364,6 +3460,7 @@ export class MusicPlayer extends EventEmitter {
     candidates.push(
       ['yt-dlp', commonArgs],
       ['yt_dlp', commonArgs],
+      ['py', ['-m', 'yt_dlp', ...commonArgs]],
       ['python', ['-m', 'yt_dlp', ...commonArgs]],
       ['python3', ['-m', 'yt_dlp', ...commonArgs]]
     );
@@ -3475,13 +3572,13 @@ export class MusicPlayer extends EventEmitter {
   async _runYtDlpCommand(args, timeoutMs = 12_000) {
     const candidates = [];
     if (this.ytdlpBin) candidates.push(this.ytdlpBin);
-    candidates.push('yt-dlp', 'yt_dlp', 'python', 'python3');
+    candidates.push('yt-dlp', 'yt_dlp', 'py', 'python', 'python3');
 
     let lastErr = null;
     for (const cmd of candidates) {
       let proc;
       try {
-        if (cmd === 'python3' || cmd === 'python') {
+        if (cmd === 'python3' || cmd === 'python' || cmd === 'py') {
           proc = await this._spawnProcess(cmd, ['-m', 'yt_dlp', ...args], {
             stdio: ['ignore', 'pipe', 'pipe'],
           });
@@ -3680,6 +3777,16 @@ export class MusicPlayer extends EventEmitter {
     this._clearPipelineErrorHandlers();
     this.deezerDecryptStream = null;
     this.sourceStream = null;
+  }
+
+  _stopVoiceStream() {
+    const stopAudio = this.voice?.stopAudio;
+    if (typeof stopAudio !== 'function') return;
+    try {
+      stopAudio.call(this.voice);
+    } catch {
+      // ignore voice stop errors
+    }
   }
 
   _clearPipelineErrorHandlers() {
