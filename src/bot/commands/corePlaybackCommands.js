@@ -32,6 +32,11 @@ import {
   requireLibrary,
 } from './commandHelpers.js';
 import { buildEmbed } from '../messageFormatter.js';
+import {
+  buildInfoPayload,
+  createProgressReporter,
+  withCommandReplyReference,
+} from './responseUtils.js';
 
 function resolveGatewayLatencyMs(gateway) {
   if (!gateway) return null;
@@ -51,35 +56,6 @@ function resolveGatewayLatencyMs(gateway) {
   return null;
 }
 
-function buildCommandMessageReference(ctx) {
-  const messageId = String(ctx?.message?.id ?? ctx?.message?.message_id ?? '').trim();
-  if (!messageId) return null;
-
-  const reference = { message_id: messageId };
-  const channelId = String(ctx?.channelId ?? '').trim();
-  const guildId = String(ctx?.guildId ?? '').trim();
-  if (channelId) reference.channel_id = channelId;
-  if (guildId) reference.guild_id = guildId;
-  return reference;
-}
-
-function withCommandReplyReference(ctx, payload) {
-  const reference = buildCommandMessageReference(ctx);
-  if (!reference) return payload;
-
-  return {
-    ...(payload ?? {}),
-    message_reference: reference,
-    allowed_mentions: {
-      parse: [],
-      users: [],
-      roles: [],
-      ...(payload?.allowed_mentions ?? {}),
-      replied_user: false,
-    },
-  };
-}
-
 function buildPingPayload(ctx, fields) {
   if (ctx.config?.enableEmbeds === false) {
     const lines = fields.map((field) => `${field.name}: ${field.value}`);
@@ -91,36 +67,6 @@ function buildPingPayload(ctx, fields) {
       buildEmbed({
         title: 'Pong!',
         fields,
-      }),
-    ],
-    allowed_mentions: {
-      parse: [],
-      users: [],
-      roles: [],
-      replied_user: false,
-    },
-  };
-}
-
-function buildInfoPayload(ctx, title, description, fields = [], options = {}) {
-  if (ctx.config?.enableEmbeds === false) {
-    const lines = [];
-    if (title) lines.push(title);
-    if (description) lines.push(description);
-    for (const field of fields ?? []) {
-      lines.push(`${field.name}: ${field.value}`);
-    }
-    return { content: lines.join('\n').slice(0, 1900) };
-  }
-
-  return {
-    embeds: [
-      buildEmbed({
-        title,
-        description,
-        fields,
-        thumbnailUrl: options.thumbnailUrl ?? null,
-        imageUrl: options.imageUrl ?? null,
       }),
     ],
     allowed_mentions: {
@@ -305,6 +251,7 @@ registry.register(createCommand({
       enforcePlayCooldown(ctx);
 
       await ctx.withGuildOpLock('play', async () => {
+        const progress = await createProgressReporter(ctx, `Looking up: **${query}**`, null, null, { replyReference: true });
         await ctx.safeTyping();
         const session = await ensureConnectedSession(ctx, explicitChannelId);
         await applyVoiceProfileIfConfigured(ctx, session, explicitChannelId);
@@ -321,7 +268,7 @@ registry.register(createCommand({
         });
 
         if (!added.length) {
-          await ctx.reply.warning('No tracks found for that query.');
+          await progress.warning('No tracks found for that query.');
           return;
         }
 
@@ -330,9 +277,9 @@ registry.register(createCommand({
         }
 
         if (added.length === 1) {
-          await ctx.reply.success(`Added to queue: ${trackLabel(added[0])}`);
+          await progress.success(`Added to queue: ${trackLabel(added[0])}`);
         } else {
-          await ctx.reply.success(
+          await progress.success(
             `Added **${added.length}** tracks from playlist.`,
             [{ name: 'First Track', value: trackLabel(added[0]) }]
           );
@@ -356,6 +303,7 @@ registry.register(createCommand({
       enforcePlayCooldown(ctx);
 
       await ctx.withGuildOpLock('playnext', async () => {
+        const progress = await createProgressReporter(ctx, `Queueing next: **${query}**`, null, null, { replyReference: true });
         await ctx.safeTyping();
         const session = await ensureConnectedSession(ctx);
         await applyVoiceProfileIfConfigured(ctx, session);
@@ -373,7 +321,7 @@ registry.register(createCommand({
         });
 
         if (!added.length) {
-          await ctx.reply.warning('No tracks found for that query.');
+          await progress.warning('No tracks found for that query.');
           return;
         }
 
@@ -382,9 +330,9 @@ registry.register(createCommand({
         }
 
         if (added.length === 1) {
-          await ctx.reply.success(`Queued next: ${trackLabel(added[0])}`);
+          await progress.success(`Queued next: ${trackLabel(added[0])}`);
         } else {
-          await ctx.reply.success(`Queued **${added.length}** playlist tracks at the front.`);
+          await progress.success(`Queued **${added.length}** playlist tracks at the front.`);
         }
       });
     },
@@ -404,6 +352,7 @@ registry.register(createCommand({
 
       enforcePlayCooldown(ctx);
       await ctx.withGuildOpLock('search', async () => {
+        const progress = await createProgressReporter(ctx, `Searching: **${query}**`, null, null, { replyReference: true });
         await ctx.safeTyping();
 
         const session = await ensureConnectedSession(ctx);
@@ -416,7 +365,7 @@ registry.register(createCommand({
           requestedBy: ctx.authorId,
         });
         if (!results.length) {
-          await ctx.reply.warning('No search results found.');
+          await progress.warning('No search results found.');
           return;
         }
 
@@ -432,8 +381,11 @@ registry.register(createCommand({
           ],
           { thumbnailUrl: results[0]?.thumbnailUrl ?? null }
         );
-        const sent = await ctx.rest.sendMessage(ctx.channelId, withCommandReplyReference(ctx, payload));
-        const messageId = sent?.id ?? sent?.message?.id ?? null;
+        let messageId = await progress.replace(payload);
+        if (!messageId) {
+          const sent = await ctx.rest.sendMessage(ctx.channelId, withCommandReplyReference(ctx, payload));
+          messageId = sent?.id ?? sent?.message?.id ?? null;
+        }
         if (messageId && ctx.registerSearchReactionSelection) {
           await ctx.registerSearchReactionSelection(messageId, results, ttlMs);
         }

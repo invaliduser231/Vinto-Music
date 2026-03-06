@@ -1,5 +1,5 @@
 import { ValidationError } from '../../core/errors.js';
-import { buildEmbed } from '../messageFormatter.js';
+import { buildSingleFieldInfoPayload } from './responseUtils.js';
 
 const USER_MENTION_PATTERN = /^<@!?(\d+)>$/;
 const CHANNEL_MENTION_PATTERN = /^<#(\d+)>$/;
@@ -82,28 +82,6 @@ function chunkLines(lines, maxChars = 1000) {
   }
   if (current) pages.push(current);
   return pages.length ? pages : ['-'];
-}
-
-function buildInfoPayload(ctx, title, description, fieldName, fieldValue) {
-  if (ctx.config?.enableEmbeds === false) {
-    return {
-      content: [title, description, `${fieldName}:`, fieldValue].filter(Boolean).join('\n').slice(0, 1900),
-    };
-  }
-
-  return {
-    embeds: [buildEmbed({
-      title,
-      description,
-      fields: [{ name: fieldName, value: fieldValue }],
-    })],
-    allowed_mentions: {
-      parse: [],
-      users: [],
-      roles: [],
-      replied_user: false,
-    },
-  };
 }
 
 export function registerAdvancedCommands(registry, h) {
@@ -281,7 +259,7 @@ export function registerAdvancedCommands(registry, h) {
           return;
         }
 
-        await ctx.sendPaginated(pages.map((value, idx) => buildInfoPayload(
+        await ctx.sendPaginated(pages.map((value, idx) => buildSingleFieldInfoPayload(
           ctx,
           `Queue templates (${idx + 1}/${pages.length})`,
           null,
@@ -331,7 +309,7 @@ export function registerAdvancedCommands(registry, h) {
           return;
         }
 
-        await ctx.sendPaginated(pages.map((value, idx) => buildInfoPayload(
+        await ctx.sendPaginated(pages.map((value, idx) => buildSingleFieldInfoPayload(
           ctx,
           `Template ${tpl.name} (${idx + 1}/${pages.length})`,
           null,
@@ -386,7 +364,7 @@ export function registerAdvancedCommands(registry, h) {
         return;
       }
 
-      await ctx.sendPaginated(pages.map((value, idx) => buildInfoPayload(
+      await ctx.sendPaginated(pages.map((value, idx) => buildSingleFieldInfoPayload(
         ctx,
         `Top tracks (${days}d) (${idx + 1}/${pages.length})`,
         null,

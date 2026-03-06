@@ -1,5 +1,5 @@
 import { ValidationError } from '../../core/errors.js';
-import { buildEmbed } from '../messageFormatter.js';
+import { buildSingleFieldInfoPayload } from './responseUtils.js';
 
 function chunkLines(lines, maxChars = 1000) {
   const normalized = Array.isArray(lines) ? lines.map((line) => String(line ?? '')) : [];
@@ -25,28 +25,6 @@ function chunkLines(lines, maxChars = 1000) {
   }
   if (current) pages.push(current);
   return pages.length ? pages : ['-'];
-}
-
-function buildInfoPayload(ctx, title, description, fieldName, fieldValue) {
-  if (ctx.config?.enableEmbeds === false) {
-    return {
-      content: [title, description, `${fieldName}:`, fieldValue].filter(Boolean).join('\n').slice(0, 1900),
-    };
-  }
-
-  return {
-    embeds: [buildEmbed({
-      title,
-      description,
-      fields: [{ name: fieldName, value: fieldValue }],
-    })],
-    allowed_mentions: {
-      parse: [],
-      users: [],
-      roles: [],
-      replied_user: false,
-    },
-  };
 }
 
 export function registerLibraryCommands(registry, h) {
@@ -99,7 +77,7 @@ export function registerLibraryCommands(registry, h) {
           return;
         }
 
-        await ctx.sendPaginated(pages.map((value, idx) => buildInfoPayload(
+        await ctx.sendPaginated(pages.map((value, idx) => buildSingleFieldInfoPayload(
           ctx,
           `Guild playlists (${idx + 1}/${pages.length})`,
           `Page **${result.page}/${result.totalPages}** • Total: **${result.total}**`,
@@ -171,7 +149,7 @@ export function registerLibraryCommands(registry, h) {
           return;
         }
 
-        await ctx.sendPaginated(pages.map((value, idx) => buildInfoPayload(
+        await ctx.sendPaginated(pages.map((value, idx) => buildSingleFieldInfoPayload(
           ctx,
           `Playlist ${playlist.name} (${idx + 1}/${pages.length})`,
           `Page **${safePage}/${totalPages}** • Tracks: **${playlist.tracks.length}**`,
@@ -351,7 +329,7 @@ export function registerLibraryCommands(registry, h) {
         return;
       }
 
-      await ctx.sendPaginated(pages.map((value, idx) => buildInfoPayload(
+      await ctx.sendPaginated(pages.map((value, idx) => buildSingleFieldInfoPayload(
         ctx,
         `Favorites (${idx + 1}/${pages.length})`,
         `Page **${result.page}/${result.totalPages}** • Total: **${result.total}**`,

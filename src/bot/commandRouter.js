@@ -6,153 +6,31 @@ import { CommandRegistry } from './commandRegistry.js';
 import { registerCommands } from './commands/index.js';
 import { CommandRateLimiter } from './services/commandRateLimiter.js';
 import { parseDurationToSeconds, buildProgressBar } from './commands/commandHelpers.js';
-
-function normalizeEmojiName(payload) {
-  return String(payload?.emoji?.name ?? payload?.emoji_name ?? payload?.reaction ?? '')
-    .trim()
-    .toLowerCase()
-    .replace(/\uFE0F/g, '');
-}
-
-function isSkipEmoji(emoji) {
-  return ['\u2705', '\u23ED', 'skip', 'next_track'].includes(emoji);
-}
-
-function isPauseEmoji(emoji) {
-  return ['\u23F8', 'pause'].includes(emoji);
-}
-
-function isResumeEmoji(emoji) {
-  return ['\u25B6', 'resume', 'play'].includes(emoji);
-}
-
-function isFavoriteEmoji(emoji) {
-  return ['\u2764', '\u2665', 'heart', 'red_heart', 'favorite', 'like'].includes(emoji);
-}
-
-function isLeftEmoji(emoji) {
-  return ['\u2B05', 'left', 'arrow_left'].includes(emoji);
-}
-
-function isRightEmoji(emoji) {
-  return ['\u27A1', 'right', 'arrow_right'].includes(emoji);
-}
-
-const SEARCH_PICK_EMOJIS = [
-  '1\uFE0F\u20E3',
-  '2\uFE0F\u20E3',
-  '3\uFE0F\u20E3',
-  '4\uFE0F\u20E3',
-  '5\uFE0F\u20E3',
-  '6\uFE0F\u20E3',
-  '7\uFE0F\u20E3',
-  '8\uFE0F\u20E3',
-  '9\uFE0F\u20E3',
-  '\uD83D\uDD1F',
-];
-
-function parseSearchPickIndex(emoji) {
-  if (!emoji) return null;
-  if (emoji === '\uD83D\uDD1F' || emoji === 'keycap_ten' || emoji === 'ten') return 10;
-
-  const compact = String(emoji).replace(/\u20E3/g, '').replace(/[^\d]/g, '');
-  const numeric = Number.parseInt(compact, 10);
-  if (Number.isFinite(numeric) && numeric >= 1 && numeric <= 9) {
-    return numeric;
-  }
-
-  const words = {
-    one: 1,
-    two: 2,
-    three: 3,
-    four: 4,
-    five: 5,
-    six: 6,
-    seven: 7,
-    eight: 8,
-    nine: 9,
-  };
-  return words[String(emoji).toLowerCase()] ?? null;
-}
-
-const SESSION_PANEL_REACTIONS = [
-  '\u2705', // vote skip
-  '\u23ED\uFE0F', // next track
-  '\u2764\uFE0F', // favorite
-  '\u23F8\uFE0F', // pause
-  '\u25B6\uFE0F', // resume
-];
-const SEND_PERMISSION_PREFLIGHT_BYPASS = new Set(['ping', 'help']);
-
-function parseMentionCommand(content, botUserId) {
-  const id = String(botUserId ?? '').trim();
-  if (!content || !id) return null;
-
-  const prefixes = [`<@${id}>`, `<@!${id}>`];
-  for (const prefix of prefixes) {
-    const parsed = parseCommand(content, prefix);
-    if (parsed) return parsed;
-  }
-
-  return null;
-}
-
-function isDirectBotMention(content, botUserId) {
-  const id = String(botUserId ?? '').trim();
-  const text = String(content ?? '').trim();
-  if (!id || !text) return false;
-  return text === `<@${id}>` || text === `<@!${id}>`;
-}
-
-function summarizeTrack(track) {
-  if (!track) return 'Unknown track';
-  const by = track.requestedBy ? ` by <@${track.requestedBy}>` : '';
-  return `${track.title} (${track.duration})${by}`;
-}
-
-function buildCommandReplyOptions(message) {
-  const messageId = String(message?.id ?? message?.message_id ?? '').trim();
-  if (!messageId) return null;
-
-  const options = {
-    replyToMessageId: messageId,
-  };
-  const channelId = String(message?.channel_id ?? message?.channelId ?? '').trim();
-  const guildId = String(message?.guild_id ?? message?.guildId ?? '').trim();
-  if (channelId) options.replyToChannelId = channelId;
-  if (guildId) options.replyToGuildId = guildId;
-  return options;
-}
-
-function mergeAllowedMentionsForReply(current) {
-  return {
-    parse: [],
-    users: [],
-    roles: [],
-    ...(current && typeof current === 'object' ? current : {}),
-    replied_user: false,
-  };
-}
-
-function applyReplyOptionsToPayload(payload, replyOptions) {
-  const messageId = String(replyOptions?.replyToMessageId ?? '').trim();
-  if (!messageId) return payload;
-
-  const next = {
-    ...(payload ?? {}),
-    message_reference: {
-      message_id: messageId,
-    },
-  };
-
-  const channelId = String(replyOptions?.replyToChannelId ?? '').trim();
-  const guildId = String(replyOptions?.replyToGuildId ?? '').trim();
-  if (channelId) next.message_reference.channel_id = channelId;
-  if (guildId) next.message_reference.guild_id = guildId;
-
-  next.allowed_mentions = mergeAllowedMentionsForReply(next.allowed_mentions);
-  return next;
-}
+import {
+  buildCommandReplyOptions,
+  isDirectBotMention,
+  isFavoriteEmoji,
+  isLeftEmoji,
+  isPauseEmoji,
+  isResumeEmoji,
+  isRightEmoji,
+  isSkipEmoji,
+  normalizeEmojiName,
+  parseMentionCommand,
+  parseSearchPickIndex,
+  SEND_PERMISSION_PREFLIGHT_BYPASS,
+  SESSION_PANEL_REACTIONS,
+  summarizeTrack,
+} from './commandRouterUtils.js';
+import {
+  applySearchReactionSelection,
+  handleUnknownGuildForChannel,
+  registerHelpPagination,
+  registerSearchReactionSelection,
+  runWeeklyRecapSweep,
+  safeReply,
+  sendPaginated,
+} from './commandRouterOperations.js';
 
 export class CommandRouter {
   constructor(options) {
@@ -856,80 +734,15 @@ export class CommandRouter {
   }
 
   async _registerHelpPagination(channelId, messageId, pages) {
-    if (!channelId || !messageId || !Array.isArray(pages) || pages.length <= 1) return;
-    this.helpPaginations.set(String(messageId), {
-      channelId: String(channelId),
-      messageId: String(messageId),
-      pages,
-      index: 0,
-      updatedAt: Date.now(),
-    });
-
-    if (!this.rest?.addReactionToMessage) return;
-    await this.rest.addReactionToMessage(channelId, messageId, '\u2B05\uFE0F').catch(() => null);
-    await this.rest.addReactionToMessage(channelId, messageId, '\u27A1\uFE0F').catch(() => null);
+    return registerHelpPagination(this, channelId, messageId, pages);
   }
 
   async _runWeeklyRecapSweep() {
-    if (!this.rest?.listCurrentUserGuilds || !this.library?.buildGuildRecap) return;
-
-    const guilds = [];
-    let before = null;
-    for (let page = 0; page < 100; page += 1) {
-      const chunk = await this.rest.listCurrentUserGuilds({
-        limit: 200,
-        before,
-      }).catch(() => []);
-      if (!Array.isArray(chunk) || chunk.length === 0) break;
-      guilds.push(...chunk);
-      if (chunk.length < 200) break;
-
-      const lastId = chunk[chunk.length - 1]?.id;
-      if (!lastId) break;
-      before = String(lastId);
-    }
-
-    for (const guild of guilds) {
-      const guildId = String(guild?.id ?? '').trim();
-      if (!guildId) continue;
-
-      const features = await this.library.getGuildFeatureConfig(guildId).catch(() => null);
-      if (!features?.recapChannelId) continue;
-
-      const state = await this.library.getRecapState(guildId).catch(() => null);
-      const lastAt = state?.lastWeeklyRecapAt ? Date.parse(state.lastWeeklyRecapAt) : NaN;
-      if (Number.isFinite(lastAt) && (Date.now() - lastAt) < (6.5 * 24 * 60 * 60 * 1000)) continue;
-
-      const recap = await this.library.buildGuildRecap(guildId, 7).catch(() => null);
-      if (!recap || recap.playCount <= 0) continue;
-
-      const trackLines = recap.topTracks.slice(0, 5).map((entry, i) => `${i + 1}. ${entry.title} (${entry.plays} plays)`);
-      const userLines = recap.topRequesters.slice(0, 5).map((entry, i) => `${i + 1}. <@${entry.userId}> (${entry.plays})`);
-      await this._safeReply(
-        features.recapChannelId,
-        'info',
-        'Weekly music recap',
-        [
-          { name: 'Total Plays (7d)', value: String(recap.playCount), inline: true },
-          { name: 'Top Tracks', value: trackLines.join('\n') || 'No data' },
-          { name: 'Top Requesters', value: userLines.join('\n') || 'No data' },
-        ]
-      );
-
-      await this.library.markRecapSent(guildId, new Date()).catch(() => null);
-    }
+    return runWeeklyRecapSweep(this);
   }
 
   async _sendPaginated(channelId, pages, replyOptions = null) {
-    if (!Array.isArray(pages) || pages.length === 0) return null;
-
-    const firstPayload = applyReplyOptionsToPayload(pages[0], replyOptions);
-    const sent = await this.rest.sendMessage(channelId, firstPayload).catch(() => null);
-    const messageId = sent?.id ?? sent?.message?.id ?? null;
-    if (messageId && pages.length > 1) {
-      await this._registerHelpPagination(channelId, messageId, pages);
-    }
-    return sent;
+    return sendPaginated(this, channelId, pages, replyOptions);
   }
 
   async _registerSearchReactionSelection({
@@ -940,117 +753,26 @@ export class CommandRouter {
     tracks,
     timeoutMs = null,
   }) {
-    const safeMessageId = String(messageId ?? '').trim();
-    const safeGuildId = String(guildId ?? '').trim();
-    const safeChannelId = String(channelId ?? '').trim();
-    const safeUserId = String(userId ?? '').trim();
-    if (!safeMessageId || !safeGuildId || !safeChannelId || !safeUserId) return;
-
-    const items = Array.isArray(tracks) ? tracks.slice(0, 10) : [];
-    if (!items.length) return;
-
-    const ttlMs = Math.max(5_000, Number.parseInt(String(timeoutMs ?? this.config.searchPickTimeoutMs ?? 45_000), 10) || 45_000);
-    this.searchReactionSelections.set(safeMessageId, {
-      guildId: safeGuildId,
-      channelId: safeChannelId,
-      messageId: safeMessageId,
-      userId: safeUserId,
-      tracks: items,
-      expiresAt: Date.now() + ttlMs,
+    return registerSearchReactionSelection(this, {
+      guildId,
+      channelId,
+      messageId,
+      userId,
+      tracks,
+      timeoutMs,
     });
-
-    if (!this.rest?.addReactionToMessage) return;
-    const max = Math.min(items.length, SEARCH_PICK_EMOJIS.length);
-    for (let i = 0; i < max; i += 1) {
-      await this.rest.addReactionToMessage(safeChannelId, safeMessageId, SEARCH_PICK_EMOJIS[i]).catch(() => null);
-    }
   }
 
   async _applySearchReactionSelection(state, pickedIndex, userId) {
-    const session = this.sessions.get(state.guildId);
-    if (!session) {
-      await this._safeReply(state.channelId, 'warning', 'No active player session. Run the search again.');
-      return;
-    }
-
-    const userVoiceChannel = this.voiceStateStore.resolveMemberVoiceChannel({
-      guild_id: state.guildId,
-      author: { id: String(userId) },
-    });
-    if (session.connection?.channelId && userVoiceChannel !== session.connection.channelId) {
-      await this._safeReply(state.channelId, 'warning', 'You must be in the same voice channel as the bot.');
-      return;
-    }
-
-    const selected = state.tracks[pickedIndex - 1];
-    if (!selected) return;
-
-    await this._withGuildOpLock(state.guildId, 'search-reaction-pick', async () => {
-      const queueGuard = this.library?.getGuildFeatureConfig
-        ? (await this.library.getGuildFeatureConfig(state.guildId).catch(() => null))?.queueGuard ?? null
-        : null;
-
-      const track = session.player.createTrackFromData(selected, String(userId));
-      const added = session.player.enqueueResolvedTracks([track], {
-        dedupe: session.settings.dedupeEnabled,
-        queueGuard,
-      });
-      if (!added.length) {
-        await this._safeReply(state.channelId, 'warning', 'Track already exists in queue (dedupe enabled).');
-        return;
-      }
-
-      if (!session.player.playing) {
-        await session.player.play();
-      }
-      await this._safeReply(state.channelId, 'success', `Added to queue: ${summarizeTrack(added[0])}`);
-    });
+    return applySearchReactionSelection(this, state, pickedIndex, userId);
   }
 
   async _safeReply(channelId, type, text, fields = null, replyOptions = null, embedOptions = null) {
-    try {
-      if (type === 'info') return await this.responder.info(channelId, text, fields, replyOptions, embedOptions);
-      if (type === 'success') return await this.responder.success(channelId, text, fields, replyOptions, embedOptions);
-      if (type === 'warning') return await this.responder.warning(channelId, text, fields, replyOptions, embedOptions);
-      if (type === 'error') return await this.responder.error(channelId, text, fields, replyOptions, embedOptions);
-      return await this.responder.plain(channelId, text, replyOptions);
-    } catch (err) {
-      const isUnknownGuild = (
-        err?.status === 404
-        && (
-          String(err?.code ?? '').toUpperCase() === 'UNKNOWN_GUILD'
-          || String(err?.message ?? '').toUpperCase().includes('UNKNOWN_GUILD')
-        )
-      );
-      if (isUnknownGuild) {
-        this._handleUnknownGuildForChannel(channelId);
-      }
-
-      this.logger?.warn?.('Failed to send command response', {
-        channelId,
-        type,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      return null;
-    }
+    return safeReply(this, channelId, type, text, fields, replyOptions, embedOptions);
   }
 
   _handleUnknownGuildForChannel(channelId) {
-    const target = String(channelId ?? '').trim();
-    if (!target) return;
-
-    for (const [guildId, session] of this.sessions.sessions.entries()) {
-      const textMatch = String(session?.textChannelId ?? '') === target;
-      const logMatch = String(session?.settings?.musicLogChannelId ?? '') === target;
-      if (!textMatch && !logMatch) continue;
-
-      session.textChannelId = null;
-      if (session.settings) {
-        session.settings.musicLogChannelId = null;
-      }
-
-      this.sessions.destroy(guildId, 'unknown_guild').catch(() => null);
-    }
+    return handleUnknownGuildForChannel(this, channelId);
   }
 }
 

@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.4.3] - 2026-03-06
+
+- Project modularity refactor:
+  - split `MusicPlayer` into smaller domain modules and reduced the main player file below the 2000-line cap
+  - separated player source logic into dedicated Audius, SoundCloud, Deezer, URL resolver, process, and track factory modules
+  - introduced explicit source client wrappers so `MusicPlayer` now talks to domain APIs instead of a flat method mix
+  - split command helper logic into dedicated formatting, context, access, guild-stats, and search-selection modules
+  - extracted router utility and router operation helpers to reduce `commandRouter` size and tighten responsibility boundaries
+  - centralized duplicated command response/progress payload helpers in a shared `responseUtils` module
+- Maintenance:
+  - enforced the rule that no file in `src/` or `test/` exceeds 2000 lines
+- Tests:
+  - verified player, command, and config flows after the refactor with targeted regression coverage
+
 ## [0.4.2] - 2026-03-06
 
 - Deezer playback parity and reliability:

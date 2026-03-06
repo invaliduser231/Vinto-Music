@@ -19,6 +19,7 @@ import {
   fetchGlobalGuildAndUserCounts,
   formatUptimeCompact,
 } from './commandHelpers.js';
+import { createProgressReporter } from './responseUtils.js';
 
 const DIAG_OWNER_USER_ID = '1474761291856015469';
 const diagSnapshotsByGuild = new Map();
@@ -477,7 +478,7 @@ export function registerQueueEffectsAndMiscCommands(registry) {
       }
 
       const next = session.player.setVolumePercent(ctx.args[0]);
-      await ctx.reply.success(`Volume set to **${next}%** (applies immediately to new tracks).`);
+      await ctx.reply.success(`Volume set to **${next}%**.`);
     },
   }));
 
@@ -499,10 +500,14 @@ export function registerQueueEffectsAndMiscCommands(registry) {
         return;
       }
 
+      const previousFilter = session.player.filterPreset;
       const filter = session.player.setFilterPreset(ctx.args[0]);
-      const restarted = session.player.refreshCurrentTrackProcessing();
+      const restarted = session.player.playing
+        && (!session.player.isLiveFilterPresetSupported(previousFilter) || !session.player.isLiveFilterPresetSupported(filter))
+        ? session.player.refreshCurrentTrackProcessing()
+        : false;
       await ctx.reply.success(
-        `Filter set to **${filter}**.${restarted ? ' Reapplying to current track...' : ''}`
+        `Filter set to **${filter}**.${restarted ? ' Reapplying current track...' : ''}`
       );
     },
   }));
@@ -530,10 +535,7 @@ export function registerQueueEffectsAndMiscCommands(registry) {
       }
 
       const preset = session.player.setEqPreset(args[0]);
-      const restarted = session.player.refreshCurrentTrackProcessing();
-      await ctx.reply.success(
-        `EQ preset set to **${preset}**.${restarted ? ' Reapplying to current track...' : ''}`
-      );
+      await ctx.reply.success(`EQ preset set to **${preset}**.`);
     },
   }));
 
@@ -657,6 +659,7 @@ export function registerQueueEffectsAndMiscCommands(registry) {
     description: 'Show runtime statistics.',
     usage: 'stats',
     async execute(ctx) {
+      const progress = await createProgressReporter(ctx, 'Collecting runtime statistics...', null, null, { replyReference: true });
       const uptimeSeconds = Math.floor((Date.now() - ctx.startedAt) / 1000);
       const mem = process.memoryUsage();
       const globalCounts = await fetchGlobalGuildAndUserCounts(ctx.rest).catch(() => null);
@@ -672,7 +675,7 @@ export function registerQueueEffectsAndMiscCommands(registry) {
             : String(globalCounts.userCount)
         );
 
-      await ctx.reply.info('Runtime statistics', [
+      await progress.info('Runtime statistics', [
         { name: 'Uptime', value: formatUptimeCompact(uptimeSeconds), inline: true },
         { name: 'Guild sessions', value: String(ctx.sessions.sessions.size), inline: true },
         { name: 'Servers total', value: serverCountLabel, inline: true },
