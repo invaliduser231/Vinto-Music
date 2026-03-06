@@ -17,6 +17,8 @@ All notable changes to this project are documented in this file.
   - improved playlist URL normalization for `music.youtube.com`, HTML-escaped query strings, and radio (`RD...`) playlist links
   - added fallback inference from radio playlist IDs to watch URLs when playlist resolvers fail
   - added Windows launcher fallback for yt-dlp via `py -m yt_dlp` when `yt-dlp` binary is not on PATH
+- Search defaults:
+  - restored Deezer-first text search priority (with YouTube fallback) for standard query resolution
 - Tests:
   - added coverage for Deezer parity behavior, queue-empty voice-stop/idle-timeout behavior, and YouTube playlist fallback resolution paths
 
