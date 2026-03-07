@@ -12,6 +12,10 @@ All notable changes to this project are documented in this file.
 - YouTube seek startup reliability:
   - increased initial playback startup timeout for large seek offsets so long YouTube seeks have more time to produce their first audio chunk
   - added targeted regression coverage for large-offset seek startup timeout behavior
+- YouTube single-track metadata fallback:
+  - added yt-dlp JSON metadata fallback for single YouTube URL resolution when `play-dl.video_info()` fails
+  - preserved the existing `Unknown` fallback only for cases where both resolvers fail
+  - added regression coverage for cloud-style single-link resolution failures that still have valid yt-dlp metadata
 
 ## [0.4.3] - 2026-03-06
 

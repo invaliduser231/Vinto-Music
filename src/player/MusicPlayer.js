@@ -952,7 +952,7 @@ export class MusicPlayer extends EventEmitter {
     }
 
     try {
-      const info = await playdl.video_info(url);
+      const info = await this._fetchSingleYouTubeTrackViaPlayDl(url);
       return [this._buildTrack({
         title: info.video_details.title,
         url,
@@ -962,7 +962,21 @@ export class MusicPlayer extends EventEmitter {
         source: 'youtube',
         artist: pickTrackArtistFromMetadata(info.video_details),
       })];
-    } catch {
+    } catch (err) {
+      this.logger?.warn?.('play-dl single YouTube metadata lookup failed, trying yt-dlp fallback', {
+        url,
+        error: err instanceof Error ? err.message : String(err),
+      });
+
+      const fallback = await this._resolveSingleYouTubeTrackViaYtDlp(url, requestedBy).catch((fallbackErr) => {
+        this.logger?.warn?.('yt-dlp single YouTube metadata fallback failed', {
+          url,
+          error: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr),
+        });
+        return null;
+      });
+      if (fallback) return [fallback];
+
       return [this._buildTrack({
         title: url,
         url,
@@ -971,6 +985,60 @@ export class MusicPlayer extends EventEmitter {
         source: 'youtube',
       })];
     }
+  }
+
+  async _fetchSingleYouTubeTrackViaPlayDl(url) {
+    return playdl.video_info(url);
+  }
+
+  async _resolveSingleYouTubeTrackViaYtDlp(url, requestedBy) {
+    const args = [
+      '--ignore-config',
+      '--quiet',
+      '--no-warnings',
+      '--skip-download',
+      '--dump-single-json',
+    ];
+
+    if (this.ytdlpYoutubeClient) {
+      args.push('--extractor-args', `youtube:player_client=${this.ytdlpYoutubeClient}`);
+    }
+    if (this.ytdlpCookiesFile) {
+      args.push('--cookies', this.ytdlpCookiesFile);
+    }
+    if (this.ytdlpCookiesFromBrowser) {
+      args.push('--cookies-from-browser', this.ytdlpCookiesFromBrowser);
+    }
+
+    args.push(url);
+    const { stdout } = await this._runYtDlpCommand(args, 15_000);
+    if (!stdout?.trim()) {
+      throw new Error('yt-dlp returned empty metadata payload.');
+    }
+
+    let payload;
+    try {
+      payload = JSON.parse(stdout);
+    } catch {
+      throw new Error('yt-dlp returned invalid JSON metadata.');
+    }
+
+    const resolvedUrl = (
+      String(payload?.webpage_url ?? '').trim()
+      || toCanonicalYouTubeWatchUrl(url)
+      || url
+    );
+    const title = String(payload?.title ?? '').trim() || resolvedUrl;
+
+    return this._buildTrack({
+      title,
+      url: resolvedUrl,
+      duration: payload?.duration_string ?? payload?.duration ?? 'Unknown',
+      thumbnailUrl: pickThumbnailUrlFromItem(payload),
+      requestedBy,
+      source: 'youtube',
+      artist: pickTrackArtistFromMetadata(payload) || String(payload?.channel ?? payload?.uploader ?? '').trim() || null,
+    });
   }
 
   async _resolveYouTubePlaylistTracks(url, requestedBy, options = {}) {
