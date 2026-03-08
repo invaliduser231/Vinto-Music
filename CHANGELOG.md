@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.4.7] - 2026-03-09
+
+- Amazon Music mirroring:
+  - added Amazon Music URL detection for track and album links
+  - resolved Amazon Music metadata through Amazon's web `config.json` and `legacy/lookup` endpoints before HTML fallback
+  - mirrored Amazon tracks to Deezer first with YouTube fallback
+  - mirrored Amazon album links to Deezer album-track search so collection links resolve to multiple playable tracks instead of collapsing to one song
+  - removed the temporary `song.link` dependency from the Amazon path
+- Now playing cleanup:
+  - removed the `Source` field from all `now` / `now playing` embeds
+  - simplified radio `now` output to focus on detected song, artist, progress, and linked station name
+  - restored the radio recognition support footer for live radio embeds only
+
 ## [0.4.6] - 2026-03-08
 
 - Radio now-playing recognition and live-stream UX:
