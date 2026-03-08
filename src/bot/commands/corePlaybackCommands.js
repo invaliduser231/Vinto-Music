@@ -37,6 +37,9 @@ import {
   createProgressReporter,
   withCommandReplyReference,
 } from './responseUtils.js';
+import { detectRadioNowPlaying } from './helpers/radioNowPlaying.js';
+
+const RADIO_RECOGNITION_SUPPORT_FOOTER = 'Radio recognition costs money to run. Support: https://ko-fi.com/Q5Q31VDH1Z';
 
 function resolveGatewayLatencyMs(gateway) {
   if (!gateway) return null;
@@ -262,9 +265,19 @@ registry.register(createCommand({
           limit: ctx.config.maxPlaylistTracks,
         });
         const tracks = preview.map((track) => session.player.createTrackFromData(track, ctx.authorId));
+        const activeTrack = session.player.currentTrack ?? null;
+        const shouldInterruptLivePlayback = Boolean(
+          session.player.playing
+          && activeTrack
+          && (
+            activeTrack.isLive === true
+            || String(activeTrack.source ?? '').startsWith('radio')
+          )
+        );
         const added = session.player.enqueueResolvedTracks(tracks, {
           dedupe: session.settings.dedupeEnabled,
           queueGuard,
+          playNext: shouldInterruptLivePlayback,
         });
 
         if (!added.length) {
@@ -272,11 +285,20 @@ registry.register(createCommand({
           return;
         }
 
-        if (!session.player.playing) {
+        if (shouldInterruptLivePlayback) {
+          session.player.skip();
+        } else if (!session.player.playing) {
           await session.player.play();
         }
 
-        if (added.length === 1) {
+        if (shouldInterruptLivePlayback && added.length === 1) {
+          await progress.success(`Stopped live stream. Playing now: ${trackLabel(added[0])}`);
+        } else if (shouldInterruptLivePlayback) {
+          await progress.success(
+            `Stopped live stream and queued **${added.length}** tracks to start now.`,
+            [{ name: 'First Track', value: trackLabel(added[0]) }]
+          );
+        } else if (added.length === 1) {
           await progress.success(`Added to queue: ${trackLabel(added[0])}`);
         } else {
           await progress.success(
@@ -533,23 +555,81 @@ registry.register(createCommand({
 
       const totalSec = parseDurationToSeconds(current.duration);
       const progressSec = session.player.getProgressSeconds();
+      const sourceLabel = current.source === 'radio-stream' ? 'Live' : (current.source ?? 'unknown');
+      const fields = [
+        { name: 'Progress', value: buildProgressBar(progressSec, totalSec ?? Number.NaN) },
+        { name: 'Source', value: sourceLabel, inline: true },
+        { name: 'Loop', value: session.player.loopMode, inline: true },
+        { name: 'Volume', value: `${session.player.volumePercent}%`, inline: true },
+        { name: 'Queued', value: String(session.player.pendingTracks.length), inline: true },
+      ];
 
-      const payload = buildInfoPayload(
+      const buildNowPlayingPayload = (nextFields) => buildInfoPayload(
         ctx,
         'Now Playing',
         trackLabel(current),
-        [
-          { name: 'Progress', value: buildProgressBar(progressSec, totalSec ?? Number.NaN) },
-          { name: 'Source', value: current.source ?? 'unknown', inline: true },
-          { name: 'Loop', value: session.player.loopMode, inline: true },
-          { name: 'Volume', value: `${session.player.volumePercent}%`, inline: true },
-          { name: 'Queued', value: String(session.player.pendingTracks.length), inline: true },
-        ],
+        nextFields,
         {
           thumbnailUrl: current.thumbnailUrl ?? null,
           imageUrl: current.thumbnailUrl ?? null,
+          footer: current.source === 'radio-stream'
+            ? RADIO_RECOGNITION_SUPPORT_FOOTER
+            : null,
         }
       );
+
+      if (current.source === 'radio-stream' && current.url) {
+        const pendingFields = [
+          ...fields,
+          {
+            name: 'Live Song',
+            value: 'Recognizing the current radio track...',
+          },
+        ];
+        const pendingPayload = buildNowPlayingPayload(pendingFields);
+        const pendingMessage = await ctx.rest.sendMessage(
+          ctx.channelId,
+          withCommandReplyReference(ctx, pendingPayload)
+        ).catch(() => null);
+
+        const detected = await detectRadioNowPlaying({
+          url: current.url,
+          auddApiToken: ctx.config?.auddApiToken ?? null,
+          logger: ctx.logger,
+        }).catch(() => null);
+
+        const nextFields = [...fields];
+        if (detected) {
+          const liveSong = detected.artist
+            ? `${detected.artist} - ${detected.title ?? 'Unknown title'}`
+            : String(detected.title ?? 'Unknown title');
+          nextFields.push({ name: 'Live Song', value: liveSong });
+          nextFields.push({ name: 'Recognition', value: detected.source, inline: true });
+        } else {
+          nextFields.push({
+            name: 'Live Song',
+            value: ctx.config?.auddApiToken
+              ? 'Could not detect the current song.'
+              : 'No stream metadata available. Set `AUDD_API_TOKEN` for audio recognition fallback.',
+          });
+        }
+
+        const finalPayload = buildNowPlayingPayload(nextFields);
+        const pendingMessageId = pendingMessage?.id ?? pendingMessage?.message?.id ?? null;
+        if (pendingMessageId) {
+          try {
+            await ctx.rest.editMessage(ctx.channelId, pendingMessageId, finalPayload);
+            return;
+          } catch {
+            // Fall back to sending a new message if edit fails.
+          }
+        }
+
+        await ctx.rest.sendMessage(ctx.channelId, withCommandReplyReference(ctx, finalPayload));
+        return;
+      }
+
+      const payload = buildNowPlayingPayload(fields);
       await ctx.rest.sendMessage(ctx.channelId, withCommandReplyReference(ctx, payload));
     },
   }));

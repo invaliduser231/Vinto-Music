@@ -193,6 +193,7 @@ export function loadConfig(env = process.env) {
     searchPickTimeoutMs: parsePositiveInt(env.SEARCH_PICK_TIMEOUT_MS, 45_000),
     playbackDiagnosticsEnabled: parseBool(env.PLAYBACK_DIAGNOSTICS_ENABLED, false),
     playbackDiagnosticsIntervalMs: parsePositiveInt(env.PLAYBACK_DIAGNOSTICS_INTERVAL_MS, 1_000),
+    auddApiToken: env.AUDD_API_TOKEN?.trim() || null,
 
     commandRateLimitEnabled: parseBool(env.COMMAND_RATE_LIMIT_ENABLED, true),
     commandUserWindowMs: parsePositiveInt(env.COMMAND_USER_WINDOW_MS, 10_000),

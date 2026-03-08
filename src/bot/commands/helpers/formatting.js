@@ -115,7 +115,7 @@ export function formatUptimeCompact(totalSeconds) {
 
 export function buildProgressBar(positionSec, totalSec, size = 16) {
   if (!Number.isFinite(totalSec) || totalSec <= 0) {
-    return `${formatSeconds(positionSec)} • live/unknown`;
+    return `${formatSeconds(positionSec)} • Live`;
   }
 
   const clamped = Math.max(0, Math.min(positionSec, totalSec));

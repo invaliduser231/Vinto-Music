@@ -38,6 +38,9 @@ export function buildInfoPayload(ctx, title, description, fields = [], options =
     for (const field of fields ?? []) {
       lines.push(`${field.name}: ${field.value}`);
     }
+    if (safeOptions.footer) {
+      lines.push(String(safeOptions.footer));
+    }
     return { content: lines.join('\n').slice(0, 1900) };
   }
 
@@ -49,6 +52,7 @@ export function buildInfoPayload(ctx, title, description, fields = [], options =
         fields,
         thumbnailUrl: safeOptions.thumbnailUrl ?? null,
         imageUrl: safeOptions.imageUrl ?? null,
+        footer: safeOptions.footer ?? null,
       }),
     ],
     allowed_mentions: {
