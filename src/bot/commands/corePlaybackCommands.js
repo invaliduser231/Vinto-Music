@@ -555,36 +555,41 @@ registry.register(createCommand({
 
       const totalSec = parseDurationToSeconds(current.duration);
       const progressSec = session.player.getProgressSeconds();
-      const sourceLabel = current.source === 'radio-stream' ? 'Live' : (current.source ?? 'unknown');
-      const fields = [
-        { name: 'Progress', value: buildProgressBar(progressSec, totalSec ?? Number.NaN) },
-        { name: 'Source', value: sourceLabel, inline: true },
-        { name: 'Loop', value: session.player.loopMode, inline: true },
-        { name: 'Volume', value: `${session.player.volumePercent}%`, inline: true },
-        { name: 'Queued', value: String(session.player.pendingTracks.length), inline: true },
-      ];
+      const isRadio = current.source === 'radio-stream';
+      const fields = isRadio
+        ? [
+            { name: 'Progress', value: buildProgressBar(progressSec, totalSec ?? Number.NaN) },
+            {
+              name: 'Station',
+              value: current.url
+                ? `[${String(current.title ?? 'Live Radio').trim() || 'Live Radio'}](${current.url})`
+                : (String(current.title ?? 'Live Radio').trim() || 'Live Radio'),
+              inline: true,
+            },
+          ]
+        : [
+            { name: 'Progress', value: buildProgressBar(progressSec, totalSec ?? Number.NaN) },
+            { name: 'Loop', value: session.player.loopMode, inline: true },
+            { name: 'Volume', value: `${session.player.volumePercent}%`, inline: true },
+            { name: 'Queued', value: String(session.player.pendingTracks.length), inline: true },
+          ];
 
       const buildNowPlayingPayload = (nextFields) => buildInfoPayload(
         ctx,
         'Now Playing',
-        trackLabel(current),
+        isRadio ? null : trackLabel(current),
         nextFields,
         {
           thumbnailUrl: current.thumbnailUrl ?? null,
           imageUrl: current.thumbnailUrl ?? null,
-          footer: current.source === 'radio-stream'
-            ? RADIO_RECOGNITION_SUPPORT_FOOTER
-            : null,
+          footer: isRadio ? RADIO_RECOGNITION_SUPPORT_FOOTER : null,
         }
       );
 
-      if (current.source === 'radio-stream' && current.url) {
+      if (isRadio && current.url) {
         const pendingFields = [
           ...fields,
-          {
-            name: 'Live Song',
-            value: 'Recognizing the current radio track...',
-          },
+          { name: 'Song', value: 'Detecting...', inline: true },
         ];
         const pendingPayload = buildNowPlayingPayload(pendingFields);
         const pendingMessage = await ctx.rest.sendMessage(
@@ -600,14 +605,18 @@ registry.register(createCommand({
 
         const nextFields = [...fields];
         if (detected) {
-          const liveSong = detected.artist
-            ? `${detected.artist} - ${detected.title ?? 'Unknown title'}`
-            : String(detected.title ?? 'Unknown title');
-          nextFields.push({ name: 'Live Song', value: liveSong });
-          nextFields.push({ name: 'Recognition', value: detected.source, inline: true });
-        } else {
+          nextFields.unshift({
+            name: 'Song',
+            value: String(detected.title ?? 'Unknown title'),
+          });
           nextFields.push({
-            name: 'Live Song',
+            name: 'Artist',
+            value: String(detected.artist ?? 'Unknown artist'),
+            inline: true,
+          });
+        } else {
+          nextFields.unshift({
+            name: 'Song',
             value: ctx.config?.auddApiToken
               ? 'Could not detect the current song.'
               : 'No stream metadata available. Set `AUDD_API_TOKEN` for audio recognition fallback.',
