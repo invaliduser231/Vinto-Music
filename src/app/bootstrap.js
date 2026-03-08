@@ -17,16 +17,55 @@ import { sanitizeBrokenLocalProxyEnv } from './proxy.js';
 import { verifyApiConnectivity, resolveGatewayUrl } from './connectivity.js';
 import { bindGatewayMetrics, bindSessionMetrics, createAppMetrics } from './metrics.js';
 
-function buildGatewayPresence() {
+const PRESENCE_ROTATION_INTERVAL_MS = 10 * 60 * 1000;
+const PRESENCE_SLOGANS = [
+  (guildCount) => `${guildCount} guilds tuned in`,
+  () => 'always on beat',
+  () => 'queueing the next banger',
+  (guildCount) => `spinning for ${guildCount} guilds`,
+  () => 'music around the clock',
+];
+
+function buildGatewayPresence(statusText) {
   return {
-    since: null,
-    afk: false,
     status: 'online',
-    activities: [{
-      name: 'midnight jukebox requests',
-      type: 0,
-    }],
+    mobile: false,
+    afk: false,
+    custom_status: {
+      text: String(statusText ?? '').trim() || 'online',
+    },
   };
+}
+
+async function fetchCurrentGuildCount(rest) {
+  if (!rest?.listCurrentUserGuilds) return null;
+
+  const guildIds = new Set();
+  let after = null;
+
+  for (let page = 0; page < 100; page += 1) {
+    const chunk = await rest.listCurrentUserGuilds({ limit: 200, after }).catch(() => null);
+    if (!Array.isArray(chunk) || chunk.length === 0) break;
+
+    for (const guild of chunk) {
+      const guildId = String(guild?.id ?? '').trim();
+      if (guildId) guildIds.add(guildId);
+    }
+
+    if (chunk.length < 200) break;
+
+    const lastId = String(chunk[chunk.length - 1]?.id ?? '').trim();
+    if (!lastId) break;
+    after = lastId;
+  }
+
+  return guildIds.size;
+}
+
+function createPresenceText(guildCount, rotationIndex) {
+  const safeGuildCount = Number.isFinite(guildCount) && guildCount >= 0 ? guildCount : 0;
+  const pick = PRESENCE_SLOGANS[rotationIndex % PRESENCE_SLOGANS.length] ?? PRESENCE_SLOGANS[0];
+  return pick(safeGuildCount);
 }
 
 export async function startApp() {
@@ -129,7 +168,34 @@ export async function startApp() {
   await musicLibrary.init();
 
   const gatewayUrl = await resolveGatewayUrl({ config, rest, logger });
-  const initialPresence = buildGatewayPresence();
+  const initialGuildCount = await fetchCurrentGuildCount(rest).catch(() => null);
+  let presenceRotationIndex = 0;
+  let presenceUpdateHandle = null;
+  let lastPresenceText = Number.isFinite(initialGuildCount)
+    ? createPresenceText(initialGuildCount, presenceRotationIndex)
+    : 'always on beat';
+  if (Number.isFinite(initialGuildCount)) {
+    presenceRotationIndex = (presenceRotationIndex + 1) % PRESENCE_SLOGANS.length;
+  }
+  const applyRotatingPresence = async (reason, guildCountOverride = null) => {
+    const guildCount = Number.isFinite(guildCountOverride)
+      ? guildCountOverride
+      : await fetchCurrentGuildCount(rest).catch(() => null);
+    if (!Number.isFinite(guildCount)) return false;
+
+    const nextText = createPresenceText(guildCount, presenceRotationIndex);
+    presenceRotationIndex = (presenceRotationIndex + 1) % PRESENCE_SLOGANS.length;
+    if (!nextText || nextText === lastPresenceText) return false;
+
+    const presence = buildGatewayPresence(nextText);
+    const updated = gateway.updatePresence(presence);
+    if (!updated) return false;
+
+    lastPresenceText = nextText;
+    logger.info('Gateway presence updated', { reason, guildCount, text: nextText });
+    return true;
+  };
+  const initialPresence = buildGatewayPresence(lastPresenceText);
   const gateway = new Gateway({
     url: gatewayUrl,
     token: config.token,
@@ -199,15 +265,12 @@ export async function startApp() {
 
   gateway.on('READY', (payload) => {
     setBotUserId(payload?.user?.id, 'gateway_ready');
-    if (initialPresence) {
-      gateway.updatePresence(initialPresence);
-    }
+    const readyGuildCount = Array.isArray(payload?.guilds) ? payload.guilds.length : null;
+    applyRotatingPresence('ready', readyGuildCount).catch(() => null);
   });
 
   gateway.on('RESUMED', () => {
-    if (initialPresence) {
-      gateway.updatePresence(initialPresence);
-    }
+    applyRotatingPresence('resumed').catch(() => null);
   });
 
   const monitoringServer = new MonitoringServer({
@@ -249,6 +312,14 @@ export async function startApp() {
   });
 
   gateway.connect();
+  presenceUpdateHandle = setInterval(() => {
+    applyRotatingPresence('interval').catch((err) => {
+      logger.debug('Gateway presence refresh failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }, PRESENCE_ROTATION_INTERVAL_MS);
+  presenceUpdateHandle.unref?.();
 
   const shutdown = async (signal) => {
     if (shuttingDown) return;
@@ -264,6 +335,10 @@ export async function startApp() {
 
     unbindSessionMetrics();
     unbindGatewayMetrics();
+    if (presenceUpdateHandle) {
+      clearInterval(presenceUpdateHandle);
+      presenceUpdateHandle = null;
+    }
 
     gateway.disconnect();
     await monitoringServer.stop().catch((err) => {

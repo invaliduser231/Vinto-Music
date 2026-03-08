@@ -12,6 +12,7 @@ const Op = {
   INVALID_SESSION: 9,
   HELLO: 10,
   HEARTBEAT_ACK: 11,
+  GATEWAY_ERROR: 12,
 };
 
 const NON_RECOVERABLE_CLOSE_CODES = new Set([
@@ -152,6 +153,7 @@ export class Gateway extends EventEmitter {
 
   updatePresence(presence) {
     if (!presence || typeof presence !== 'object') return false;
+    this.initialPresence = presence;
     this._send(Op.PRESENCE_UPDATE, presence);
     return true;
   }
@@ -299,6 +301,13 @@ export class Gateway extends EventEmitter {
         }
 
         this.emit(t, d);
+        break;
+
+      case Op.GATEWAY_ERROR:
+        this.logger?.warn?.('Gateway reported an error', {
+          details: d ?? null,
+        });
+        this.emit('GATEWAY_ERROR', d);
         break;
 
       default:
