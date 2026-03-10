@@ -112,6 +112,52 @@ test('spotify artist URLs resolve via top tracks path', async () => {
   assert.equal(tracks[0].title, 'Strobe');
 });
 
+test('spotify playlist youtube mirroring keeps the artist in the search query', async () => {
+  const player = createPlayer({ deezerArl: null });
+
+  player._spotifyApiRequest = async () => ({
+    tracks: {
+      items: [{
+        track: {
+          id: 'sppl123',
+          name: 'Both',
+          duration_ms: 166000,
+          external_urls: { spotify: 'https://open.spotify.com/track/sppl123' },
+          album: {
+            images: [{ url: 'https://i.scdn.co/image/demo-playlist' }],
+          },
+          artists: [{ name: 'Headie One' }],
+        },
+      }],
+    },
+  });
+
+  player._resolveCrossSourceToYouTube = async (items, requestedBy, source) => {
+    assert.equal(source, 'spotify');
+    assert.equal(requestedBy, 'user-1');
+    assert.equal(items.length, 1);
+    assert.equal(items[0].title, 'Both');
+    assert.equal(items[0].artist, 'Headie One');
+    assert.equal(items[0].durationInSec, 166);
+
+    return [
+      player._buildTrack({
+        title: 'Headie One - Both',
+        url: 'https://www.youtube.com/watch?v=demo1234567',
+        duration: 166,
+        requestedBy,
+        source,
+        artist: 'Headie One',
+      }),
+    ];
+  };
+
+  const tracks = await player._resolveSpotifyCollection('https://open.spotify.com/playlist/37i9dQZF1DX1tyCD9QhIWF', 'user-1');
+  assert.equal(tracks.length, 1);
+  assert.equal(tracks[0].url, 'https://www.youtube.com/watch?v=demo1234567');
+  assert.equal(tracks[0].source, 'spotify');
+});
+
 test('spotify api requests keep the /v1 prefix for relative paths', async () => {
   const player = createPlayer();
   const originalFetch = global.fetch;

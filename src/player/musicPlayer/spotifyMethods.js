@@ -172,6 +172,9 @@ export const spotifyMethods = {
       throw new ValidationError('Could not build Spotify mirror search query.');
     }
 
+    const durationInSec = this._parseDurationSeconds?.(metadataTrack.duration)
+      ?? Math.floor(normalizeSpotifyDurationMs(metadataTrack.duration) / 1000);
+
     if (this.deezerArl && this.enableDeezerImport) {
       const deezerMatches = await this._searchDeezerTracks(query, 3, requestedBy).catch(() => []);
       const deezerBest = this._pickBestSpotifyMirror(metadataTrack, deezerMatches);
@@ -188,7 +191,7 @@ export const spotifyMethods = {
     return this._resolveCrossSourceToYouTube([{
       title: metadataTrack.title,
       artist: metadataTrack.artist,
-      durationInSec: Math.floor(normalizeSpotifyDurationMs(metadataTrack.duration) / 1000),
+      durationInSec,
     }], requestedBy, 'spotify');
   },
 

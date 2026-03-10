@@ -75,6 +75,26 @@ function buildRadioTitle(url, headers) {
   }
 }
 
+function resolveSourceArtist(sourceTrack) {
+  const nestedArtist = pickArtistName(sourceTrack);
+  if (nestedArtist) return nestedArtist;
+
+  const candidates = [
+    sourceTrack?.artist,
+    sourceTrack?.artistName,
+    sourceTrack?.creator,
+    sourceTrack?.uploader,
+    sourceTrack?.author,
+  ];
+
+  for (const candidate of candidates) {
+    const value = String(candidate ?? '').trim();
+    if (value) return value;
+  }
+
+  return null;
+}
+
 export const urlResolverMethods = {
   async _resolveSpotifyTrack(_url, _requestedBy) {
     if (!this.enableSpotifyImport) {
@@ -100,8 +120,8 @@ export const urlResolverMethods = {
 
     const resolved = [];
     for (const sourceTrack of sourceTracks) {
-      const title = sourceTrack.title || sourceTrack.name || 'Unknown title';
-      const artist = pickArtistName(sourceTrack);
+      const title = String(sourceTrack?.title ?? sourceTrack?.name ?? 'Unknown title').trim() || 'Unknown title';
+      const artist = resolveSourceArtist(sourceTrack);
       const query = artist ? `${artist} - ${title}` : title;
       const result = await playdl.search(query, { source: { youtube: 'video' }, limit: 1 }).catch(() => []);
       if (!result.length) continue;
