@@ -20,6 +20,8 @@ services:
       FFMPEG_BIN: /usr/bin/ffmpeg
       YTDLP_BIN: /usr/local/bin/yt-dlp
       YTDLP_COOKIES_FILE: /app/cookies.txt
+      YTDLP_YOUTUBE_CLIENT: ${YTDLP_YOUTUBE_CLIENT:-web}
+      YTDLP_EXTRA_ARGS: ${YTDLP_EXTRA_ARGS:---js-runtimes,node}
       MONITORING_ENABLED: ${MONITORING_ENABLED:-1}
       MONITORING_HOST: 0.0.0.0
       MONITORING_PORT: ${MONITORING_PORT:-9091}
