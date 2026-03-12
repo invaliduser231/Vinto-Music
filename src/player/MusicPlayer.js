@@ -1021,6 +1021,9 @@ export class MusicPlayer extends EventEmitter {
     if (this.ytdlpCookiesFromBrowser) {
       args.push('--cookies-from-browser', this.ytdlpCookiesFromBrowser);
     }
+    if (this.ytdlpExtraArgs.length) {
+      args.push(...this.ytdlpExtraArgs);
+    }
 
     args.push(url);
     const { stdout } = await this._runYtDlpCommand(args, 15_000);
@@ -1178,6 +1181,9 @@ export class MusicPlayer extends EventEmitter {
     }
     if (this.ytdlpCookiesFromBrowser) {
       args.push('--cookies-from-browser', this.ytdlpCookiesFromBrowser);
+    }
+    if (this.ytdlpExtraArgs.length) {
+      args.push(...this.ytdlpExtraArgs);
     }
 
     args.push(url);
@@ -1576,7 +1582,9 @@ export class MusicPlayer extends EventEmitter {
         return await this._spawnProcess(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
       } catch (err) {
         if (err?.code === 'ENOENT') {
-          lastErr = err;
+          if (!lastErr) {
+            lastErr = err;
+          }
           continue;
         }
         throw err;
@@ -1640,6 +1648,9 @@ export class MusicPlayer extends EventEmitter {
     }
     if (this.ytdlpCookiesFromBrowser) {
       commonArgs.push('--cookies-from-browser', this.ytdlpCookiesFromBrowser);
+    }
+    if (this.ytdlpExtraArgs.length) {
+      commonArgs.push(...this.ytdlpExtraArgs);
     }
 
     commonArgs.push(searchExpr);
