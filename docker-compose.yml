@@ -19,9 +19,12 @@ services:
       PREFIX: ${PREFIX:-!}
       FFMPEG_BIN: /usr/bin/ffmpeg
       YTDLP_BIN: /usr/local/bin/yt-dlp
+      YTDLP_COOKIES_FILE: /app/cookies.txt
       MONITORING_ENABLED: ${MONITORING_ENABLED:-1}
       MONITORING_HOST: 0.0.0.0
       MONITORING_PORT: ${MONITORING_PORT:-9091}
+    volumes:
+      - /vinto/cookies.txt:/app/cookies.txt:ro
     ports:
       - "${MONITORING_PORT:-9091}:${MONITORING_PORT:-9091}"
     healthcheck:
