@@ -113,6 +113,26 @@ Useful commands:
 | Tests | `npm test` |
 | Spotify token helper | `npm run spotify:token` |
 
+## Deploy On Coolify
+
+This repo now includes [`docker-compose.yml`](docker-compose.yml) and a production [`Dockerfile`](Dockerfile) for Coolify.
+
+### Recommended Coolify setup
+
+- Use the Docker Compose deployment type.
+- Set at least `BOT_TOKEN` in Coolify.
+- Leave `MONGODB_URI` unset if you want to use the bundled `mongo` service from `docker-compose.yml`.
+- Expose port `9091` if you want Coolify or external monitoring to reach `/healthz`, `/readyz`, and `/metrics`.
+- Add any optional provider secrets such as `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `SPOTIFY_REFRESH_TOKEN`, `DEEZER_ARL`, or `SENTRY_DSN` directly in Coolify as environment variables.
+
+If you use an external MongoDB instead of the bundled container, set:
+
+```env
+MONGODB_URI=mongodb://user:password@your-mongo-host:27017
+```
+
+The container image already installs `ffmpeg` and `yt-dlp`, so YouTube playback dependencies are present inside the app container.
+
 ## Recommended Setups
 
 <details>

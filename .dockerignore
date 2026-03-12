@@ -1,0 +1,12 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+.idea
+.env
+coverage
+test
+docs
+assets
+--Frag1
+--Frag34
