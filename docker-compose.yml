@@ -10,6 +10,7 @@ services:
     environment:
       BOT_TOKEN: ${BOT_TOKEN}
       NODE_ENV: production
+      NODE_OPTIONS: ${NODE_OPTIONS:---openssl-legacy-provider}
       MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017}
       MONGODB_DB: ${MONGODB_DB:-fluxer_music_bot}
       LOG_LEVEL: ${LOG_LEVEL:-info}
