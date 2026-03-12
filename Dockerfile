@@ -4,7 +4,9 @@ ENV NODE_ENV=production \
     DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ffmpeg yt-dlp ca-certificates \
+  && apt-get install -y --no-install-recommends ffmpeg ca-certificates curl \
+  && curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
+  && chmod 755 /usr/local/bin/yt-dlp \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
