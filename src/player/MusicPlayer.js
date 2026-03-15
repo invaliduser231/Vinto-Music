@@ -1366,6 +1366,7 @@ export class MusicPlayer extends EventEmitter {
         await this._startYtDlpPipelineWithFormat(url, seekSec, attempt.format, attempt.includeClientArg);
         return;
       } catch (err) {
+        this._cleanupProcesses();
         lastErr = err;
         if (!isRetryableYtDlpStartupError(err)) {
           throw err;
