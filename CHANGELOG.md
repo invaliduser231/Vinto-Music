@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.4.9] - 2026-03-16
+
+- HTTP/radio playback and URL classification hardening:
+  - split direct HTTP audio files from live radio streams so `.mp3`-style URLs no longer default to radio handling
+  - restored live-radio handling for generic `m3u8`/`m3u`/`pls` inputs, including relative HLS playlist targets and fallback live classification
+  - routed generic HTTP media URLs through direct ffmpeg playback instead of `play-dl`
+  - simplified live HTTP ffmpeg input flags for wider compatibility with Icecast/Shoutcast/Securenet-style streams
+  - enriched startup playback errors with ffmpeg stderr details to make failing URLs diagnosable
+- YouTube and seek behavior:
+  - changed single YouTube URL and search resolution to prefer `yt-dlp` before `play-dl`
+  - switched YouTube seek startup to prefer direct media URLs for more reliable long seeks
+  - rejected seek targets at or beyond the known track length instead of failing later during playback startup
+- Radio now-playing and progress UX:
+  - kept live progress labeling for real radio streams while showing `Unknown` for non-live tracks with missing duration
+  - added ffmpeg-based audio sampling for HLS radio links so AudD fallback can work on playlist-style live streams
+  - kept radio-only now-playing recognition behavior tied to tracks classified as `radio-stream`
+- Runtime defaults and operational stability:
+  - reduced default MongoDB pool sizing for smaller deployments
+  - added conservative Docker/Node memory defaults for self-hosted runtime stability
+  - stopped retrying unsafe REST message sends automatically to avoid duplicate bot messages on client-side timeouts
+- Tests:
+  - added regression coverage for HTTP audio vs radio classification, HLS resolver fallback, yt-dlp seek startup, and radio now-playing fallback behavior
+
 ## [0.4.8] - 2026-03-10
 
 - Spotify playlist mirroring fix:

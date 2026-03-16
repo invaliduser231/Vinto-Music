@@ -1,6 +1,7 @@
 FROM node:20-bookworm-slim
 
 ENV NODE_ENV=production \
+    NODE_OPTIONS="--max-old-space-size=1024 --openssl-legacy-provider" \
     DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update \

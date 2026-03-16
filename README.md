@@ -124,6 +124,7 @@ This repo now includes [`docker-compose.yml`](docker-compose.yml) and a producti
 - Leave `MONGODB_URI` unset if you want to use the bundled `mongo` service from `docker-compose.yml`.
 - Expose port `9091` if you want Coolify or external monitoring to reach `/healthz`, `/readyz`, and `/metrics`.
 - Add any optional provider secrets such as `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `SPOTIFY_REFRESH_TOKEN`, `DEEZER_ARL`, or `SENTRY_DSN` directly in Coolify as environment variables.
+- The bundled Docker defaults already set conservative memory values: `NODE_OPTIONS=--max-old-space-size=1024 --openssl-legacy-provider`, `MONGODB_MAX_POOL_SIZE=20`, and `MONGODB_MIN_POOL_SIZE=2`. Override them in Coolify only if you want different limits.
 
 If you use an external MongoDB instead of the bundled container, set:
 

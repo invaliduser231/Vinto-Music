@@ -134,7 +134,7 @@ These are used only by `npm run spotify:token`.
 | `YTDLP_COOKIES_FROM_BROWSER` | empty | Import cookies from a local browser profile. |
 | `YTDLP_YOUTUBE_CLIENT` | empty | Optional YouTube extractor profile(s). |
 | `YTDLP_EXTRA_ARGS` | empty | Comma-separated extra yt-dlp args. |
-| `YOUTUBE_PLAYLIST_RESOLVER` | `ytdlp` | `ytdlp`, `playdl`, or `auto` (`auto` normalizes to `ytdlp`). |
+| `YOUTUBE_PLAYLIST_RESOLVER` | `ytdlp` | Playlist resolver order. Single-track YouTube metadata and text search also prefer `yt-dlp`, with `play-dl` only as fallback. |
 
 ## Command Rate Limits
 

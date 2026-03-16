@@ -154,7 +154,7 @@ export function loadConfig(env = process.env) {
 
     mongoUri: env.MONGODB_URI?.trim() || null,
     mongoDb: env.MONGODB_DB?.trim() || 'fluxer_music_bot',
-    mongoMaxPoolSize: parsePositiveInt(env.MONGODB_MAX_POOL_SIZE, 120),
+    mongoMaxPoolSize: parsePositiveInt(env.MONGODB_MAX_POOL_SIZE, 20),
     mongoMinPoolSize: parseNonNegativeInt(env.MONGODB_MIN_POOL_SIZE, 5),
     mongoConnectTimeoutMs: parsePositiveInt(env.MONGODB_CONNECT_TIMEOUT_MS, 10_000),
     mongoServerSelectionTimeoutMs: parsePositiveInt(env.MONGODB_SERVER_SELECTION_TIMEOUT_MS, 10_000),
