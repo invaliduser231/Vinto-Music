@@ -57,16 +57,22 @@ function normalizeChannelId(value) {
   return /^\d{6,}$/.test(normalized) ? normalized : null;
 }
 
+function normalizeVolumePercent(value, fallback) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 200 ? parsed : fallback;
+}
+
 function cloneConfig(config) {
   return {
     guildId: config.guildId,
     prefix: config.prefix,
-    settings: {
-      dedupeEnabled: config.settings.dedupeEnabled,
-      stayInVoiceEnabled: config.settings.stayInVoiceEnabled,
-      voteSkipRatio: config.settings.voteSkipRatio,
-      voteSkipMinVotes: config.settings.voteSkipMinVotes,
-      djRoleIds: [...config.settings.djRoleIds],
+      settings: {
+        dedupeEnabled: config.settings.dedupeEnabled,
+        stayInVoiceEnabled: config.settings.stayInVoiceEnabled,
+        volumePercent: config.settings.volumePercent,
+        voteSkipRatio: config.settings.voteSkipRatio,
+        voteSkipMinVotes: config.settings.voteSkipMinVotes,
+        djRoleIds: [...config.settings.djRoleIds],
       musicLogChannelId: config.settings.musicLogChannelId,
     },
     createdAt: config.createdAt,
@@ -103,6 +109,7 @@ export class GuildConfigStore {
       settings: {
         dedupeEnabled: Boolean(options.defaults?.settings?.dedupeEnabled),
         stayInVoiceEnabled: Boolean(options.defaults?.settings?.stayInVoiceEnabled),
+        volumePercent: normalizeVolumePercent(options.defaults?.settings?.volumePercent, 100),
         voteSkipRatio: toRatio(options.defaults?.settings?.voteSkipRatio, 0.5),
         voteSkipMinVotes: toPositiveInt(options.defaults?.settings?.voteSkipMinVotes, 2),
         djRoleIds: normalizeRoleIds(options.defaults?.settings?.djRoleIds ?? []),
@@ -185,6 +192,7 @@ export class GuildConfigStore {
           settings: {
             dedupeEnabled: next.settings.dedupeEnabled,
             stayInVoiceEnabled: next.settings.stayInVoiceEnabled,
+            volumePercent: next.settings.volumePercent,
             voteSkipRatio: next.settings.voteSkipRatio,
             voteSkipMinVotes: next.settings.voteSkipMinVotes,
             djRoleIds: [...next.settings.djRoleIds],
@@ -221,6 +229,14 @@ export class GuildConfigStore {
 
       if (settingsPatch.stayInVoiceEnabled !== undefined) {
         next.settings.stayInVoiceEnabled = toBool(settingsPatch.stayInVoiceEnabled, next.settings.stayInVoiceEnabled);
+      }
+
+      if (settingsPatch.volumePercent !== undefined) {
+        const volume = Number.parseInt(String(settingsPatch.volumePercent), 10);
+        if (!Number.isFinite(volume) || volume < 0 || volume > 200) {
+          throw new ValidationError('Volume must be an integer between 0 and 200.');
+        }
+        next.settings.volumePercent = volume;
       }
 
       if (settingsPatch.voteSkipRatio !== undefined) {
@@ -262,6 +278,7 @@ export class GuildConfigStore {
       settings: {
         dedupeEnabled: toBool(settings.dedupeEnabled, this.defaults.settings.dedupeEnabled),
         stayInVoiceEnabled: toBool(settings.stayInVoiceEnabled, this.defaults.settings.stayInVoiceEnabled),
+        volumePercent: normalizeVolumePercent(settings.volumePercent, this.defaults.settings.volumePercent),
         voteSkipRatio: toRatio(settings.voteSkipRatio, this.defaults.settings.voteSkipRatio),
         voteSkipMinVotes: toPositiveInt(settings.voteSkipMinVotes, this.defaults.settings.voteSkipMinVotes),
         djRoleIds: normalizeRoleIds(settings.djRoleIds),
@@ -280,6 +297,7 @@ export class GuildConfigStore {
 
     if (as.dedupeEnabled !== bs.dedupeEnabled) return false;
     if (as.stayInVoiceEnabled !== bs.stayInVoiceEnabled) return false;
+    if (as.volumePercent !== bs.volumePercent) return false;
     if (as.voteSkipRatio !== bs.voteSkipRatio) return false;
     if (as.voteSkipMinVotes !== bs.voteSkipMinVotes) return false;
     if (as.musicLogChannelId !== bs.musicLogChannelId) return false;

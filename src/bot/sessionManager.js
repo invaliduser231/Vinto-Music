@@ -15,6 +15,11 @@ function toPositiveInt(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function toVolumePercent(value, fallback) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 200 ? parsed : fallback;
+}
+
 function toRatio(value, fallback) {
   const parsed = Number.parseFloat(String(value ?? ''));
   return Number.isFinite(parsed) && parsed > 0 && parsed <= 1 ? parsed : fallback;
@@ -46,6 +51,7 @@ function defaultSettings(config) {
   return {
     dedupeEnabled: Boolean(config.defaultDedupeEnabled),
     stayInVoiceEnabled: Boolean(config.defaultStayInVoiceEnabled),
+    volumePercent: toVolumePercent(config.defaultVolumePercent, 100),
     voteSkipRatio: toRatio(config.voteSkipRatio, 0.5),
     voteSkipMinVotes: toPositiveInt(config.voteSkipMinVotes, 2),
     djRoleIds: new Set(),
@@ -60,6 +66,7 @@ function settingsFromGuildConfig(config, guildConfig) {
   return {
     dedupeEnabled: toBool(source.dedupeEnabled, defaults.dedupeEnabled),
     stayInVoiceEnabled: toBool(source.stayInVoiceEnabled, defaults.stayInVoiceEnabled),
+    volumePercent: toVolumePercent(source.volumePercent, defaults.volumePercent),
     voteSkipRatio: toRatio(source.voteSkipRatio, defaults.voteSkipRatio),
     voteSkipMinVotes: toPositiveInt(source.voteSkipMinVotes, defaults.voteSkipMinVotes),
     djRoleIds: toRoleSet(source.djRoleIds),
@@ -122,7 +129,7 @@ export class SessionManager extends EventEmitter {
       youtubePlaylistResolver: this.config.youtubePlaylistResolver,
       maxQueueSize: this.config.maxQueueSize,
       maxPlaylistTracks: this.config.maxPlaylistTracks,
-      defaultVolumePercent: this.config.defaultVolumePercent,
+      defaultVolumePercent: resolvedGuildConfig?.settings?.volumePercent ?? this.config.defaultVolumePercent,
       minVolumePercent: this.config.minVolumePercent,
       maxVolumePercent: this.config.maxVolumePercent,
       enableYtSearch: this.config.enableYtSearch,
@@ -230,6 +237,10 @@ export class SessionManager extends EventEmitter {
       } else {
         this._scheduleIdleTimeout(session);
       }
+    }
+
+    if (previous.volumePercent !== session.settings.volumePercent) {
+      session.player.setVolumePercent(session.settings.volumePercent);
     }
 
     return session;

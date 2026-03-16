@@ -51,6 +51,7 @@ function buildStore() {
       settings: {
         dedupeEnabled: false,
         stayInVoiceEnabled: false,
+        volumePercent: 100,
         voteSkipRatio: 0.5,
         voteSkipMinVotes: 2,
         djRoleIds: [],
@@ -68,6 +69,7 @@ test('guild config store returns defaults for missing guild', async () => {
   const cfg = await store.get('guild-1');
   assert.equal(cfg.guildId, 'guild-1');
   assert.equal(cfg.prefix, '!');
+  assert.equal(cfg.settings.volumePercent, 100);
   assert.deepEqual(cfg.settings.djRoleIds, []);
 });
 
@@ -80,6 +82,7 @@ test('guild config store persists and normalizes settings updates', async () => 
     settings: {
       dedupeEnabled: true,
       stayInVoiceEnabled: true,
+      volumePercent: 35,
       voteSkipRatio: 0.75,
       voteSkipMinVotes: 3,
       djRoleIds: ['300', '200', '200', 'x', '1000000'],
@@ -89,12 +92,14 @@ test('guild config store persists and normalizes settings updates', async () => 
   assert.equal(updated.prefix, '>>');
   assert.equal(updated.settings.dedupeEnabled, true);
   assert.equal(updated.settings.stayInVoiceEnabled, true);
+  assert.equal(updated.settings.volumePercent, 35);
   assert.equal(updated.settings.voteSkipRatio, 0.75);
   assert.equal(updated.settings.voteSkipMinVotes, 3);
   assert.deepEqual(updated.settings.djRoleIds, ['1000000']);
 
   const loaded = await store.get('guild-1');
   assert.equal(loaded.prefix, '>>');
+  assert.equal(loaded.settings.volumePercent, 35);
   assert.deepEqual(loaded.settings.djRoleIds, ['1000000']);
 });
 
@@ -105,5 +110,15 @@ test('guild config store validates invalid vote-skip ratio', async () => {
   await assert.rejects(
     () => store.update('guild-1', { settings: { voteSkipRatio: 1.2 } }),
     /between 0 and 1/
+  );
+});
+
+test('guild config store validates invalid volume percent', async () => {
+  const store = buildStore();
+  await store.init();
+
+  await assert.rejects(
+    () => store.update('guild-1', { settings: { volumePercent: 250 } }),
+    /between 0 and 200/
   );
 });
