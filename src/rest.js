@@ -274,9 +274,8 @@ export class RestClient {
     if (!error?.retryable) return false;
 
     if (error.status === 429) return true;
-    if (error.status == null) return true;
-
     if (isRetryFriendlyMethod(method)) return true;
+    if (error.status == null) return retryUnsafe;
     return retryUnsafe;
   }
 
@@ -397,7 +396,7 @@ export class RestClient {
     const body = normalizeMessageEditPayload(payload);
     return this.request('PATCH', `/channels/${channelId}/messages/${messageId}`, {
       body,
-      retryUnsafe: true,
+      retryUnsafe: false,
     });
   }
 

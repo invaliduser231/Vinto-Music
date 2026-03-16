@@ -1,4 +1,5 @@
 import { ValidationError } from '../core/errors.js';
+import { RestError } from '../rest.js';
 import { parseCommand } from '../utils/commandParser.js';
 import { makeResponder } from './messageFormatter.js';
 import { buildEmbed } from './messageFormatter.js';
@@ -579,7 +580,19 @@ export class CommandRouter {
           await this._ensureSessionPanelReactions(channelId, features.sessionPanelMessageId);
           this.sessionPanelLastPayloadByGuild.set(digestKey, payloadDigest);
           return;
-        } catch {
+        } catch (err) {
+          const status = err instanceof RestError ? err.status : err?.status ?? null;
+          const canRecreatePanelMessage = status === 404 || status === 403;
+          if (!canRecreatePanelMessage) {
+            this.logger?.warn?.('Session panel edit failed; skipping recreate for transient error', {
+              guildId,
+              channelId,
+              messageId: features.sessionPanelMessageId,
+              error: err instanceof Error ? err.message : String(err),
+              status,
+            });
+            return;
+          }
           // If the old panel message is gone/uneditable, fall through and create a new one.
         }
       }
@@ -603,7 +616,7 @@ export class CommandRouter {
 
     const active = this.sessionPanelUpdateInFlightByGuild.get(key);
     if (active) {
-      await active.catch(() => null);
+      return active.catch(() => null);
     }
 
     const current = (async () => fn())();

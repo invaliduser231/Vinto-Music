@@ -83,3 +83,29 @@ test('global 429 sets temporary global throttle for next request', async () => {
     global.fetch = originalFetch;
   }
 });
+
+test('editMessage does not retry transient PATCH failures', async () => {
+  const originalFetch = global.fetch;
+  let call = 0;
+
+  global.fetch = async () => {
+    call += 1;
+    throw new Error('socket timeout');
+  };
+
+  try {
+    const rest = new RestClient({
+      token: 'test-token',
+      base: 'https://api.fluxer.app/v1',
+      maxRetries: 4,
+    });
+
+    await assert.rejects(
+      () => rest.editMessage('channel-1', 'message-1', { content: 'hello' }),
+      (error) => error instanceof RestError && error.status == null
+    );
+    assert.equal(call, 1);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
