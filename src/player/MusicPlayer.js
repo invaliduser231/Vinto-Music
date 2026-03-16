@@ -57,6 +57,7 @@ import {
   isAudiusUrl,
   isDeezerUrl,
   isHttpUrl,
+  isLikelyPlaylistUrl,
   isSoundCloudUrl,
   isSpotifyUrl,
   isYouTubeUrl,
@@ -414,7 +415,11 @@ export class MusicPlayer extends EventEmitter {
   canSeekCurrentTrack() {
     if (!this.currentTrack) return false;
     if (this.currentTrack.isLive) return false;
-    return isYouTubeUrl(this.currentTrack.url);
+    if (isYouTubeUrl(this.currentTrack.url)) return true;
+    return isHttpUrl(this.currentTrack.url) && (
+      String(this.currentTrack.source ?? '') === 'http-audio'
+      || String(this.currentTrack.source ?? '') === 'url'
+    );
   }
 
   seekTo(seconds) {
@@ -429,6 +434,11 @@ export class MusicPlayer extends EventEmitter {
     const target = Number.parseInt(String(seconds), 10);
     if (!Number.isFinite(target) || target < 0) {
       throw new ValidationError('Seek target must be a non-negative number of seconds.');
+    }
+
+    const currentDurationSec = this._parseDurationSeconds(this.currentTrack.duration);
+    if (currentDurationSec != null && target >= currentDurationSec) {
+      throw new ValidationError(`Seek target exceeds track length (${this.currentTrack.duration}).`);
     }
 
     this.pendingSeekTrack = {
@@ -564,6 +574,8 @@ export class MusicPlayer extends EventEmitter {
     this.playing = true;
     this.paused = false;
     this.skipRequested = false;
+    let ffmpegStartupStderr = '';
+    let onFfmpegStartupStderr = null;
 
     try {
       this._ensurePlaybackStartupActive(startupToken);
@@ -571,13 +583,18 @@ export class MusicPlayer extends EventEmitter {
       if (isYouTubeUrl(track.url)) {
         await this._startYouTubePipeline(track.url, track.seekStartSec ?? 0);
       } else if (track?.isLive || String(track.source ?? '').startsWith('radio')) {
-        await this._startHttpUrlPipeline(track.url, 0);
+        await this._startHttpUrlPipeline(track.url, 0, { isLive: true });
       } else if (String(track.source ?? '').startsWith('audius')) {
         await this.sources.audius.startPipeline(track, track.seekStartSec ?? 0);
       } else if (track?.deezerTrackId || String(track.source ?? '').startsWith('deezer-direct')) {
         await this.sources.deezer.startPipeline(track, track.seekStartSec ?? 0);
       } else if (String(track.source ?? '').startsWith('soundcloud')) {
         await this.sources.soundcloud.startPipeline(track, track.seekStartSec ?? 0);
+      } else if (
+        String(track.source ?? '') === 'http-audio'
+        || (String(track.source ?? '') === 'url' && isHttpUrl(track.url))
+      ) {
+        await this._startHttpUrlPipeline(track.url, track.seekStartSec ?? 0, { isLive: false });
       } else {
         await this._startPlayDlPipeline(track.url, 0);
       }
@@ -587,6 +604,12 @@ export class MusicPlayer extends EventEmitter {
       if (!ffmpegProc?.stdout?.pipe || !ffmpegProc?.once) {
         throw new Error('Playback pipeline did not initialize ffmpeg output.');
       }
+
+      ffmpegProc.stderr?.setEncoding?.('utf8');
+      onFfmpegStartupStderr = (chunk) => {
+        ffmpegStartupStderr = `${ffmpegStartupStderr}${String(chunk ?? '')}`.slice(-4096);
+      };
+      ffmpegProc.stderr?.on?.('data', onFfmpegStartupStderr);
 
       let playbackStarted = false;
       ffmpegProc.once('close', async (code, signal) => {
@@ -614,7 +637,7 @@ export class MusicPlayer extends EventEmitter {
     } catch (err) {
       const startupAborted = this._isPlaybackStartupAbortedError(err);
       if (!startupAborted) {
-        const normalized = this._normalizePlaybackError(err);
+        const normalized = this._normalizePlaybackError(this._withStartupStderr(err, ffmpegStartupStderr));
         this.emit('trackError', { track, error: normalized });
         this.logger?.error?.('Playback setup failed', { track: track.title, error: normalized.message });
       } else {
@@ -650,6 +673,10 @@ export class MusicPlayer extends EventEmitter {
 
       if (this.skipRequested || pendingSeekTrack) {
         this.emit('queueEmpty');
+      }
+    } finally {
+      if (onFfmpegStartupStderr) {
+        this.ffmpeg?.stderr?.off?.('data', onFfmpegStartupStderr);
       }
     }
   }
@@ -809,6 +836,11 @@ export class MusicPlayer extends EventEmitter {
     }
 
     const url = await this.sources.resolver.normalizeInputUrl(raw);
+    const isGenericStreamPlaylist = !isYouTubeUrl(url) && isLikelyPlaylistUrl(url);
+    if (isGenericStreamPlaylist) {
+      return this.sources.resolver.resolveSingleUrlTrack(url, requestedBy);
+    }
+
     const validation = await playdl.validate(url).catch(() => false);
     const playlistUrl = toCanonicalYouTubePlaylistUrl(url);
     const effectiveValidation = (
@@ -926,15 +958,28 @@ export class MusicPlayer extends EventEmitter {
   }
 
   async _searchYouTubeTracks(query, limit, requestedBy) {
-    const results = await playdl.search(query, { source: { youtube: 'video' }, limit }).catch(async (err) => {
-      if (!isPlayDlBrowseFailure(err)) throw err;
-      this.logger?.warn?.('play-dl searchCandidates failed, trying yt-dlp search fallback', {
+    let results = [];
+    try {
+      results = await this._searchWithYtDlp(query, limit);
+    } catch (err) {
+      this.logger?.warn?.('yt-dlp searchCandidates failed, trying play-dl fallback', {
         query,
         limit,
         error: err instanceof Error ? err.message : String(err),
       });
-      return this._searchWithYtDlp(query, limit);
-    });
+    }
+
+    if (!results.length) {
+      results = await playdl.search(query, { source: { youtube: 'video' }, limit }).catch(async (err) => {
+        if (!isPlayDlBrowseFailure(err)) throw err;
+        this.logger?.warn?.('play-dl searchCandidates failed after yt-dlp attempt', {
+          query,
+          limit,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return [];
+      });
+    }
 
     return results.map((item) => this._buildTrack({
       title: item.title,
@@ -1010,6 +1055,16 @@ export class MusicPlayer extends EventEmitter {
     }
 
     try {
+      const fallback = await this._resolveSingleYouTubeTrackViaYtDlp(url, requestedBy);
+      return [fallback];
+    } catch (err) {
+      this.logger?.warn?.('yt-dlp single YouTube metadata lookup failed, trying play-dl fallback', {
+        url,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    try {
       const info = await this._fetchSingleYouTubeTrackViaPlayDl(url);
       return [this._buildTrack({
         title: info.video_details.title,
@@ -1021,19 +1076,10 @@ export class MusicPlayer extends EventEmitter {
         artist: pickTrackArtistFromMetadata(info.video_details),
       })];
     } catch (err) {
-      this.logger?.warn?.('play-dl single YouTube metadata lookup failed, trying yt-dlp fallback', {
+      this.logger?.warn?.('play-dl single YouTube metadata lookup failed after yt-dlp attempt', {
         url,
         error: err instanceof Error ? err.message : String(err),
       });
-
-      const fallback = await this._resolveSingleYouTubeTrackViaYtDlp(url, requestedBy).catch((fallbackErr) => {
-        this.logger?.warn?.('yt-dlp single YouTube metadata fallback failed', {
-          url,
-          error: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr),
-        });
-        return null;
-      });
-      if (fallback) return [fallback];
 
       return [this._buildTrack({
         title: url,
@@ -1269,15 +1315,21 @@ export class MusicPlayer extends EventEmitter {
     return tracks;
   }
 
-  _ffmpegHttpArgs(inputUrl, seekSec = 0) {
+  _ffmpegHttpArgs(inputUrl, seekSec = 0, options = {}) {
     const filterChain = this._buildTranscodeFilterChain();
     const seek = Math.max(0, Number.parseInt(String(seekSec), 10) || 0);
+    const isLive = options?.isLive === true;
 
     const args = [
-      '-reconnect', '1',
-      '-reconnect_streamed', '1',
-      '-reconnect_delay_max', '5',
+      '-nostdin',
+      '-user_agent', 'Mozilla/5.0 (compatible; FluxerBot/1.0)',
     ];
+
+    if (isLive) {
+      args.push(
+        '-headers', 'Icy-MetaData:1',
+      );
+    }
 
     if (seek > 0) {
       args.push('-ss', String(seek));
@@ -1378,12 +1430,13 @@ export class MusicPlayer extends EventEmitter {
     this.sourceStream.pipe(this.ffmpeg.stdin);
   }
 
-  async _startHttpUrlPipeline(url, seekSec = 0) {
-    this.ffmpeg = await this._spawnProcess(this.ffmpegBin, this._ffmpegHttpArgs(url, seekSec), {
-      stdio: ['ignore', 'pipe', 'ignore'],
+  async _startHttpUrlPipeline(url, seekSec = 0, options = {}) {
+    this.ffmpeg = await this._spawnProcess(this.ffmpegBin, this._ffmpegHttpArgs(url, seekSec, options), {
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
 
     this._bindPipelineErrorHandler(this.ffmpeg.stdout, 'ffmpeg.stdout');
+    this._bindPipelineErrorHandler(this.ffmpeg.stderr, 'ffmpeg.stderr');
   }
 
   async _startYouTubePipeline(url, seekSec = 0) {
@@ -1407,6 +1460,24 @@ export class MusicPlayer extends EventEmitter {
         ];
 
     let lastErr = null;
+    if (seekSec > 0) {
+      for (const attempt of attempts) {
+        try {
+          await this._startYtDlpSeekPipeline(url, seekSec, attempt.format, attempt.includeClientArg);
+          return;
+        } catch (err) {
+          this._cleanupProcesses();
+          lastErr = err;
+          this.logger?.warn?.('yt-dlp seek startup strategy failed, retrying with next strategy', {
+            format: attempt.format ?? '(default)',
+            includeClientArg: attempt.includeClientArg,
+            seekSec,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+    }
+
     for (const attempt of attempts) {
       try {
         await this._startYtDlpPipelineWithFormat(url, seekSec, attempt.format, attempt.includeClientArg);
@@ -1427,6 +1498,29 @@ export class MusicPlayer extends EventEmitter {
     }
 
     throw lastErr ?? new Error('yt-dlp format selection failed');
+  }
+
+  async _startYtDlpSeekPipeline(url, seekSec = 0, formatSelector = 'bestaudio/best', includeClientArg = true) {
+    this._lastYtDlpDiagnostics = {
+      formatSelector: formatSelector ?? null,
+      includeClientArg: Boolean(includeClientArg),
+      selectedFormats: formatSelector ?? null,
+      selectedItag: null,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const streamUrl = await this._resolveYtDlpStreamUrl(url, formatSelector, includeClientArg);
+    if (!streamUrl) {
+      throw new Error('yt-dlp returned no direct media URL for seek playback.');
+    }
+
+    const ffmpegArgs = this._ffmpegHttpArgs(streamUrl, seekSec);
+    this._lastFfmpegArgs = [...ffmpegArgs];
+    this.ffmpeg = await this._spawnProcess(this.ffmpegBin, ffmpegArgs, {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+
+    this._bindPipelineErrorHandler(this.ffmpeg.stdout, 'ffmpeg.stdout');
   }
 
   async _startYtDlpPipelineWithFormat(url, seekSec = 0, formatSelector = 'bestaudio/best', includeClientArg = true) {
@@ -1769,6 +1863,84 @@ export class MusicPlayer extends EventEmitter {
     throw lastErr ?? new Error('yt-dlp command failed');
   }
 
+  async _probeHttpAudioTrack(url, timeoutMs = 15_000) {
+    const ffprobeBin = this.ffmpegBin.endsWith('ffmpeg')
+      ? this.ffmpegBin.replace(/ffmpeg(?:\.exe)?$/i, (match) => match.toLowerCase().endsWith('.exe') ? 'ffprobe.exe' : 'ffprobe')
+      : 'ffprobe';
+    const args = [
+      '-nostdin',
+      '-user_agent', 'Mozilla/5.0 (compatible; FluxerBot/1.0)',
+      '-v', 'error',
+      '-show_entries', 'format=duration:stream=duration:format_tags=title,artist:stream_tags=title,artist',
+      '-of', 'json',
+      url,
+    ];
+
+    const proc = await this._spawnProcess(ffprobeBin, args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const { stdout } = await this._collectProcessOutput(proc, timeoutMs).catch(() => ({ stdout: '' }));
+    if (!stdout?.trim()) return null;
+
+    let payload;
+    try {
+      payload = JSON.parse(stdout);
+    } catch {
+      return null;
+    }
+
+    const durationCandidates = [
+      payload?.format?.duration,
+      ...(Array.isArray(payload?.streams) ? payload.streams.map((stream) => stream?.duration) : []),
+    ];
+    const durationRaw = durationCandidates
+      .map((value) => Number.parseFloat(String(value ?? '')))
+      .find((value) => Number.isFinite(value) && value > 0);
+    const durationSec = Number.isFinite(durationRaw) && durationRaw > 0
+      ? Math.max(1, Math.round(durationRaw))
+      : null;
+
+    return {
+      durationSec,
+      title: String(payload?.format?.tags?.title ?? payload?.streams?.[0]?.tags?.title ?? '').trim() || null,
+      artist: String(payload?.format?.tags?.artist ?? payload?.streams?.[0]?.tags?.artist ?? '').trim() || null,
+    };
+  }
+
+  async _resolveYtDlpStreamUrl(url, formatSelector = 'bestaudio/best', includeClientArg = true) {
+    const args = [
+      '--ignore-config',
+      '--quiet',
+      '--no-warnings',
+      '--no-playlist',
+    ];
+
+    if (formatSelector) {
+      args.push('-f', formatSelector);
+    }
+    if (includeClientArg && this.ytdlpYoutubeClient) {
+      args.push('--extractor-args', `youtube:player_client=${this.ytdlpYoutubeClient}`);
+    }
+    if (this.ytdlpCookiesFile) {
+      args.push('--cookies', this.ytdlpCookiesFile);
+    }
+    if (this.ytdlpCookiesFromBrowser) {
+      args.push('--cookies-from-browser', this.ytdlpCookiesFromBrowser);
+    }
+    if (this.ytdlpExtraArgs.length) {
+      args.push(...this.ytdlpExtraArgs);
+    }
+
+    args.push('--get-url', url);
+    const { stdout } = await this._runYtDlpCommand(args, 20_000);
+    const lines = String(stdout ?? '')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    return lines[0] ?? null;
+  }
+
   _collectProcessOutput(proc, timeoutMs = 12_000) {
     return new Promise((resolve, reject) => {
       let settled = false;
@@ -1959,6 +2131,24 @@ export class MusicPlayer extends EventEmitter {
 
   _isPlaybackStartupAbortedError(err) {
     return err instanceof PlaybackStartupAbortedError;
+  }
+
+  _withStartupStderr(err, stderrText = '') {
+    if (!(err instanceof Error)) return err;
+    const trimmed = String(stderrText ?? '').trim();
+    if (!trimmed) return err;
+    if (!String(err.message ?? '').includes('Playback pipeline exited before audio output')) {
+      return err;
+    }
+
+    const tail = trimmed
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .slice(-2)
+      .join(' | ');
+    if (!tail) return err;
+    return new Error(`${err.message} ${tail}`);
   }
 
   _clearPipelineState() {

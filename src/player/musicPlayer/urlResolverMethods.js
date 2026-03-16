@@ -2,6 +2,8 @@ import playdl from 'play-dl';
 import { ValidationError } from '../../core/errors.js';
 import {
   isHttpUrl,
+  isLikelyDirectAudioFileUrl,
+  isLikelyPlaylistUrl,
   pickArtistName,
   pickThumbnailUrlFromItem,
   sanitizeUrlToSearchQuery,
@@ -30,11 +32,6 @@ function isAudioStreamContentType(contentType) {
   );
 }
 
-function isLikelyPlaylistUrl(value) {
-  const normalized = String(value ?? '').toLowerCase();
-  return normalized.includes('.m3u') || normalized.includes('.m3u8') || normalized.includes('.pls');
-}
-
 function extractFirstHttpLine(lines) {
   for (const line of lines) {
     const trimmed = String(line ?? '').trim();
@@ -44,9 +41,29 @@ function extractFirstHttpLine(lines) {
   return null;
 }
 
-function parseRadioPlaylistBody(body) {
+function extractFirstPlaylistTargetLine(lines, baseUrl = null) {
+  for (const line of lines) {
+    const trimmed = String(line ?? '').trim();
+    if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith(';')) continue;
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    try {
+      if (baseUrl) {
+        return new URL(trimmed, baseUrl).toString();
+      }
+    } catch {}
+  }
+  return null;
+}
+
+function parseRadioPlaylistBody(body, baseUrl = null) {
   const text = String(body ?? '');
   if (!text.trim()) return null;
+
+  const isHlsPlaylist = text.includes('#EXTM3U');
+  const isHlsMediaPlaylist = /#EXTINF:|#EXT-X-TARGETDURATION:|#EXT-X-MEDIA-SEQUENCE:/i.test(text);
+  if (isHlsPlaylist && isHlsMediaPlaylist && baseUrl) {
+    return baseUrl;
+  }
 
   const lines = text.split(/\r?\n/);
   const direct = extractFirstHttpLine(lines);
@@ -55,6 +72,13 @@ function parseRadioPlaylistBody(body) {
   for (const line of lines) {
     const match = String(line ?? '').match(/^File\d+=(https?:\/\/.+)$/i);
     if (match?.[1]) return match[1].trim();
+  }
+
+  const relativeTarget = extractFirstPlaylistTargetLine(lines, baseUrl);
+  if (relativeTarget) return relativeTarget;
+
+  if (isHlsPlaylist && baseUrl) {
+    return baseUrl;
   }
 
   return null;
@@ -73,6 +97,46 @@ function buildRadioTitle(url, headers) {
   } catch {
     return 'Live Radio';
   }
+}
+
+function buildHttpAudioTitle(url, headers) {
+  const disposition = String(headers?.get?.('content-disposition') ?? '').trim();
+  const fileNameMatch = disposition.match(/filename\*?=(?:UTF-8''|")?([^\";]+)/i);
+  if (fileNameMatch?.[1]) {
+    const value = decodeURIComponent(String(fileNameMatch[1]).replace(/"/g, '').trim());
+    if (value) return value;
+  }
+
+  try {
+    const parsed = new URL(url);
+    const lastSegment = parsed.pathname.split('/').filter(Boolean).pop() ?? '';
+    const decoded = decodeURIComponent(lastSegment).trim();
+    if (decoded) return decoded;
+  } catch {}
+
+  return url;
+}
+
+function hasStationHeaders(headers) {
+  return Boolean(
+    headers?.get?.('icy-name')
+    || headers?.get?.('ice-name')
+    || headers?.get?.('x-audiocast-name')
+  );
+}
+
+function isDirectHttpAudioCandidate({ contentType, finalUrl, headers }) {
+  const hasIcyHeaders = hasStationHeaders(headers);
+  if (!isAudioStreamContentType(contentType) || hasIcyHeaders) return false;
+  if (isRadioPlaylistContentType(contentType) || isLikelyPlaylistUrl(finalUrl)) return false;
+
+  const contentDisposition = String(headers?.get?.('content-disposition') ?? '').toLowerCase();
+  const looksLikeAttachment = contentDisposition.includes('attachment') || contentDisposition.includes('filename=');
+  if (!looksLikeAttachment && !isLikelyDirectAudioFileUrl(finalUrl) && contentType === 'audio/mpeg') {
+    return false;
+  }
+
+  return true;
 }
 
 function resolveSourceArtist(sourceTrack) {
@@ -143,6 +207,27 @@ export const urlResolverMethods = {
   },
 
   async _resolveSingleUrlTrack(url, requestedBy) {
+    if (isLikelyPlaylistUrl(url) && !isLikelyDirectAudioFileUrl(url)) {
+      const radioTrack = await this._resolveRadioStreamTrack(url, requestedBy).catch(() => null);
+      if (radioTrack) {
+        return [radioTrack];
+      }
+
+      return [this._buildTrack({
+        title: buildRadioTitle(url, null),
+        url,
+        duration: 'Live',
+        requestedBy,
+        source: 'radio-stream',
+        isLive: true,
+      })];
+    }
+
+    const directAudioTrack = await this._resolveDirectHttpAudioTrack(url, requestedBy).catch(() => null);
+    if (directAudioTrack) {
+      return [directAudioTrack];
+    }
+
     const radioTrack = await this._resolveRadioStreamTrack(url, requestedBy).catch(() => null);
     if (radioTrack) {
       return [radioTrack];
@@ -169,6 +254,40 @@ export const urlResolverMethods = {
     }
   },
 
+  async _resolveDirectHttpAudioTrack(url, requestedBy) {
+    const response = await fetch(url, {
+      method: 'GET',
+      redirect: 'follow',
+      signal: AbortSignal.timeout(10_000),
+    }).catch(() => null);
+
+    if (!response?.ok) {
+      return null;
+    }
+
+    const contentType = String(response.headers.get('content-type') ?? '').toLowerCase();
+    const finalUrl = String(response.url ?? url).trim() || url;
+
+    try {
+      await response.body?.cancel?.();
+    } catch {}
+
+    if (!isDirectHttpAudioCandidate({ contentType, finalUrl, headers: response.headers })) {
+      return null;
+    }
+
+    const probe = await this._probeHttpAudioTrack(finalUrl).catch(() => null);
+    return this._buildTrack({
+      title: String(probe?.title ?? '').trim() || buildHttpAudioTitle(finalUrl, response.headers),
+      url: finalUrl,
+      duration: probe?.durationSec ?? 'Unknown',
+      requestedBy,
+      source: 'http-audio',
+      artist: String(probe?.artist ?? '').trim() || null,
+      isLive: false,
+    });
+  },
+
   async _resolveRadioStreamTrack(url, requestedBy, seen = null) {
     const visited = seen instanceof Set ? seen : new Set();
     const normalizedUrl = String(url ?? '').trim();
@@ -190,20 +309,39 @@ export const urlResolverMethods = {
 
     const contentType = String(response.headers.get('content-type') ?? '').toLowerCase();
     const finalUrl = String(response.url ?? normalizedUrl).trim() || normalizedUrl;
+    const hasIcyHeaders = hasStationHeaders(response.headers);
 
     if (isRadioPlaylistContentType(contentType) || isLikelyPlaylistUrl(finalUrl)) {
       const playlistBody = await response.text().catch(() => '');
-      const nestedUrl = parseRadioPlaylistBody(playlistBody);
+      const nestedUrl = parseRadioPlaylistBody(playlistBody, finalUrl);
       if (!nestedUrl || !isHttpUrl(nestedUrl)) return null;
+      if (nestedUrl === finalUrl) {
+        const title = buildRadioTitle(finalUrl, response.headers);
+        return this._buildTrack({
+          title,
+          url: finalUrl,
+          duration: 'Live',
+          requestedBy,
+          source: 'radio-stream',
+          isLive: true,
+        });
+      }
       return this._resolveRadioStreamTrack(nestedUrl, requestedBy, visited);
     }
 
-    if (!isAudioStreamContentType(contentType) && !response.headers.get('icy-name')) {
+    if (!isAudioStreamContentType(contentType) && !hasIcyHeaders) {
       try {
         await response.body?.cancel?.();
       } catch {
         // ignore early body cancellation errors
       }
+      return null;
+    }
+
+    if (!hasIcyHeaders && isLikelyDirectAudioFileUrl(finalUrl)) {
+      try {
+        await response.body?.cancel?.();
+      } catch {}
       return null;
     }
 

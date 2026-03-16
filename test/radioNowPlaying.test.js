@@ -1,7 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
 
-import { detectRadioNowPlaying } from '../src/bot/commands/helpers/radioNowPlaying.js';
+import {
+  __setRadioNowPlayingSpawnForTests,
+  detectRadioNowPlaying,
+} from '../src/bot/commands/helpers/radioNowPlaying.js';
 
 function createReadableStreamFromChunks(chunks) {
   const queue = [...chunks];
@@ -114,5 +119,61 @@ test('detectRadioNowPlaying falls back to AudD when no ICY metadata exists', asy
     ]);
   } finally {
     global.fetch = originalFetch;
+  }
+});
+
+test('detectRadioNowPlaying uses ffmpeg audio sampling for hls urls before AudD fallback', async () => {
+  const originalFetch = global.fetch;
+
+  global.fetch = async (input) => {
+    const url = String(input);
+    if (url === 'https://radio.example/live.m3u8') {
+      return createResponse({
+        headers: {
+          'content-type': 'application/vnd.apple.mpegurl',
+        },
+        body: createReadableStreamFromChunks([new Uint8Array(Buffer.from('#EXTM3U\n'))]),
+      });
+    }
+    if (url === 'https://api.audd.io/') {
+      return createResponse({
+        json: {
+          status: 'success',
+          result: {
+            artist: 'HLS Artist',
+            title: 'HLS Track',
+          },
+        },
+      });
+    }
+    throw new Error(`Unexpected fetch: ${url}`);
+  };
+
+  __setRadioNowPlayingSpawnForTests(() => {
+    const proc = new EventEmitter();
+    proc.stdout = new PassThrough();
+    proc.kill = () => {};
+    queueMicrotask(() => {
+      proc.stdout.write(Buffer.alloc(70 * 1024));
+      proc.stdout.end();
+      proc.emit('close', 0, null);
+    });
+    return proc;
+  });
+
+  try {
+    const detected = await detectRadioNowPlaying({
+      url: 'https://radio.example/live.m3u8',
+      auddApiToken: 'demo-token',
+      logger: null,
+    });
+    assert.deepEqual(detected, {
+      artist: 'HLS Artist',
+      title: 'HLS Track',
+      source: 'audd',
+    });
+  } finally {
+    global.fetch = originalFetch;
+    __setRadioNowPlayingSpawnForTests(null);
   }
 });

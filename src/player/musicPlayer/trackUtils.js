@@ -7,6 +7,25 @@ export function isHttpUrl(value) {
   }
 }
 
+export function isLikelyPlaylistUrl(value) {
+  const normalized = String(value ?? '').toLowerCase();
+  return normalized.includes('.m3u') || normalized.includes('.m3u8') || normalized.includes('.pls');
+}
+
+export function isLikelyDirectAudioFileUrl(value) {
+  const normalized = String(value ?? '').toLowerCase();
+  return (
+    normalized.includes('.mp3')
+    || normalized.includes('.m4a')
+    || normalized.includes('.aac')
+    || normalized.includes('.wav')
+    || normalized.includes('.flac')
+    || normalized.includes('.ogg')
+    || normalized.includes('.opus')
+    || normalized.includes('.webm')
+  );
+}
+
 export function isYouTubeUrl(value) {
   try {
     const parsed = new URL(value);

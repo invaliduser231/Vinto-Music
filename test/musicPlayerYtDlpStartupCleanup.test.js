@@ -59,3 +59,49 @@ test('yt-dlp startup retries clean up failed attempt processes before retrying',
   assert.equal(player.sourceProc, secondSourceProc);
   assert.equal(player.ffmpeg, secondFfmpeg);
 });
+
+test('yt-dlp seek startup prefers direct media URL pipeline before pipe-based fallback', async () => {
+  const player = createPlayer();
+  const ffmpeg = createFakeProcess();
+  let resolvedUrlCalls = 0;
+  let pipeFallbackCalls = 0;
+
+  player._resolveYtDlpStreamUrl = async () => {
+    resolvedUrlCalls += 1;
+    return 'https://media.example.com/audio.m4a';
+  };
+  player._spawnProcess = async (_cmd, args) => {
+    assert.ok(args.includes('https://media.example.com/audio.m4a'));
+    assert.ok(args.includes('-ss'));
+    return ffmpeg;
+  };
+  player._startYtDlpPipelineWithFormat = async () => {
+    pipeFallbackCalls += 1;
+  };
+
+  await player._startYtDlpPipeline('https://www.youtube.com/watch?v=demo1234567', 120);
+
+  assert.equal(resolvedUrlCalls, 1);
+  assert.equal(pipeFallbackCalls, 0);
+  assert.equal(player.ffmpeg, ffmpeg);
+  assert.equal(player.sourceProc, null);
+});
+
+test('yt-dlp seek startup falls back to pipe-based startup when direct media URL resolution fails', async () => {
+  const player = createPlayer();
+  let directAttempts = 0;
+  let pipeFallbackCalls = 0;
+
+  player._resolveYtDlpStreamUrl = async () => {
+    directAttempts += 1;
+    throw new Error('direct URL blocked');
+  };
+  player._startYtDlpPipelineWithFormat = async () => {
+    pipeFallbackCalls += 1;
+  };
+
+  await player._startYtDlpPipeline('https://www.youtube.com/watch?v=demo1234567', 120);
+
+  assert.equal(directAttempts, 3);
+  assert.equal(pipeFallbackCalls, 1);
+});

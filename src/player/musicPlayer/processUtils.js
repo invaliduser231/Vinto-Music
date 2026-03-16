@@ -6,21 +6,24 @@ import {
 } from './errorUtils.js';
 
 export function cleanupProcesses(player) {
+  const sourceProc = player.sourceProc;
+  const ffmpeg = player.ffmpeg;
+
   try {
-    if (player.ffmpeg?.stdout && player.liveAudioProcessor) {
-      player.ffmpeg.stdout.unpipe(player.liveAudioProcessor);
+    if (ffmpeg?.stdout && player.liveAudioProcessor) {
+      ffmpeg.stdout.unpipe(player.liveAudioProcessor);
     }
   } catch {}
 
   try {
-    if (player.sourceProc?.stdout && player.ffmpeg?.stdin) {
-      player.sourceProc.stdout.unpipe(player.ffmpeg.stdin);
+    if (sourceProc?.stdout && ffmpeg?.stdin) {
+      sourceProc.stdout.unpipe(ffmpeg.stdin);
     }
   } catch {}
 
   try {
-    if (player.sourceStream && player.ffmpeg?.stdin) {
-      player.sourceStream.unpipe(player.ffmpeg.stdin);
+    if (player.sourceStream && ffmpeg?.stdin) {
+      player.sourceStream.unpipe(ffmpeg.stdin);
     }
   } catch {}
 
@@ -31,8 +34,8 @@ export function cleanupProcesses(player) {
   } catch {}
 
   try {
-    if (player.deezerDecryptStream && player.ffmpeg?.stdin) {
-      player.deezerDecryptStream.unpipe(player.ffmpeg.stdin);
+    if (player.deezerDecryptStream && ffmpeg?.stdin) {
+      player.deezerDecryptStream.unpipe(ffmpeg.stdin);
     }
   } catch {}
 
@@ -51,14 +54,30 @@ export function cleanupProcesses(player) {
   } catch {}
   player.sourceStream = null;
 
-  player.sourceProc?.kill?.('SIGKILL');
+  try {
+    sourceProc?.stdout?.destroy?.();
+  } catch {}
+  try {
+    sourceProc?.stderr?.destroy?.();
+  } catch {}
+  try {
+    sourceProc?.stdin?.destroy?.();
+  } catch {}
+
+  sourceProc?.kill?.('SIGKILL');
   player.sourceProc = null;
 
   try {
-    player.ffmpeg?.stdin?.destroy?.();
+    ffmpeg?.stdin?.destroy?.();
+  } catch {}
+  try {
+    ffmpeg?.stdout?.destroy?.();
+  } catch {}
+  try {
+    ffmpeg?.stderr?.destroy?.();
   } catch {}
 
-  player.ffmpeg?.kill?.('SIGKILL');
+  ffmpeg?.kill?.('SIGKILL');
   player.ffmpeg = null;
   clearPipelineErrorHandlers(player);
 }

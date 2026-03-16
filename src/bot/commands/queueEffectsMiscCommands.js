@@ -662,8 +662,15 @@ export function registerQueueEffectsAndMiscCommands(registry) {
       const progress = await createProgressReporter(ctx, 'Collecting runtime statistics...', null, null, { replyReference: true });
       const uptimeSeconds = Math.floor((Date.now() - ctx.startedAt) / 1000);
       const mem = process.memoryUsage();
-      const globalCounts = await fetchGlobalGuildAndUserCounts(ctx.rest).catch(() => null);
+      await progress.info('Runtime statistics', [
+        { name: 'Uptime', value: formatUptimeCompact(uptimeSeconds), inline: true },
+        { name: 'Guild sessions', value: String(ctx.sessions.sessions.size), inline: true },
+        { name: 'Servers total', value: 'counting...', inline: true },
+        { name: 'Users total', value: 'counting...', inline: true },
+        { name: 'Heap Used', value: `${Math.round(mem.heapUsed / 1024 / 1024)} MB`, inline: true },
+      ]);
 
+      const globalCounts = await fetchGlobalGuildAndUserCounts(ctx.rest).catch(() => null);
       const serverCountLabel = globalCounts?.guildCount == null
         ? 'n/a'
         : String(globalCounts.guildCount);

@@ -529,7 +529,9 @@ export class CommandRouter {
       const current = session.player.currentTrack;
       const totalSec = parseDurationToSeconds(current?.duration ?? '');
       const progressSec = session.player.getProgressSeconds();
-      const progressLabel = buildProgressBar(progressSec, totalSec ?? Number.NaN);
+      const progressLabel = buildProgressBar(progressSec, totalSec ?? Number.NaN, 16, {
+        isLive: Boolean(current?.isLive),
+      });
       const queueCount = session.player.pendingTracks.length;
       const votes = this.sessions.getVoteCount(guildId);
       const voteNeed = this._computeVoteSkipRequirement(guildId, session);

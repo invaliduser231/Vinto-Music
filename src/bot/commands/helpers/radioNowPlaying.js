@@ -1,10 +1,33 @@
+import { spawn } from 'node:child_process';
+import ffmpegPath from 'ffmpeg-static';
+
 const RADIO_LOOKUP_CACHE_TTL_MS = 45_000;
 const RADIO_LOOKUP_TIMEOUT_MS = 12_000;
 const RADIO_SAMPLE_MAX_BYTES = 768 * 1024;
 const RADIO_SAMPLE_MIN_BYTES = 64 * 1024;
+const RADIO_FFMPEG_SAMPLE_SECONDS = 12;
+
+function isHlsLikeUrl(url) {
+  return String(url ?? '').toLowerCase().includes('.m3u8');
+}
+
+function isHlsLikeContentType(contentType) {
+  const normalized = String(contentType ?? '').toLowerCase();
+  return (
+    normalized.includes('application/vnd.apple.mpegurl')
+    || normalized.includes('application/x-mpegurl')
+    || normalized.includes('audio/mpegurl')
+    || normalized.includes('audio/x-mpegurl')
+  );
+}
 
 const radioLookupCache = new Map();
 const radioLookupInFlight = new Map();
+let radioSpawn = spawn;
+
+export function __setRadioNowPlayingSpawnForTests(value) {
+  radioSpawn = typeof value === 'function' ? value : spawn;
+}
 
 function getCachedRadioLookup(url) {
   const key = String(url ?? '').trim();
@@ -162,6 +185,16 @@ async function readAudioSample(url) {
   }).catch(() => null);
   if (!response?.ok || !response.body) return null;
 
+  const contentType = String(response.headers.get('content-type') ?? 'audio/mpeg').trim() || 'audio/mpeg';
+  if (isHlsLikeUrl(url) || isHlsLikeContentType(contentType)) {
+    try {
+      await response.body.cancel?.();
+    } catch {
+      // ignore cancellation errors
+    }
+    return readAudioSampleWithFfmpeg(url);
+  }
+
   const reader = response.body.getReader?.();
   if (!reader) return null;
 
@@ -188,8 +221,80 @@ async function readAudioSample(url) {
   if (total < 4_096) return null;
   return {
     bytes: Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))),
-    contentType: String(response.headers.get('content-type') ?? 'audio/mpeg').trim() || 'audio/mpeg',
+    contentType,
   };
+}
+
+async function readAudioSampleWithFfmpeg(url) {
+  const ffmpegBin = process.env.FFMPEG_BIN || ffmpegPath || 'ffmpeg';
+
+  return new Promise((resolve) => {
+    const args = [
+      '-nostdin',
+      '-v', 'error',
+      '-user_agent', 'Mozilla/5.0 (compatible; FluxerBot/1.0)',
+      '-t', String(RADIO_FFMPEG_SAMPLE_SECONDS),
+      '-i', url,
+      '-vn',
+      '-ac', '2',
+      '-ar', '44100',
+      '-b:a', '128k',
+      '-f', 'mp3',
+      'pipe:1',
+    ];
+
+    const proc = radioSpawn(ffmpegBin, args, {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+
+    const chunks = [];
+    let total = 0;
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      proc.kill('SIGKILL');
+      resolve(null);
+    }, RADIO_LOOKUP_TIMEOUT_MS);
+
+    proc.stdout?.on('data', (chunk) => {
+      if (settled) return;
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      if (!buffer.length) return;
+      chunks.push(buffer);
+      total += buffer.length;
+      if (total >= RADIO_SAMPLE_MAX_BYTES) {
+        settled = true;
+        clearTimeout(timeout);
+        proc.kill('SIGKILL');
+        resolve({
+          bytes: Buffer.concat(chunks),
+          contentType: 'audio/mpeg',
+        });
+      }
+    });
+
+    proc.once('error', () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve(null);
+    });
+
+    proc.once('close', () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (total < 4_096) {
+        resolve(null);
+        return;
+      }
+      resolve({
+        bytes: Buffer.concat(chunks),
+        contentType: 'audio/mpeg',
+      });
+    });
+  });
 }
 
 async function detectWithAudD(url, apiToken) {

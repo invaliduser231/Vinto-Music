@@ -113,9 +113,10 @@ export function formatUptimeCompact(totalSeconds) {
   return parts.join(' ');
 }
 
-export function buildProgressBar(positionSec, totalSec, size = 16) {
+export function buildProgressBar(positionSec, totalSec, size = 16, options = {}) {
+  const isLive = options?.isLive === true;
   if (!Number.isFinite(totalSec) || totalSec <= 0) {
-    return `${formatSeconds(positionSec)} • Live`;
+    return `${formatSeconds(positionSec)} • ${isLive ? 'Live' : 'Unknown'}`;
   }
 
   const clamped = Math.max(0, Math.min(positionSec, totalSec));
@@ -153,7 +154,7 @@ export function formatQueuePage(session, page) {
       name: 'Now Playing',
       value: joinLinesWithinLimit([
         formatTrackListLine(current, null, 760),
-        buildProgressBar(progressSec, durationSec ?? Number.NaN),
+        buildProgressBar(progressSec, durationSec ?? Number.NaN, 16, { isLive: Boolean(current?.isLive) }),
       ], EMBED_FIELD_TEXT_LIMIT),
     });
   }

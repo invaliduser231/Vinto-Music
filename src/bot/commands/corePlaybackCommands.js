@@ -558,7 +558,7 @@ registry.register(createCommand({
       const isRadio = current.source === 'radio-stream';
       const fields = isRadio
         ? [
-            { name: 'Progress', value: buildProgressBar(progressSec, totalSec ?? Number.NaN) },
+            { name: 'Progress', value: buildProgressBar(progressSec, totalSec ?? Number.NaN, 16, { isLive: true }) },
             {
               name: 'Station',
               value: current.url
@@ -568,7 +568,7 @@ registry.register(createCommand({
             },
           ]
         : [
-            { name: 'Progress', value: buildProgressBar(progressSec, totalSec ?? Number.NaN) },
+            { name: 'Progress', value: buildProgressBar(progressSec, totalSec ?? Number.NaN, 16, { isLive: Boolean(current?.isLive) }) },
             { name: 'Loop', value: session.player.loopMode, inline: true },
             { name: 'Volume', value: `${session.player.volumePercent}%`, inline: true },
             { name: 'Queued', value: String(session.player.pendingTracks.length), inline: true },

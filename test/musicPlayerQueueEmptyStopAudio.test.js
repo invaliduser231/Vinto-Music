@@ -128,3 +128,21 @@ test('play() increases initial playback timeout for large seek offsets', async (
 
   assert.equal(startupTimeoutMs, 60_000);
 });
+
+test('seekTo rejects positions at or beyond the current track length', () => {
+  const voice = createVoice();
+  const player = new MusicPlayer(voice, { logger: null });
+
+  player.playing = true;
+  player.queue.current = player._buildTrack({
+    title: 'Bounded Track',
+    url: 'https://www.youtube.com/watch?v=OBoMLZTtqb8',
+    duration: '47:00',
+    source: 'youtube',
+    requestedBy: 'user-1',
+  });
+
+  assert.throws(() => {
+    player.seekTo(47 * 60);
+  }, /exceeds track length/i);
+});
