@@ -26,7 +26,7 @@ Resilient, self-hosted music bot for Fluxer with persistent music data, queue sa
 | Area | Highlights |
 | --- | --- |
 | Playback | YouTube, SoundCloud, Deezer, Audius, radio streams, Spotify/Apple Music mirroring |
-| Reliability | reconnect, resume, heartbeat watchdogs, REST retries, graceful shutdown |
+| Reliability | reconnect, playback resume, heartbeat watchdogs, REST retries, graceful shutdown |
 | Persistence | playlists, favorites, history, templates, recap state, reputation/taste signals |
 | Operations | `/healthz`, `/readyz`, `/metrics`, structured logging, optional Sentry |
 
@@ -43,6 +43,8 @@ Resilient, self-hosted music bot for Fluxer with persistent music data, queue sa
 
 - Reliable gateway handling with reconnect, resume, heartbeat watchdogs, and REST retry logic.
 - Playback from YouTube, SoundCloud, Deezer, Audius, radio streams, and mirrored imports from Spotify and Apple Music URLs.
+- Independent multi-voice playback sessions per guild, with separate queues per voice channel.
+- Voice-channel-scoped 24/7 mode plus one-shot restart recovery for active non-24/7 sessions.
 - Persistent guild playlists, favorites, history, queue templates, recap data, and lightweight user taste/reputation signals in MongoDB.
 - Built-in `/healthz`, `/readyz`, and Prometheus `/metrics` endpoints.
 - Optional Sentry reporting and opt-in runtime playback diagnostics.
@@ -181,7 +183,7 @@ With `DEEZER_ARL` configured, plain text `play` resolution prefers Deezer before
 | --- | --- |
 | YouTube playback fails | `ffmpeg`, `yt-dlp`, `YTDLP_COOKIES_FILE`, `YTDLP_COOKIES_FROM_BROWSER` |
 | Commands fail but gateway connects | `API_BASE`, token validity, runtime REST access |
-| Voice joins but no audio | Fluxer voice-side setup, `VOICE_MAX_BITRATE`, LiveKit-based publisher flow |
+| Voice joins but no audio | Fluxer voice-side setup, `VOICE_MAX_BITRATE`, LiveKit-based publisher flow, and whether a restart recovery snapshot existed before reboot |
 
 <details>
 <summary><strong>More detail</strong></summary>
@@ -245,7 +247,6 @@ Default prefix: `!`
 ### Extended Features
 
 - `mood`
-- `panel`
 - `musicwebhook`
 - `queueguard`
 - `template`
@@ -258,6 +259,11 @@ Default prefix: `!`
 - `party`
 - `import`
 - `diag [now|last|track|cancel]` (owner-only)
+
+Notes:
+
+- `247` is voice-channel-scoped, not guild-wide.
+- The old session panel feature is disabled and no longer part of the active runtime path.
 
 ## Architecture
 

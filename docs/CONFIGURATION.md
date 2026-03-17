@@ -65,8 +65,11 @@ All environment variables are parsed in `src/config.js`. `.env.example` is the t
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `SESSION_IDLE_MS` | `300000` | Idle timeout before disconnect when 24/7 mode is off. |
-| `MAX_QUEUE_SIZE` | `100` | Max pending queue size per guild. |
+| `SESSION_IDLE_MS` | `300000` | Idle timeout before disconnect when the active voice-channel session does not have 24/7 enabled. |
+| `MAX_CONCURRENT_VOICE_CHANNELS_PER_GUILD` | `5` | Max simultaneously active voice-channel sessions per guild. New sessions above this limit are rejected. |
+| `SESSION_SNAPSHOT_MIN_WRITE_INTERVAL_MS` | `10000` | Minimum time between persisted session-snapshot writes for the same voice-channel session. Used for 24/7 resume and restart recovery. |
+| `SESSION_SNAPSHOT_FLUSH_INTERVAL_MS` | `30000` | Background flush interval for dirty persistent session snapshots. |
+| `MAX_QUEUE_SIZE` | `100` | Max pending queue size per voice-channel session. |
 | `MAX_PLAYLIST_TRACKS` | `25` | Max tracks pulled from a single external playlist/import resolution. |
 | `MAX_SAVED_PLAYLISTS_PER_GUILD` | `100` | Max persisted guild playlists. |
 | `MAX_SAVED_TRACKS_PER_PLAYLIST` | `500` | Max tracks per saved playlist or queue template. |
@@ -88,7 +91,7 @@ All environment variables are parsed in `src/config.js`. `.env.example` is the t
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `DEFAULT_DEDUPE_ENABLED` | `0` | Default dedupe state for new guilds. |
-| `DEFAULT_247_ENABLED` | `0` | Default 24/7 state for new guilds. |
+| `DEFAULT_247_ENABLED` | `0` | Fallback default 24/7 state when a voice channel has no explicit `voiceProfiles[channelId].stayInVoiceEnabled` override. |
 | `VOTE_SKIP_RATIO` | `0.5` | Default required fraction of listeners for vote-skip. |
 | `VOTE_SKIP_MIN_VOTES` | `2` | Default minimum number of vote-skip votes. |
 
@@ -166,6 +169,13 @@ Use this if you want the easiest normal Fluxer self-hosted setup.
 - required: `BOT_TOKEN`, `MONGODB_URI`
 - recommended: install `ffmpeg` and `yt-dlp`
 - leave Spotify, SoundCloud, and Deezer credentials empty
+
+## Runtime Notes
+
+- 24/7 is voice-channel-scoped. The `247` command writes to the active voice channel profile, not to a guild-wide switch.
+- Active non-24/7 sessions still write restart-recovery snapshots so playback can come back after a bot restart.
+- Empty non-24/7 sessions are not persisted across restarts.
+- The legacy session panel fields may still exist in stored docs, but the panel feature is disabled in the active runtime path.
 
 ### Spotify URL support
 

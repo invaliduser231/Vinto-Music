@@ -41,7 +41,7 @@ Operationally that means:
 1. Gateway emits `MESSAGE_CREATE`.
 2. `CommandRouter` parses the prefix and command name.
 3. Rate limits, permissions, guild context, and command-specific preconditions are checked.
-4. The command resolves or creates a guild session through `SessionManager`.
+4. The command resolves or creates a voice-channel session through `SessionManager`.
 5. `MusicPlayer` resolves tracks, mutates queue state, and starts or updates playback.
 6. `VoiceConnection` publishes PCM frames into the platform voice session.
 7. Persistent features write through Mongo-backed stores where needed.
@@ -75,33 +75,41 @@ Playback path notes:
 
 ## Session and Voice Lifecycle
 
-`SessionManager` owns one playback session per guild. Each session contains:
+`SessionManager` owns one playback session per voice channel. A single guild can therefore have multiple concurrent playback sessions. Each session contains:
 
 - a `VoiceConnection`
 - a `MusicPlayer`
-- effective guild settings
+- effective guild settings plus voice-channel profile overrides
 - vote-skip state
 - idle timeout state
 - optional playback diagnostics state
 
 Important behavior:
 
-- idle sessions are destroyed after `SESSION_IDLE_MS` unless 24/7 mode is enabled
+- idle sessions are destroyed after `SESSION_IDLE_MS` unless that voice-channel session has 24/7 enabled
 - vote-skip state resets per track
 - playback diagnostics can log periodic player and transport snapshots
-- queue-end behavior can still disconnect after idle timeout even if listeners remain, unless 24/7 mode is enabled
+- queue-end behavior can still disconnect after idle timeout even if listeners remain, unless that voice-channel session has 24/7 enabled
+- 24/7 is voice-channel-scoped and comes from `guild_features.voiceProfiles[channelId].stayInVoiceEnabled`
+- active non-24/7 sessions still persist restart-recovery state so playback can be restored after a bot restart
 
 ## Data Model
 
 MongoDB collections used by the current code:
 
-- `guild_configs`: prefix, dedupe, 24/7, vote-skip settings, DJ roles, music log channel
+- `guild_configs`: prefix, dedupe, legacy/fallback 24/7 default, vote-skip settings, DJ roles, music log channel
 - `guild_playlists`: saved guild playlists
 - `user_favorites`: per-user favorites
 - `guild_history`: recent played-track history per guild
-- `guild_features`: queue templates, queue guard config, voice profiles, webhook URL, recap channel, session panel state
+- `guild_features`: queue templates, queue guard config, voice profiles, webhook URL, recap channel, persistent 24/7 bindings, restart-recovery bindings
+- `guild_session_snapshots`: compact per-session playback snapshots for 24/7 resume and restart recovery
 - `user_profiles`: lightweight taste memory and guild-level reputation stats
 - `guild_recaps`: recap send-state metadata
+
+Notes:
+
+- The old session panel fields may still exist in `guild_features` for compatibility, but the panel feature is disabled in the active runtime path.
+- Restart recovery is intentionally separate from 24/7. Non-24/7 sessions are restored only when they were active at shutdown.
 
 The guild config store keeps a TTL cache in memory to reduce repeated reads for hot guilds.
 

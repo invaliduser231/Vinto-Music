@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.0] - 2026-03-18
+
+- Session and persistence model:
+  - changed playback sessions from guild-wide to voice-channel-scoped so one guild can run multiple independent voice sessions
+  - changed 24/7 mode from guild-wide to voice-channel-scoped via voice profiles
+  - added compact playback snapshots plus restart recovery for active non-24/7 sessions
+  - restored playback state after restart for queue, current track, volume, loop mode, paused state, and seek where supported
+  - added stale persistent-channel cleanup when a saved target voice channel no longer exists
+- Runtime cleanup:
+  - disabled the legacy session panel runtime path
+  - added a guild-level limit for concurrent voice-channel sessions
+- Tests:
+  - added regression coverage for multi-session shutdown recovery ordering, snapshot persistence, missing-channel cleanup, and voice-channel-scoped 24/7 behavior
+
 ## [0.4.9] - 2026-03-16
 
 - HTTP/radio playback and URL classification hardening:
