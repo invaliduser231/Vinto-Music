@@ -210,10 +210,13 @@ registry.register(createCommand({
 
       const { channelId: explicitChannelId } = parseVoiceChannelArgument(ctx.args);
       const session = await ensureConnectedSession(ctx, explicitChannelId);
+      const connectedChannelId = session?.connection?.channelId ?? explicitChannelId ?? ctx.activeVoiceChannelId;
 
-      await ctx.reply.success('Connected to voice.', [
-        { name: 'Guild', value: session.guildId, inline: true },
-      ]);
+      await ctx.reply.success(
+        connectedChannelId
+          ? `Connected to voice in <#${connectedChannelId}>.`
+          : 'Connected to voice.'
+      );
     },
   }));
 
@@ -224,11 +227,17 @@ registry.register(createCommand({
     usage: 'leave',
     async execute(ctx) {
       ensureGuild(ctx);
-      const existing = ctx.sessions.get(ctx.guildId);
+      const existing = ctx.sessions.get(ctx.guildId, {
+        voiceChannelId: ctx.activeVoiceChannelId,
+        textChannelId: ctx.channelId,
+      });
       if (existing) {
         ensureDjAccess(ctx, existing, 'disconnect the bot');
       }
-      const removed = await ctx.sessions.destroy(ctx.guildId, 'manual_command');
+      const removed = await ctx.sessions.destroy(ctx.guildId, 'manual_command', {
+        sessionId: existing?.sessionId,
+        voiceChannelId: existing?.connection?.channelId ?? ctx.activeVoiceChannelId,
+      });
       if (!removed) {
         await ctx.reply.warning('No active player in this guild.');
         return;
@@ -474,11 +483,14 @@ registry.register(createCommand({
 
       if (userHasDjAccess(ctx, session)) {
         session.player.skip();
+        ctx.sessions.markSnapshotDirty?.(session, true);
         await ctx.reply.success('Skipped current track.');
         return;
       }
 
-      const voteState = ctx.sessions.registerVoteSkip(ctx.guildId, ctx.authorId);
+      const voteState = ctx.sessions.registerVoteSkip(ctx.guildId, ctx.authorId, {
+        sessionId: session.sessionId,
+      });
       if (!voteState) {
         await ctx.reply.warning('Could not register vote-skip right now.');
         return;
@@ -492,7 +504,7 @@ registry.register(createCommand({
       const requiredVotes = computeVoteSkipRequirement(ctx, session);
       if (voteState.votes >= requiredVotes) {
         session.player.skip();
-        ctx.sessions.clearVoteSkips(ctx.guildId);
+        ctx.sessions.clearVoteSkips(ctx.guildId, { sessionId: session.sessionId });
         await ctx.reply.success(`Vote-skip passed (${voteState.votes}/${requiredVotes}). Skipping track.`);
         return;
       }
@@ -515,6 +527,7 @@ registry.register(createCommand({
         return;
       }
 
+      ctx.sessions.markSnapshotDirty?.(session, true);
       await ctx.reply.success('Playback paused.');
     },
   }));
@@ -534,6 +547,7 @@ registry.register(createCommand({
         return;
       }
 
+      ctx.sessions.markSnapshotDirty?.(session, true);
       await ctx.reply.success('Playback resumed.');
     },
   }));
@@ -671,6 +685,7 @@ registry.register(createCommand({
       }
 
       const finalTarget = session.player.seekTo(targetSec);
+      ctx.sessions.markSnapshotDirty?.(session, true);
       await ctx.reply.success(`Seeking to **${formatSeconds(finalTarget)}**...`);
     },
   }));
@@ -695,6 +710,7 @@ registry.register(createCommand({
         await session.player.play();
       }
 
+      ctx.sessions.markSnapshotDirty?.(session, true);
       await ctx.reply.success(`Queued previous track: ${trackLabel(previous)}`);
     },
   }));
@@ -710,6 +726,7 @@ registry.register(createCommand({
       ensureDjAccess(ctx, session, 'replay tracks');
 
       if (session.player.replayCurrentTrack()) {
+        ctx.sessions.markSnapshotDirty?.(session, true);
         await ctx.reply.success('Restarting current track...');
         return;
       }
@@ -727,6 +744,7 @@ registry.register(createCommand({
           if (!session.player.playing) {
             await session.player.play();
           }
+          ctx.sessions.markSnapshotDirty?.(session, true);
           await ctx.reply.success(`Replaying from persistent history: ${trackLabel(replayTrack)}`);
           return;
         }
@@ -739,6 +757,7 @@ registry.register(createCommand({
         await session.player.play();
       }
 
+      ctx.sessions.markSnapshotDirty?.(session, true);
       await ctx.reply.success(`Replaying: ${trackLabel(previous)}`);
     },
   }));
@@ -784,7 +803,10 @@ registry.register(createCommand({
     async execute(ctx) {
       ensureGuild(ctx);
       const page = ctx.args.length ? parseRequiredInteger(ctx.args[0], 'Page') : 1;
-      const session = ctx.sessions.get(ctx.guildId);
+      const session = ctx.sessions.get(ctx.guildId, {
+        voiceChannelId: ctx.activeVoiceChannelId,
+        textChannelId: ctx.channelId,
+      });
       if (session?.player?.historyTracks?.length) {
         const historyData = formatHistoryPage(session, page);
         await ctx.reply.info(historyData.description, historyData.fields);

@@ -157,6 +157,7 @@ export async function startApp() {
     userFavoritesCollection: mongo.collection('user_favorites'),
     guildHistoryCollection: mongo.collection('guild_history'),
     guildFeaturesCollection: mongo.collection('guild_features'),
+    guildSessionSnapshotsCollection: mongo.collection('guild_session_snapshots'),
     userProfilesCollection: mongo.collection('user_profiles'),
     guildRecapsCollection: mongo.collection('guild_recaps'),
     logger: logger.child('music-library'),
@@ -212,6 +213,8 @@ export async function startApp() {
     gateway,
     config,
     guildConfigs,
+    library: musicLibrary,
+    rest,
     voiceStateStore,
     logger: logger.child('sessions'),
   });
@@ -251,6 +254,7 @@ export async function startApp() {
   });
 
   let resolvedBotUserId = null;
+  let persistentRestoreStarted = false;
   const setBotUserId = (botUserId, source) => {
     const normalized = botUserId ? String(botUserId) : null;
     if (!normalized || normalized === resolvedBotUserId) return;
@@ -268,6 +272,15 @@ export async function startApp() {
     setBotUserId(payload?.user?.id, 'gateway_ready');
     const readyGuildCount = Array.isArray(payload?.guilds) ? payload.guilds.length : null;
     applyRotatingPresence('ready', readyGuildCount).catch(() => null);
+
+    if (!persistentRestoreStarted) {
+      persistentRestoreStarted = true;
+      sessions.restorePersistentVoiceSessions().catch((err) => {
+        logger.warn('Persistent voice session restore failed', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }
   });
 
   gateway.on('RESUMED', () => {

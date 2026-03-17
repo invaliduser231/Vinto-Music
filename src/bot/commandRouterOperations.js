@@ -110,16 +110,19 @@ export async function registerSearchReactionSelection(router, {
 }
 
 export async function applySearchReactionSelection(router, state, pickedIndex, userId) {
-  const session = router.sessions.get(state.guildId);
-  if (!session) {
-    await safeReply(router, state.channelId, 'warning', 'No active player session. Run the search again.');
-    return;
-  }
-
   const userVoiceChannel = router.voiceStateStore.resolveMemberVoiceChannel({
     guild_id: state.guildId,
     author: { id: String(userId) },
   });
+  const session = router.sessions.get(state.guildId, {
+    voiceChannelId: userVoiceChannel,
+    textChannelId: state.channelId,
+    allowAnyGuildSession: true,
+  });
+  if (!session) {
+    await safeReply(router, state.channelId, 'warning', 'No active player session. Run the search again.');
+    return;
+  }
   if (session.connection?.channelId && userVoiceChannel !== session.connection.channelId) {
     await safeReply(router, state.channelId, 'warning', 'You must be in the same voice channel as the bot.');
     return;
@@ -182,7 +185,7 @@ export function handleUnknownGuildForChannel(router, channelId) {
   const target = String(channelId ?? '').trim();
   if (!target) return;
 
-  for (const [guildId, session] of router.sessions.sessions.entries()) {
+  for (const [, session] of router.sessions.sessions.entries()) {
     const textMatch = String(session?.textChannelId ?? '') === target;
     const logMatch = String(session?.settings?.musicLogChannelId ?? '') === target;
     if (!textMatch && !logMatch) continue;
@@ -192,6 +195,6 @@ export function handleUnknownGuildForChannel(router, channelId) {
       session.settings.musicLogChannelId = null;
     }
 
-    router.sessions.destroy(guildId, 'unknown_guild').catch(() => null);
+    router.sessions.destroy(session?.guildId, 'unknown_guild', { sessionId: session?.sessionId }).catch(() => null);
   }
 }

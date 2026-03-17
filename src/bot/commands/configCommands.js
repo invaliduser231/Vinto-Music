@@ -6,9 +6,11 @@ export function registerConfigCommands(registry, h) {
     ensureGuild,
     getGuildConfigOrThrow,
     updateGuildConfig,
+    requireLibrary,
     parseOnOff,
     parseRoleId,
     parseTextChannelId,
+    resolveActiveVoiceChannelOrThrow,
     ensureManageGuildAccess,
   } = h;
 
@@ -41,15 +43,20 @@ export function registerConfigCommands(registry, h) {
   registry.register(createCommand({
     name: '247',
     aliases: ['stay'],
-    description: 'Toggle 24/7 mode (stay connected when idle).',
+    description: 'Toggle 24/7 mode for your current voice channel.',
     usage: '247 [on|off]',
     async execute(ctx) {
       ensureGuild(ctx);
-      const guildConfig = await getGuildConfigOrThrow(ctx);
+      const library = requireLibrary(ctx);
       await ensureManageGuildAccess(ctx, 'change 24/7 mode');
+      const voiceChannelId = await resolveActiveVoiceChannelOrThrow(ctx, { fallbackCommand: '247' });
+      const profile = await library.getVoiceProfile(ctx.guildId, voiceChannelId).catch(() => null);
+      const current = typeof profile?.stayInVoiceEnabled === 'boolean'
+        ? profile.stayInVoiceEnabled
+        : Boolean(ctx.config.defaultStayInVoiceEnabled);
 
       if (!ctx.args.length) {
-        await ctx.reply.info(`24/7 mode is currently **${guildConfig.settings.stayInVoiceEnabled ? 'on' : 'off'}**.`);
+        await ctx.reply.info(`24/7 mode for <#${voiceChannelId}> is currently **${current ? 'on' : 'off'}**.`);
         return;
       }
 
@@ -58,10 +65,9 @@ export function registerConfigCommands(registry, h) {
         throw new ValidationError('Use `on` or `off`.');
       }
 
-      await updateGuildConfig(ctx, {
-        settings: { stayInVoiceEnabled: value },
-      });
-      await ctx.reply.success(`24/7 mode is now **${value ? 'on' : 'off'}**.`);
+      await library.setVoiceProfile(ctx.guildId, voiceChannelId, { stayInVoiceEnabled: value });
+      await ctx.sessions.refreshVoiceProfileSettings?.(ctx.guildId, { voiceChannelId });
+      await ctx.reply.success(`24/7 mode for <#${voiceChannelId}> is now **${value ? 'on' : 'off'}**.`);
     },
   }));
 
@@ -242,7 +248,18 @@ export function registerConfigCommands(registry, h) {
     async execute(ctx) {
       ensureGuild(ctx);
       const guildConfig = await getGuildConfigOrThrow(ctx);
-      const session = ctx.sessions.get(ctx.guildId);
+      const session = ctx.sessions.get(ctx.guildId, {
+        voiceChannelId: ctx.activeVoiceChannelId,
+        textChannelId: ctx.channelId,
+        allowAnyGuildSession: true,
+      });
+      const activeVoiceChannelId = ctx.activeVoiceChannelId ?? session?.connection?.channelId ?? null;
+      const profile = activeVoiceChannelId && ctx.library?.getVoiceProfile
+        ? await ctx.library.getVoiceProfile(ctx.guildId, activeVoiceChannelId).catch(() => null)
+        : null;
+      const stayInVoiceEnabled = typeof profile?.stayInVoiceEnabled === 'boolean'
+        ? profile.stayInVoiceEnabled
+        : (session?.settings?.stayInVoiceEnabled ?? Boolean(ctx.config.defaultStayInVoiceEnabled));
       const roles = guildConfig.settings.djRoleIds.length
         ? guildConfig.settings.djRoleIds.map((id) => `<@&${id}>`).join(', ')
         : 'none';
@@ -250,7 +267,7 @@ export function registerConfigCommands(registry, h) {
       await ctx.reply.info('Guild configuration', [
         { name: 'Prefix', value: guildConfig.prefix, inline: true },
         { name: 'Dedupe', value: guildConfig.settings.dedupeEnabled ? 'on' : 'off', inline: true },
-        { name: '24/7', value: guildConfig.settings.stayInVoiceEnabled ? 'on' : 'off', inline: true },
+        { name: '24/7', value: stayInVoiceEnabled ? 'on' : 'off', inline: true },
         { name: 'Vote Ratio', value: String(guildConfig.settings.voteSkipRatio), inline: true },
         { name: 'Vote Min', value: String(guildConfig.settings.voteSkipMinVotes), inline: true },
         { name: 'DJ Roles', value: roles },

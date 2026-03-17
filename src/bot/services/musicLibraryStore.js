@@ -23,6 +23,14 @@ function normalizeUserId(userId) {
   return value;
 }
 
+function normalizeChannelId(channelId, label = 'channel id') {
+  const value = String(channelId ?? '').trim();
+  if (!/^\d{6,}$/.test(value)) {
+    throw new ValidationError(`A valid ${label} is required.`);
+  }
+  return value;
+}
+
 function normalizePlaylistName(name) {
   const value = String(name ?? '').trim();
   if (!value) {
@@ -85,6 +93,7 @@ export class MusicLibraryStore {
     this.userFavorites = options.userFavoritesCollection;
     this.guildHistory = options.guildHistoryCollection;
     this.guildFeatures = options.guildFeaturesCollection ?? null;
+    this.guildSessionSnapshots = options.guildSessionSnapshotsCollection ?? null;
     this.userProfiles = options.userProfilesCollection ?? null;
     this.guildRecaps = options.guildRecapsCollection ?? null;
     this.logger = options.logger;
@@ -114,6 +123,11 @@ export class MusicLibraryStore {
       await this.guildFeatures.createIndex({ updatedAt: -1 });
     }
 
+    if (this.guildSessionSnapshots) {
+      await this.guildSessionSnapshots.createIndex({ guildId: 1, voiceChannelId: 1 }, { unique: true });
+      await this.guildSessionSnapshots.createIndex({ updatedAt: -1 });
+    }
+
     if (this.userProfiles) {
       await this.userProfiles.createIndex({ userId: 1 }, { unique: true });
       await this.userProfiles.createIndex({ updatedAt: -1 });
@@ -131,6 +145,7 @@ export class MusicLibraryStore {
       maxFavoritesPerUser: this.maxFavoritesPerUser,
       maxHistoryTracks: this.maxHistoryTracks,
       featureCollectionsEnabled: Boolean(this.guildFeatures && this.userProfiles && this.guildRecaps),
+      sessionSnapshotsEnabled: Boolean(this.guildSessionSnapshots),
     });
   }
 
@@ -158,6 +173,11 @@ export class MusicLibraryStore {
       webhookUrl: null,
       sessionPanelChannelId: null,
       sessionPanelMessageId: null,
+      persistentVoiceConnections: [],
+      restartRecoveryConnections: [],
+      persistentVoiceChannelId: null,
+      persistentTextChannelId: null,
+      persistentVoiceUpdatedAt: null,
       queueTemplates: [],
       voiceProfiles: [],
       queueGuard: {
@@ -280,7 +300,7 @@ export class MusicLibraryStore {
 
   async setVoiceProfile(guildId, channelId, patch) {
     const normalizedGuildId = normalizeGuildId(guildId);
-    const normalizedChannelId = normalizeGuildId(channelId);
+    const normalizedChannelId = normalizeChannelId(channelId);
     const config = await this.getGuildFeatureConfig(normalizedGuildId);
     const profiles = Array.isArray(config.voiceProfiles) ? [...config.voiceProfiles] : [];
     const idx = profiles.findIndex((entry) => entry?.channelId === normalizedChannelId);
@@ -298,10 +318,123 @@ export class MusicLibraryStore {
   }
 
   async getVoiceProfile(guildId, channelId) {
-    const normalizedChannelId = normalizeGuildId(channelId);
+    const normalizedChannelId = normalizeChannelId(channelId);
     const config = await this.getGuildFeatureConfig(guildId);
     const profiles = Array.isArray(config.voiceProfiles) ? config.voiceProfiles : [];
     return profiles.find((entry) => entry?.channelId === normalizedChannelId) ?? null;
+  }
+
+  async listPersistentVoiceConnections() {
+    if (!this.guildFeatures) return [];
+
+    const rows = await this.guildFeatures.find(
+      {
+        $or: [
+          { persistentVoiceChannelId: { $type: 'string', $ne: '' } },
+          { persistentVoiceConnections: { $exists: true, $ne: [] } },
+          { restartRecoveryConnections: { $exists: true, $ne: [] } },
+        ],
+      },
+      {
+        projection: {
+          _id: 0,
+          guildId: 1,
+          persistentVoiceConnections: 1,
+          restartRecoveryConnections: 1,
+          persistentVoiceChannelId: 1,
+          persistentTextChannelId: 1,
+          persistentVoiceUpdatedAt: 1,
+        },
+      }
+    ).toArray();
+
+    const results = [];
+    for (const row of rows) {
+      const guildId = normalizeGuildId(row.guildId);
+      const persistentBindings = Array.isArray(row.persistentVoiceConnections) && row.persistentVoiceConnections.length
+        ? row.persistentVoiceConnections
+        : [{
+            voiceChannelId: row.persistentVoiceChannelId,
+            textChannelId: row.persistentTextChannelId,
+          }];
+      const recoveryBindings = Array.isArray(row.restartRecoveryConnections)
+        ? row.restartRecoveryConnections
+        : [];
+      const bindings = [...persistentBindings, ...recoveryBindings];
+      const seen = new Set();
+
+      for (const binding of bindings) {
+        const voiceChannelId = binding?.voiceChannelId
+          ? normalizeChannelId(binding.voiceChannelId, 'voice channel id')
+          : null;
+        if (!voiceChannelId) continue;
+        if (seen.has(voiceChannelId)) continue;
+        seen.add(voiceChannelId);
+        results.push({
+          guildId,
+          voiceChannelId,
+          textChannelId: binding?.textChannelId
+            ? normalizeChannelId(binding.textChannelId, 'text channel id')
+            : null,
+          updatedAt: row.persistentVoiceUpdatedAt ?? null,
+        });
+      }
+    }
+
+    return results;
+  }
+
+  async upsertSessionSnapshot(guildId, voiceChannelId, snapshot) {
+    const normalizedGuildId = normalizeGuildId(guildId);
+    const normalizedVoiceChannelId = normalizeChannelId(voiceChannelId, 'voice channel id');
+    const collection = this._ensureFeatureCollection(this.guildSessionSnapshots, 'Guild session snapshots');
+    const safePatch = this._sanitizeFeaturePatch(snapshot);
+    delete safePatch.guildId;
+    delete safePatch.voiceChannelId;
+    delete safePatch.createdAt;
+    delete safePatch.updatedAt;
+    const now = new Date();
+
+    await collection.updateOne(
+      { guildId: normalizedGuildId, voiceChannelId: normalizedVoiceChannelId },
+      {
+        $setOnInsert: {
+          guildId: normalizedGuildId,
+          voiceChannelId: normalizedVoiceChannelId,
+          createdAt: now,
+        },
+        $set: {
+          ...safePatch,
+          updatedAt: now,
+        },
+      },
+      { upsert: true }
+    );
+
+    return this.getSessionSnapshot(normalizedGuildId, normalizedVoiceChannelId);
+  }
+
+  async getSessionSnapshot(guildId, voiceChannelId) {
+    const normalizedGuildId = normalizeGuildId(guildId);
+    const normalizedVoiceChannelId = normalizeChannelId(voiceChannelId, 'voice channel id');
+    if (!this.guildSessionSnapshots) return null;
+
+    return this.guildSessionSnapshots.findOne(
+      { guildId: normalizedGuildId, voiceChannelId: normalizedVoiceChannelId },
+      { projection: { _id: 0 } }
+    );
+  }
+
+  async deleteSessionSnapshot(guildId, voiceChannelId) {
+    const normalizedGuildId = normalizeGuildId(guildId);
+    const normalizedVoiceChannelId = normalizeChannelId(voiceChannelId, 'voice channel id');
+    if (!this.guildSessionSnapshots) return false;
+
+    const result = await this.guildSessionSnapshots.deleteOne({
+      guildId: normalizedGuildId,
+      voiceChannelId: normalizedVoiceChannelId,
+    });
+    return (result?.deletedCount ?? 0) > 0;
   }
 
   _tokensFromTrack(track) {

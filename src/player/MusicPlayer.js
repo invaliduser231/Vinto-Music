@@ -1034,7 +1034,7 @@ export class MusicPlayer extends EventEmitter {
       url: data?.url,
       duration: data?.duration,
       thumbnailUrl: normalizedThumbnailUrl,
-      requestedBy,
+      requestedBy: requestedBy ?? data?.requestedBy ?? null,
       source: data?.source ?? 'stored',
       artist: data?.artist ?? data?.artist_name ?? pickTrackArtistFromMetadata(data),
       soundcloudTrackId: data?.soundcloudTrackId ?? data?.soundcloud_track_id ?? null,
@@ -1046,6 +1046,7 @@ export class MusicPlayer extends EventEmitter {
       spotifyPreviewUrl: data?.spotifyPreviewUrl ?? data?.spotify_preview_url ?? null,
       isPreview: data?.isPreview ?? data?.is_preview ?? false,
       isLive: data?.isLive ?? data?.is_live ?? false,
+      seekStartSec: data?.seekStartSec ?? data?.seek_start_sec ?? 0,
     });
   }
 

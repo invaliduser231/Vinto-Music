@@ -2,8 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { CommandRouter } from '../src/bot/commandRouter.js';
-import { RestError } from '../src/rest.js';
-
 function createRouter({ rest, library, sessions }) {
   return new CommandRouter({
     config: {
@@ -35,7 +33,7 @@ function createRouter({ rest, library, sessions }) {
   });
 }
 
-test('session panel update does not recreate message on transient edit failure', async () => {
+test('session panel update is disabled and performs no REST work', async () => {
   let sendCalls = 0;
   let editCalls = 0;
 
@@ -43,11 +41,6 @@ test('session panel update does not recreate message on transient edit failure',
     rest: {
       async editMessage() {
         editCalls += 1;
-        throw new RestError('Network error: timeout', {
-          method: 'PATCH',
-          path: '/channels/channel-1/messages/message-1',
-          retryable: true,
-        });
       },
       async sendMessage() {
         sendCalls += 1;
@@ -73,7 +66,7 @@ test('session panel update does not recreate message on transient edit failure',
   });
 
   try {
-    await router._sendSessionPanelUpdate({
+    const result = await router._sendSessionPanelUpdate({
       guildId: 'guild-1',
       textChannelId: 'channel-1',
       settings: {},
@@ -92,11 +85,12 @@ test('session panel update does not recreate message on transient edit failure',
         },
       },
     }, 'live');
+    assert.equal(result, null);
   } finally {
     clearInterval(router.sessionPanelLiveHandle);
     clearInterval(router.weeklySweepHandle);
   }
 
-  assert.equal(editCalls, 1);
+  assert.equal(editCalls, 0);
   assert.equal(sendCalls, 0);
 });

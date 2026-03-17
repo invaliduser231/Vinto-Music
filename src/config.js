@@ -141,6 +141,9 @@ export function loadConfig(env = process.env) {
     restRetryBaseDelayMs: parsePositiveInt(env.REST_RETRY_BASE_DELAY_MS, 300),
 
     sessionIdleMs: parsePositiveInt(env.SESSION_IDLE_MS, 5 * 60_000),
+    maxConcurrentVoiceChannelsPerGuild: parsePositiveInt(env.MAX_CONCURRENT_VOICE_CHANNELS_PER_GUILD, 5),
+    sessionSnapshotMinWriteIntervalMs: parsePositiveInt(env.SESSION_SNAPSHOT_MIN_WRITE_INTERVAL_MS, 10_000),
+    sessionSnapshotFlushIntervalMs: parsePositiveInt(env.SESSION_SNAPSHOT_FLUSH_INTERVAL_MS, 30_000),
     maxQueueSize: parsePositiveInt(env.MAX_QUEUE_SIZE, 100),
     maxPlaylistTracks: parsePositiveInt(env.MAX_PLAYLIST_TRACKS, 25),
     maxSavedPlaylistsPerGuild: parsePositiveInt(env.MAX_SAVED_PLAYLISTS_PER_GUILD, 100),

@@ -168,8 +168,14 @@ export function registerLibraryCommands(registry, h) {
         }
 
         await ctx.safeTyping();
-        const session = await ctx.sessions.ensure(ctx.guildId, ctx.guildConfig);
-        ctx.sessions.bindTextChannel(ctx.guildId, ctx.channelId);
+        const session = await ctx.sessions.ensure(ctx.guildId, ctx.guildConfig, {
+          voiceChannelId: ctx.activeVoiceChannelId,
+          textChannelId: ctx.channelId,
+        });
+        ctx.sessions.bindTextChannel(ctx.guildId, ctx.channelId, {
+          voiceChannelId: ctx.activeVoiceChannelId,
+          textChannelId: ctx.channelId,
+        });
         const resolved = await session.player.previewTracks(query, {
           requestedBy: ctx.authorId,
           limit: ctx.config.maxPlaylistTracks,
@@ -240,6 +246,7 @@ export function registerLibraryCommands(registry, h) {
           await session.player.play();
         }
 
+        ctx.sessions.markSnapshotDirty?.(session, true);
         await ctx.reply.success(`Queued **${added.length}** track(s) from playlist **${playlist.name}**.`);
         return;
       }
@@ -266,15 +273,24 @@ export function registerLibraryCommands(registry, h) {
 
       if (query) {
         ensureGuild(ctx);
-        const session = await ctx.sessions.ensure(ctx.guildId, ctx.guildConfig);
-        ctx.sessions.bindTextChannel(ctx.guildId, ctx.channelId);
+        const session = await ctx.sessions.ensure(ctx.guildId, ctx.guildConfig, {
+          voiceChannelId: ctx.activeVoiceChannelId,
+          textChannelId: ctx.channelId,
+        });
+        ctx.sessions.bindTextChannel(ctx.guildId, ctx.channelId, {
+          voiceChannelId: ctx.activeVoiceChannelId,
+          textChannelId: ctx.channelId,
+        });
         const preview = await session.player.previewTracks(query, {
           requestedBy: ctx.authorId,
           limit: 1,
         });
         baseTrack = preview[0] ?? null;
       } else if (ctx.guildId) {
-        const session = ctx.sessions.get(ctx.guildId);
+        const session = ctx.sessions.get(ctx.guildId, {
+          voiceChannelId: ctx.activeVoiceChannelId,
+          textChannelId: ctx.channelId,
+        });
         baseTrack = session?.player?.currentTrack ?? null;
       }
 

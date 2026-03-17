@@ -1,26 +1,18 @@
 import { ValidationError } from '../core/errors.js';
-import { RestError } from '../rest.js';
 import { parseCommand } from '../utils/commandParser.js';
 import { makeResponder } from './messageFormatter.js';
-import { buildEmbed } from './messageFormatter.js';
 import { CommandRegistry } from './commandRegistry.js';
 import { registerCommands } from './commands/index.js';
 import { CommandRateLimiter } from './services/commandRateLimiter.js';
-import { parseDurationToSeconds, buildProgressBar } from './commands/commandHelpers.js';
 import {
   buildCommandReplyOptions,
   isDirectBotMention,
-  isFavoriteEmoji,
   isLeftEmoji,
-  isPauseEmoji,
-  isResumeEmoji,
   isRightEmoji,
-  isSkipEmoji,
   normalizeEmojiName,
   parseMentionCommand,
   parseSearchPickIndex,
   SEND_PERMISSION_PREFLIGHT_BYPASS,
-  SESSION_PANEL_REACTIONS,
   summarizeTrack,
 } from './commandRouterUtils.js';
 import {
@@ -52,10 +44,6 @@ export class CommandRouter {
     this.guildOpLocks = new Map();
     this.helpPaginations = new Map();
     this.searchReactionSelections = new Map();
-    this.sessionPanelReactions = new Set();
-    this.sessionPanelLiveLastAt = new Map();
-    this.sessionPanelLastPayloadByGuild = new Map();
-    this.sessionPanelUpdateInFlightByGuild = new Map();
     this.sessionPanelLiveHandle = null;
     this.weeklySweepHandle = null;
     this.commandRateLimiter = options.commandRateLimiter ?? new CommandRateLimiter({
@@ -121,8 +109,14 @@ export class CommandRouter {
       prefix: configuredPrefix,
       guildConfig,
     });
-    if (context.guildId && this.sessions.has(context.guildId)) {
-      this.sessions.bindTextChannel(context.guildId, context.channelId);
+    if (context.guildId && this.sessions.has(context.guildId, {
+      voiceChannelId: context.activeVoiceChannelId,
+      textChannelId: context.channelId,
+    })) {
+      this.sessions.bindTextChannel(context.guildId, context.channelId, {
+        voiceChannelId: context.activeVoiceChannelId,
+        textChannelId: context.channelId,
+      });
     }
 
     try {
@@ -224,65 +218,13 @@ export class CommandRouter {
       return;
     }
 
-    if (!this.library) return;
-
-    const session = this.sessions.get(guildId);
-    if (!session) return;
-    const features = await this.library.getGuildFeatureConfig(guildId).catch(() => null);
-    if (!features?.sessionPanelMessageId || String(features.sessionPanelMessageId) !== String(messageId)) return;
-
-    const currentTrack = session.player.currentTrack;
-    if (!currentTrack) return;
-
-    if (isFavoriteEmoji(emoji)) {
-      await this.library.addUserFavorite(userId, currentTrack).catch(() => null);
-      if (this.library.recordUserSignal) {
-        await this.library.recordUserSignal(guildId, userId, 'favorite', currentTrack).catch(() => null);
-      }
-      await this._sendSessionPanelUpdate(session, 'reaction_favorite');
-      return;
-    }
-
-    if (isPauseEmoji(emoji)) {
-      if (session.player.pause()) {
-        await this._sendSessionPanelUpdate(session, 'reaction_pause');
-      }
-      return;
-    }
-
-    if (isResumeEmoji(emoji)) {
-      if (session.player.resume()) {
-        await this._sendSessionPanelUpdate(session, 'reaction_resume');
-      }
-      return;
-    }
-
-    if (isSkipEmoji(emoji)) {
-      const vote = this.sessions.registerVoteSkip(guildId, userId);
-      if (!vote) return;
-      const required = this._computeVoteSkipRequirement(guildId, session);
-      if (vote.votes >= required) {
-        session.player.skip();
-        this.sessions.clearVoteSkips(guildId);
-      }
-      await this._sendSessionPanelUpdate(session, 'reaction_skip_vote');
-      return;
-    }
-
-    this.logger?.info?.('Ignored unknown session panel reaction', {
-      guildId,
-      channelId,
-      messageId,
-      userId,
-      emoji,
-      emojiName: payload?.emoji?.name ?? payload?.emoji_name ?? null,
-      emojiId: payload?.emoji?.id ?? payload?.emoji_id ?? null,
-    });
+    return;
   }
 
   _buildContext(message, parsed, command, options = {}) {
     const channelId = message.channel_id;
     const commandReplyOptions = buildCommandReplyOptions(message);
+    const activeVoiceChannelId = this.voiceStateStore.resolveMemberVoiceChannel(message);
 
     return {
       config: this.config,
@@ -302,11 +244,7 @@ export class CommandRouter {
       startedAt: this.startedAt,
       withGuildOpLock: (key, fn) => this._withGuildOpLock(message.guild_id ?? null, key, fn),
       refreshSessionPanel: async () => {
-        const guildId = message.guild_id ?? null;
-        if (!guildId) return;
-        const session = this.sessions.get(guildId);
-        if (!session) return;
-        await this._sendSessionPanelUpdate(session, 'manual_refresh');
+        return null;
       },
       registerHelpPagination: async (channelId, messageId, pages) => {
         await this._registerHelpPagination(channelId, messageId, pages);
@@ -332,6 +270,7 @@ export class CommandRouter {
       rawArgs: parsed.rawArgs,
       guildId: message.guild_id ?? null,
       channelId,
+      activeVoiceChannelId,
       authorId: message.author?.id ?? message.user_id ?? message.member?.user?.id ?? null,
 
       safeTyping: async () => {
@@ -402,7 +341,6 @@ export class CommandRouter {
           imageUrl: track?.thumbnailUrl ?? null,
         }
       );
-      await this._sendSessionPanelUpdate(session, 'track_start');
       await this._emitWebhookEvent(session, 'track_start', `Now playing: ${summarizeTrack(track)}`);
 
       if (this.library?.recordUserSignal && track?.requestedBy && /^\d{6,}$/.test(String(track.requestedBy))) {
@@ -419,11 +357,10 @@ export class CommandRouter {
         `Playback error on **${track?.title ?? 'unknown'}**: ${error?.message ?? 'unknown error'}`
       );
       await this._emitWebhookEvent(session, 'track_error', `Playback error: ${error?.message ?? 'unknown error'}`);
-      await this._sendSessionPanelUpdate(session, 'track_error');
     });
 
     this.sessions.on('queueEmpty', async ({ session, reason = null }) => {
-      const activeSession = this.sessions.get(session?.guildId);
+      const activeSession = this.sessions.get(session?.guildId, { sessionId: session?.sessionId });
       if (activeSession && activeSession !== session) return;
       const player = session?.player ?? null;
       if (player?.playing || player?.currentTrack) {
@@ -453,17 +390,10 @@ export class CommandRouter {
         'info',
         `Queue is empty. ${suffix}`
       );
-      await this._sendSessionPanelUpdate(session, 'queue_empty');
       await this._emitWebhookEvent(session, 'queue_empty', 'Queue is now empty.');
     });
 
     this.sessions.on('destroyed', async ({ session, reason }) => {
-      const guildId = String(session?.guildId ?? '').trim();
-      if (guildId) {
-        this.sessionPanelLiveLastAt.delete(guildId);
-        this.sessionPanelLastPayloadByGuild.delete(guildId);
-      }
-
       const channelId = this._resolveEventChannelId(session);
       if (!channelId) return;
       if (reason === 'manual_command') return;
@@ -512,148 +442,15 @@ export class CommandRouter {
   }
 
   async _sendSessionPanelUpdate(session, reason = 'update') {
-    const guildId = session?.guildId;
-    if (!this.library || !guildId) return;
-
-    return this._withSessionPanelUpdateLock(guildId, async () => {
-      const features = await this.library.getGuildFeatureConfig(guildId).catch(() => null);
-      if (!features) return;
-
-      const configuredPanelChannelId = features.sessionPanelChannelId ?? null;
-      const configuredPanelMessageId = features.sessionPanelMessageId ?? null;
-      // Session panel is opt-in. If no panel channel/message is configured, skip updates entirely.
-      if (!configuredPanelChannelId && !configuredPanelMessageId) return;
-
-      const channelId = configuredPanelChannelId ?? session.textChannelId ?? session.settings.musicLogChannelId ?? null;
-      if (!channelId) return;
-
-      const current = session.player.currentTrack;
-      const totalSec = parseDurationToSeconds(current?.duration ?? '');
-      const progressSec = session.player.getProgressSeconds();
-      const progressLabel = buildProgressBar(progressSec, totalSec ?? Number.NaN, 16, {
-        isLive: Boolean(current?.isLive),
-      });
-      const queueCount = session.player.pendingTracks.length;
-      const votes = this.sessions.getVoteCount(guildId);
-      const voteNeed = this._computeVoteSkipRequirement(guildId, session);
-      const controlsLabel = 'React with \u2705 or \u23ED\uFE0F to vote-skip, \u2764\uFE0F to favorite, \u23F8\uFE0F to pause, \u25B6\uFE0F to resume';
-      const panelDescription = current ? `Now: ${summarizeTrack(current)}` : 'Now: idle';
-      const payloadDigest = JSON.stringify({
-        description: panelDescription,
-        progress: progressLabel,
-        queue: queueCount,
-        voteskip: `${votes}/${voteNeed}`,
-        reason,
-        controls: controlsLabel,
-      });
-      const digestKey = String(guildId);
-      if (features.sessionPanelMessageId && this.sessionPanelLastPayloadByGuild.get(digestKey) === payloadDigest) {
-        return;
-      }
-
-      const payload = {
-        embeds: [
-          buildEmbed({
-            title: 'Session Panel',
-            description: panelDescription,
-            thumbnailUrl: current?.thumbnailUrl ?? null,
-            fields: [
-              { name: 'Progress', value: progressLabel },
-              { name: 'Queue', value: `${queueCount} track(s)`, inline: true },
-              { name: 'Voteskip', value: `${votes}/${voteNeed}`, inline: true },
-              { name: 'Reason', value: reason, inline: true },
-              { name: 'Controls', value: controlsLabel },
-            ],
-          }),
-        ],
-        allowed_mentions: {
-          parse: [],
-          users: [],
-          roles: [],
-          replied_user: false,
-        },
-      };
-
-      if (features.sessionPanelMessageId && this.rest?.editMessage) {
-        try {
-          await this.rest.editMessage(channelId, features.sessionPanelMessageId, payload);
-          await this._ensureSessionPanelReactions(channelId, features.sessionPanelMessageId);
-          this.sessionPanelLastPayloadByGuild.set(digestKey, payloadDigest);
-          return;
-        } catch (err) {
-          const status = err instanceof RestError ? err.status : err?.status ?? null;
-          const canRecreatePanelMessage = status === 404 || status === 403;
-          if (!canRecreatePanelMessage) {
-            this.logger?.warn?.('Session panel edit failed; skipping recreate for transient error', {
-              guildId,
-              channelId,
-              messageId: features.sessionPanelMessageId,
-              error: err instanceof Error ? err.message : String(err),
-              status,
-            });
-            return;
-          }
-          // If the old panel message is gone/uneditable, fall through and create a new one.
-        }
-      }
-
-      const sent = await this.rest.sendMessage(channelId, payload).catch(() => null);
-      const messageId = sent?.id ?? sent?.message?.id ?? null;
-      if (!messageId) return;
-      await this._ensureSessionPanelReactions(channelId, messageId);
-      this.sessionPanelLastPayloadByGuild.set(digestKey, payloadDigest);
-
-      await this.library.patchGuildFeatureConfig(guildId, {
-        sessionPanelChannelId: channelId,
-        sessionPanelMessageId: String(messageId),
-      }).catch(() => null);
-    });
+    return null;
   }
 
   async _withSessionPanelUpdateLock(guildId, fn) {
-    const key = String(guildId ?? '').trim();
-    if (!key) return fn();
-
-    const active = this.sessionPanelUpdateInFlightByGuild.get(key);
-    if (active) {
-      return active.catch(() => null);
-    }
-
-    const current = (async () => fn())();
-    this.sessionPanelUpdateInFlightByGuild.set(key, current);
-    try {
-      return await current;
-    } finally {
-      const latest = this.sessionPanelUpdateInFlightByGuild.get(key);
-      if (latest === current) {
-        this.sessionPanelUpdateInFlightByGuild.delete(key);
-      }
-    }
+    return fn();
   }
 
   async _ensureSessionPanelReactions(channelId, messageId) {
-    if (!this.rest?.addReactionToMessage) return;
-    const channel = String(channelId ?? '').trim();
-    const message = String(messageId ?? '').trim();
-    if (!channel || !message) return;
-
-    const key = `${channel}:${message}`;
-    if (this.sessionPanelReactions.has(key)) return;
-
-    for (const emoji of SESSION_PANEL_REACTIONS) {
-      try {
-        await this.rest.addReactionToMessage(channel, message, emoji);
-      } catch (err) {
-        this.logger?.warn?.('Failed to add session panel reaction', {
-          channelId: channel,
-          messageId: message,
-          emoji,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
-
-    this.sessionPanelReactions.add(key);
+    return null;
   }
 
   async _emitWebhookEvent(session, type, text) {
@@ -675,8 +472,6 @@ export class CommandRouter {
   }
 
   _startBackgroundTasks() {
-    this._startSessionPanelLiveTicker();
-
     if (!this.library?.buildGuildRecap || !this.library?.getRecapState) return;
     const run = () => {
       this._runWeeklyRecapSweep().catch((err) => {
@@ -707,51 +502,11 @@ export class CommandRouter {
   }
 
   _startSessionPanelLiveTicker() {
-    if (this.sessionPanelLiveHandle) return;
-
-    const run = () => {
-      this._tickSessionPanels().catch((err) => {
-        this.logger?.warn?.('Session panel live update tick failed', {
-          error: err instanceof Error ? err.message : String(err),
-        });
-      });
-    };
-
-    this.sessionPanelLiveHandle = setInterval(run, 10_000);
-    this.sessionPanelLiveHandle.unref?.();
-    run();
+    return;
   }
 
   async _tickSessionPanels() {
-    if (!this.library) return;
-    const sessionsMap = this.sessions?.sessions;
-    if (!(sessionsMap instanceof Map) || sessionsMap.size === 0) return;
-
-    const now = Date.now();
-    for (const session of sessionsMap.values()) {
-      const guildId = String(session?.guildId ?? '').trim();
-      if (!guildId) continue;
-
-      const player = session?.player;
-      if (!player?.playing || !player?.currentTrack) {
-        this.sessionPanelLiveLastAt.delete(guildId);
-        continue;
-      }
-
-      const cadenceMs = player.paused ? 30_000 : 10_000;
-      const lastAt = this.sessionPanelLiveLastAt.get(guildId) ?? 0;
-      if ((now - lastAt) < cadenceMs) continue;
-
-      this.sessionPanelLiveLastAt.set(guildId, now);
-      const reason = player.paused ? 'live_paused' : 'live';
-      await this._sendSessionPanelUpdate(session, reason).catch((err) => {
-        this.logger?.warn?.('Session panel live update failed', {
-          guildId,
-          reason,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      });
-    }
+    return;
   }
 
   async _registerHelpPagination(channelId, messageId, pages) {

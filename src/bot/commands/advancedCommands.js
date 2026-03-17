@@ -130,35 +130,12 @@ export function registerAdvancedCommands(registry, h) {
     async execute(ctx) {
       ensureGuild(ctx);
       const library = requireLibrary(ctx);
-      const mode = String(ctx.args[0] ?? 'refresh').toLowerCase();
-
-      if (mode === 'refresh') {
-        await ctx.refreshSessionPanel();
-        await ctx.reply.success('Session panel refresh requested.');
-        return;
-      }
-
-      await ensureManageGuildAccess(ctx, 'configure session panel');
-      if (mode === 'off') {
-        await library.patchGuildFeatureConfig(ctx.guildId, {
-          sessionPanelChannelId: null,
-          sessionPanelMessageId: null,
-        });
-        await ctx.reply.success('Session panel disabled.');
-        return;
-      }
-
-      if (mode !== 'setup') {
-        throw new ValidationError(`Usage: ${ctx.prefix}panel <setup|refresh|off> [#channel]`);
-      }
-
-      const channelId = parseChannelId(ctx.args[1], ctx.channelId);
+      await ensureManageGuildAccess(ctx, 'disable session panel');
       await library.patchGuildFeatureConfig(ctx.guildId, {
-        sessionPanelChannelId: channelId,
+        sessionPanelChannelId: null,
         sessionPanelMessageId: null,
       });
-      await ctx.refreshSessionPanel();
-      await ctx.reply.success(`Session panel channel set to <#${channelId}>.`);
+      await ctx.reply.info('Session panel is disabled and no longer used.');
     },
   }));
 

@@ -35,6 +35,7 @@ export {
   getSessionOrThrow,
   isUserInPlaybackChannel,
   requireLibrary,
+  resolveActiveVoiceChannelOrThrow,
   resolveQueueGuard,
   updateGuildConfig,
 } from './helpers/context.js';

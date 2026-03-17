@@ -406,6 +406,7 @@ export function registerQueueEffectsAndMiscCommands(registry) {
         return;
       }
 
+      ctx.sessions.markSnapshotDirty?.(session, true);
       await ctx.reply.success(`Removed: ${trackLabel(removed)}`);
     },
   }));
@@ -423,6 +424,7 @@ export function registerQueueEffectsAndMiscCommands(registry) {
       const removed = session.player.pendingTracks.length;
       session.player.clearQueue();
 
+      ctx.sessions.markSnapshotDirty?.(session, true);
       await ctx.reply.success(`Cleared ${removed} pending track(s).`);
     },
   }));
@@ -438,6 +440,7 @@ export function registerQueueEffectsAndMiscCommands(registry) {
       ensureDjAccess(ctx, session, 'shuffle the queue');
 
       const count = session.player.shuffleQueue();
+      ctx.sessions.markSnapshotDirty?.(session, true);
       await ctx.reply.success(`Shuffled ${count} pending track(s).`);
     },
   }));
@@ -458,6 +461,7 @@ export function registerQueueEffectsAndMiscCommands(registry) {
       }
 
       const mode = session.player.setLoopMode(ctx.args[0]);
+      ctx.sessions.markSnapshotDirty?.(session, true);
       await ctx.reply.success(`Loop mode set to **${mode}**.`);
     },
   }));
@@ -485,6 +489,7 @@ export function registerQueueEffectsAndMiscCommands(registry) {
           },
         });
       }
+      ctx.sessions.markSnapshotDirty?.(session, true);
       await ctx.reply.success(`Volume set to **${next}%**.`);
     },
   }));
@@ -611,7 +616,10 @@ export function registerQueueEffectsAndMiscCommands(registry) {
       ensureSessionTrack(ctx, session);
 
       const needed = computeVoteSkipRequirement(ctx, session);
-      const current = ctx.sessions.getVoteCount(ctx.guildId);
+      const current = ctx.sessions.getVoteCount(ctx.guildId, {
+        voiceChannelId: ctx.activeVoiceChannelId,
+        textChannelId: ctx.channelId,
+      });
       await ctx.reply.info(`Vote-skip progress: **${current}/${needed}**`);
     },
   }));
@@ -623,7 +631,10 @@ export function registerQueueEffectsAndMiscCommands(registry) {
     usage: 'lyrics [artist - title]',
     async execute(ctx) {
       const query = ctx.args.join(' ').trim();
-      const session = ctx.guildId ? ctx.sessions.get(ctx.guildId) : null;
+      const session = ctx.guildId ? ctx.sessions.get(ctx.guildId, {
+        voiceChannelId: ctx.activeVoiceChannelId,
+        textChannelId: ctx.channelId,
+      }) : null;
       const currentTrack = session?.player?.currentTrack ?? null;
       const fallbackTitle = String(currentTrack?.title ?? '').trim();
       const fallbackArtist = String(currentTrack?.artist ?? '').trim();
