@@ -19,6 +19,10 @@ function normalizeSpotifyDurationMs(value) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : SPOTIFY_PREVIEW_LENGTH_MS;
 }
 
+function isSpotifyNotFoundError(err) {
+  return Number(err?.status) === 404;
+}
+
 export const spotifyMethods = {
   async _getSpotifyAccessToken() {
     const now = Date.now();
@@ -92,9 +96,31 @@ export const spotifyMethods = {
       signal: AbortSignal.timeout(10_000),
     }).catch(() => null);
     if (!response?.ok) {
-      throw new Error(`Spotify API request failed (${response?.status ?? 'network'}): ${endpoint.pathname}`);
+      const error = new Error(`Spotify API request failed (${response?.status ?? 'network'}): ${endpoint.pathname}`);
+      error.status = response?.status ?? null;
+      error.endpoint = endpoint.toString();
+      throw error;
     }
     return response.json();
+  },
+
+  async _spotifyApiRequestWithMarketFallback(pathname, market = null) {
+    const normalizedMarket = String(market ?? '').trim().toUpperCase() || null;
+    if (!normalizedMarket) {
+      return this._spotifyApiRequest(pathname);
+    }
+
+    try {
+      return await this._spotifyApiRequest(pathname, { market: normalizedMarket });
+    } catch (err) {
+      if (!isSpotifyNotFoundError(err)) throw err;
+      this.logger?.warn?.('Spotify request failed for configured market, retrying without market', {
+        market: normalizedMarket,
+        pathname,
+      });
+    }
+
+    return this._spotifyApiRequest(pathname);
   },
 
   _buildSpotifyMetadataTrack(meta, requestedBy, source = 'spotify') {
@@ -205,9 +231,10 @@ export const spotifyMethods = {
       throw new ValidationError('Could not extract Spotify track id from URL.');
     }
 
-    const payload = await this._spotifyApiRequest(`/tracks/${encodeURIComponent(entity.id)}`, {
-      market: this.spotifyMarket || 'US',
-    });
+    const payload = await this._spotifyApiRequestWithMarketFallback(
+      `/tracks/${encodeURIComponent(entity.id)}`,
+      this.spotifyMarket || 'US'
+    );
     const metadataTrack = this._buildSpotifyMetadataTrack(payload, requestedBy, 'spotify');
     return this._resolveSpotifyMirror(metadataTrack, requestedBy);
   },
@@ -222,8 +249,10 @@ export const spotifyMethods = {
       throw new ValidationError('Could not extract Spotify album/playlist id from URL.');
     }
 
-    const market = this.spotifyMarket || 'US';
-    const payload = await this._spotifyApiRequest(`/${entity.type}s/${encodeURIComponent(entity.id)}`, { market });
+    const payload = await this._spotifyApiRequestWithMarketFallback(
+      `/${entity.type}s/${encodeURIComponent(entity.id)}`,
+      this.spotifyMarket || 'US'
+    );
     const rawItems = entity.type === 'playlist'
       ? toArray(payload?.tracks?.items).map((item) => item?.track).filter(Boolean)
       : toArray(payload?.tracks?.items);

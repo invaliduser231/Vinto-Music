@@ -185,3 +185,101 @@ test('spotify api requests keep the /v1 prefix for relative paths', async () => 
   assert.equal(requests[0].url, 'https://api.spotify.com/v1/albums/1oMWwWSqcGxpn2YhsYkNt6?market=DE');
   assert.equal(requests[0].authorization, 'Bearer spotify-token');
 });
+
+test('spotify track resolver retries without market when the configured market returns 404', async () => {
+  const player = createPlayer({ deezerArl: null, spotifyMarket: 'US' });
+  const requests = [];
+
+  player._spotifyApiRequest = async (pathname, query = {}) => {
+    requests.push({
+      pathname,
+      market: query.market ?? null,
+    });
+
+    if (query.market === 'US') {
+      const error = new Error('Spotify API request failed (404)');
+      error.status = 404;
+      throw error;
+    }
+
+    return {
+      id: 'sp404fallback',
+      name: 'Fallback Song',
+      duration_ms: 180000,
+      external_urls: { spotify: 'https://open.spotify.com/track/sp404fallback' },
+      album: {
+        images: [{ url: 'https://i.scdn.co/image/fallback' }],
+      },
+      artists: [{ name: 'Fallback Artist' }],
+    };
+  };
+
+  player._resolveCrossSourceToYouTube = async (items, requestedBy, source) => [
+    player._buildTrack({
+      title: items[0].title,
+      url: 'https://www.youtube.com/watch?v=fallback12345',
+      duration: 180,
+      requestedBy,
+      source,
+      artist: items[0].artist,
+    }),
+  ];
+
+  const tracks = await player._resolveSpotifyTrack('https://open.spotify.com/track/sp404fallback', 'user-1');
+  assert.equal(tracks.length, 1);
+  assert.deepEqual(requests, [
+    { pathname: '/tracks/sp404fallback', market: 'US' },
+    { pathname: '/tracks/sp404fallback', market: null },
+  ]);
+});
+
+test('spotify collection resolver retries without market when the configured market returns 404', async () => {
+  const player = createPlayer({ deezerArl: null, spotifyMarket: 'US' });
+  const requests = [];
+
+  player._spotifyApiRequest = async (pathname, query = {}) => {
+    requests.push({
+      pathname,
+      market: query.market ?? null,
+    });
+
+    if (query.market === 'US') {
+      const error = new Error('Spotify API request failed (404)');
+      error.status = 404;
+      throw error;
+    }
+
+    return {
+      tracks: {
+        items: [{
+          id: 'spalbum1',
+          name: 'Album Fallback Song',
+          duration_ms: 200000,
+          external_urls: { spotify: 'https://open.spotify.com/track/spalbum1' },
+          album: {
+            images: [{ url: 'https://i.scdn.co/image/album-fallback' }],
+          },
+          artists: [{ name: 'Album Artist' }],
+        }],
+      },
+    };
+  };
+
+  player._resolveCrossSourceToYouTube = async (items, requestedBy, source) => [
+    player._buildTrack({
+      title: items[0].title,
+      url: 'https://www.youtube.com/watch?v=albumfallback1',
+      duration: 200,
+      requestedBy,
+      source,
+      artist: items[0].artist,
+    }),
+  ];
+
+  const tracks = await player._resolveSpotifyCollection('https://open.spotify.com/album/spalbumfallback', 'user-1');
+  assert.equal(tracks.length, 1);
+  assert.deepEqual(requests, [
+    { pathname: '/albums/spalbumfallback', market: 'US' },
+    { pathname: '/albums/spalbumfallback', market: null },
+  ]);
+});
