@@ -139,7 +139,10 @@ function hasManageGuildFromBits(bits) {
 }
 
 function getManageGuildFromMessagePayload(ctx) {
-  const ownerId = ctx.message?.guild?.owner_id ?? ctx.message?.guild_owner_id ?? null;
+  const ownerId = ctx.message?.guild?.owner_id
+    ?? ctx.message?.guild_owner_id
+    ?? ctx.guildStateCache?.resolveOwnerId?.(ctx.guildId)
+    ?? null;
   if (ownerId && ctx.authorId && String(ownerId) === String(ctx.authorId)) return true;
 
   for (const candidate of [
@@ -156,6 +159,17 @@ function getManageGuildFromMessagePayload(ctx) {
   }
 
   return null;
+}
+
+function getManageGuildFromGatewayCache(ctx, roleIds = null) {
+  if (!ctx.guildStateCache?.computeManageGuildPermission || !ctx.guildId || !ctx.authorId) {
+    return null;
+  }
+
+  const resolvedRoleIds = Array.isArray(roleIds) ? roleIds : getMemberRoleIds(ctx);
+  if (!resolvedRoleIds.length) return null;
+
+  return ctx.guildStateCache.computeManageGuildPermission(ctx.guildId, resolvedRoleIds, ctx.authorId);
 }
 
 function permissionCacheKey(ctx) {
@@ -257,6 +271,9 @@ async function getManageGuildFromRest(ctx) {
   const memberRoleIds = extractRoleIdsFromMember(member);
 
   for (const roleIds of [memberRoleIds, messageRoleIds]) {
+    const cachedVerdict = getManageGuildFromGatewayCache(ctx, roleIds);
+    if (cachedVerdict != null) return cachedVerdict;
+
     const computedVerdict = hasManageGuildFromBits(computePermissionBitsFromRoleIds(roleIds, roles));
     if (computedVerdict != null) return computedVerdict;
   }
@@ -269,6 +286,12 @@ async function resolveManageGuildPermission(ctx) {
   if (fromMessage != null) {
     setCachedManageGuildPermission(ctx, fromMessage);
     return fromMessage;
+  }
+
+  const fromGatewayCache = getManageGuildFromGatewayCache(ctx);
+  if (fromGatewayCache != null) {
+    setCachedManageGuildPermission(ctx, fromGatewayCache);
+    return fromGatewayCache;
   }
 
   const cached = getCachedManageGuildPermission(ctx);

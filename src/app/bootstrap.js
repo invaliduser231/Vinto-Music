@@ -11,6 +11,7 @@ import { MongoService } from '../storage/mongo.js';
 import { initializePlayDlAuth } from '../integrations/playDlAuth.js';
 import { MusicLibraryStore } from '../bot/services/musicLibraryStore.js';
 import { PermissionService } from '../bot/services/permissionService.js';
+import { GuildStateCache } from '../bot/services/guildStateCache.js';
 import { MonitoringServer } from '../monitoring/server.js';
 import { initializeSentry } from '../monitoring/sentry.js';
 import { sanitizeBrokenLocalProxyEnv } from './proxy.js';
@@ -208,6 +209,8 @@ export async function startApp() {
 
   const voiceStateStore = new VoiceStateStore(logger.child('voice-state'));
   voiceStateStore.register(gateway);
+  const guildStateCache = new GuildStateCache(logger.child('guild-state'));
+  guildStateCache.register(gateway);
 
   const sessions = new SessionManager({
     gateway,
@@ -245,6 +248,7 @@ export async function startApp() {
     lyrics,
     library: musicLibrary,
     permissionService: permissions,
+    guildStateCache,
     metrics: {
       commandsTotal: metricSet.commandsTotal,
     },

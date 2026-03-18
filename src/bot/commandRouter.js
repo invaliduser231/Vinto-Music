@@ -37,6 +37,7 @@ export class CommandRouter {
     this.lyrics = options.lyrics;
     this.library = options.library ?? null;
     this.permissionService = options.permissionService ?? null;
+    this.guildStateCache = options.guildStateCache ?? null;
     this.botUserId = options.botUserId ?? null;
     this.startedAt = options.startedAt;
     this.metrics = options.metrics ?? null;
@@ -239,6 +240,7 @@ export class CommandRouter {
       lyrics: this.lyrics,
       library: this.library,
       permissionService: this.permissionService,
+      guildStateCache: this.guildStateCache,
       botUserId: this.botUserId,
       registry: this.registry,
       startedAt: this.startedAt,

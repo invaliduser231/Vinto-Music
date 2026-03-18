@@ -210,3 +210,59 @@ test('config command allows message-role fallback when getGuildMember fails', as
 
   assert.equal(replied, true);
 });
+
+test('config command allows gateway guild-state cache fallback without REST role access', async () => {
+  const dedupe = buildDedupeCommand();
+  let replied = false;
+
+  await dedupe.execute({
+    guildId: 'guild-4',
+    authorId: 'user-4',
+    args: [],
+    message: {
+      guild_id: 'guild-4',
+      author: { id: 'user-4' },
+      member: { roles: ['role-admin'] },
+    },
+    guildStateCache: {
+      resolveOwnerId() {
+        return 'owner-4';
+      },
+      computeManageGuildPermission(guildId, roleIds, userId) {
+        assert.equal(guildId, 'guild-4');
+        assert.deepEqual(roleIds, ['role-admin']);
+        assert.equal(userId, 'user-4');
+        return true;
+      },
+    },
+    rest: {
+      async getGuildMember() {
+        return {
+          user: { id: 'user-4' },
+          roles: ['role-admin'],
+        };
+      },
+      async getGuild() {
+        throw new Error('guild lookup failed');
+      },
+      async listGuildRoles() {
+        throw new Error('roles lookup failed');
+      },
+    },
+    guildConfigs: {
+      async get() {
+        return baseGuildConfig();
+      },
+    },
+    sessions: {
+      applyGuildConfig() {},
+    },
+    reply: {
+      async info() {
+        replied = true;
+      },
+    },
+  });
+
+  assert.equal(replied, true);
+});
