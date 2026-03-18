@@ -187,8 +187,7 @@ function extractRoleIdsFromMember(member) {
   return [];
 }
 
-function computeMemberPermissionBitsFromRoles(member, roles) {
-  const roleIds = extractRoleIdsFromMember(member);
+function computePermissionBitsFromRoleIds(roleIds, roles) {
   if (!roleIds.length || !Array.isArray(roles)) return null;
 
   const roleMap = new Map();
@@ -211,14 +210,20 @@ function computeMemberPermissionBitsFromRoles(member, roles) {
   return matched ? bits : null;
 }
 
-async function getManageGuildFromRest(ctx) {
-  if (!ctx.rest?.getGuildMember || !ctx.guildId || !ctx.authorId) return null;
+function computeMemberPermissionBitsFromRoles(member, roles) {
+  return computePermissionBitsFromRoleIds(extractRoleIdsFromMember(member), roles);
+}
 
-  let member;
-  try {
-    member = await ctx.rest.getGuildMember(ctx.guildId, ctx.authorId);
-  } catch {
-    return null;
+async function getManageGuildFromRest(ctx) {
+  if (!ctx.guildId || !ctx.authorId) return null;
+
+  let member = null;
+  if (ctx.rest?.getGuildMember) {
+    try {
+      member = await ctx.rest.getGuildMember(ctx.guildId, ctx.authorId);
+    } catch {
+      member = null;
+    }
   }
 
   const directBits = extractPermissionBits(member?.permissions ?? member?.permission ?? member?.member?.permissions);
@@ -248,8 +253,14 @@ async function getManageGuildFromRest(ctx) {
   }
   if (!roles && Array.isArray(guild?.roles)) roles = guild.roles;
 
-  const computedVerdict = hasManageGuildFromBits(computeMemberPermissionBitsFromRoles(member, roles));
-  if (computedVerdict != null) return computedVerdict;
+  const messageRoleIds = extractRoleIdsFromMember(ctx.message?.member);
+  const memberRoleIds = extractRoleIdsFromMember(member);
+
+  for (const roleIds of [memberRoleIds, messageRoleIds]) {
+    const computedVerdict = hasManageGuildFromBits(computePermissionBitsFromRoleIds(roleIds, roles));
+    if (computedVerdict != null) return computedVerdict;
+  }
+
   return null;
 }
 

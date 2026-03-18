@@ -168,3 +168,45 @@ test('config command rejects REST role fallback without manage guild bit', async
     /Manage Server/
   );
 });
+
+test('config command allows message-role fallback when getGuildMember fails', async () => {
+  const dedupe = buildDedupeCommand();
+  let replied = false;
+
+  await dedupe.execute({
+    guildId: 'guild-3',
+    authorId: 'user-3',
+    args: [],
+    message: {
+      guild_id: 'guild-3',
+      author: { id: 'user-3' },
+      member: { roles: ['role-admin'] },
+    },
+    rest: {
+      async getGuildMember() {
+        throw new Error('member lookup failed');
+      },
+      async getGuild() {
+        throw new Error('guild lookup failed');
+      },
+      async listGuildRoles() {
+        return [{ id: 'role-admin', permissions: '8' }];
+      },
+    },
+    guildConfigs: {
+      async get() {
+        return baseGuildConfig();
+      },
+    },
+    sessions: {
+      applyGuildConfig() {},
+    },
+    reply: {
+      async info() {
+        replied = true;
+      },
+    },
+  });
+
+  assert.equal(replied, true);
+});
