@@ -266,3 +266,46 @@ test('config command allows gateway guild-state cache fallback without REST role
 
   assert.equal(replied, true);
 });
+
+test('config command reports role-list access problems clearly', async () => {
+  const dedupe = buildDedupeCommand();
+
+  await assert.rejects(
+    () => dedupe.execute({
+      guildId: 'guild-5',
+      authorId: 'user-5',
+      args: [],
+      message: {
+        guild_id: 'guild-5',
+        author: { id: 'user-5' },
+        member: { roles: ['role-admin'] },
+      },
+      rest: {
+        async getGuildMember() {
+          return {
+            user: { id: 'user-5' },
+            roles: ['role-admin'],
+          };
+        },
+        async getGuild() {
+          throw Object.assign(new Error('guild failed'), { status: 500 });
+        },
+        async listGuildRoles() {
+          throw Object.assign(new Error('roles denied'), { status: 403 });
+        },
+      },
+      guildConfigs: {
+        async get() {
+          return baseGuildConfig();
+        },
+      },
+      sessions: {
+        applyGuildConfig() {},
+      },
+      reply: {
+        async info() {},
+      },
+    }),
+    /denied the bot access to this server's role list/
+  );
+});

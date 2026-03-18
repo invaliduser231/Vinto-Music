@@ -138,6 +138,17 @@ function hasManageGuildFromBits(bits) {
   return Boolean((bits & ADMINISTRATOR_PERMISSION) !== 0n || (bits & MANAGE_GUILD_PERMISSION) !== 0n);
 }
 
+function hasDirectPermissionPayload(ctx) {
+  return [
+    ctx.message?.member?.permissions,
+    ctx.message?.member?.permission,
+    ctx.message?.member_permissions,
+    ctx.message?.permissions,
+    ctx.message?.member?.permission_names,
+    ctx.message?.member?.permission_overwrites,
+  ].some((candidate) => candidate != null);
+}
+
 function getManageGuildFromMessagePayload(ctx) {
   const ownerId = ctx.message?.guild?.owner_id
     ?? ctx.message?.guild_owner_id
@@ -229,13 +240,19 @@ function computeMemberPermissionBitsFromRoles(member, roles) {
 }
 
 async function getManageGuildFromRest(ctx) {
+  const diagnostics = {
+    memberStatus: null,
+    guildStatus: null,
+    rolesStatus: null,
+  };
   if (!ctx.guildId || !ctx.authorId) return null;
 
   let member = null;
   if (ctx.rest?.getGuildMember) {
     try {
       member = await ctx.rest.getGuildMember(ctx.guildId, ctx.authorId);
-    } catch {
+    } catch (err) {
+      diagnostics.memberStatus = err?.status ?? null;
       member = null;
     }
   }
@@ -248,7 +265,8 @@ async function getManageGuildFromRest(ctx) {
   if (ctx.rest?.getGuild) {
     try {
       guild = await ctx.rest.getGuild(ctx.guildId);
-    } catch {
+    } catch (err) {
+      diagnostics.guildStatus = err?.status ?? null;
       guild = null;
     }
   }
@@ -261,7 +279,8 @@ async function getManageGuildFromRest(ctx) {
     try {
       const listed = await ctx.rest.listGuildRoles(ctx.guildId);
       if (Array.isArray(listed)) roles = listed;
-    } catch {
+    } catch (err) {
+      diagnostics.rolesStatus = err?.status ?? null;
       roles = null;
     }
   }
@@ -278,32 +297,59 @@ async function getManageGuildFromRest(ctx) {
     if (computedVerdict != null) return computedVerdict;
   }
 
-  return null;
+  return diagnostics;
+}
+
+function buildManageGuildVerificationMessage(ctx, diagnostics) {
+  const roleIds = getMemberRoleIds(ctx);
+  const hasDirectPermissions = hasDirectPermissionPayload(ctx);
+
+  if (diagnostics?.rolesStatus === 403) {
+    return 'Could not verify your server permissions because Fluxer denied the bot access to this server\'s role list.';
+  }
+
+  if (diagnostics?.guildStatus >= 500) {
+    return 'Could not verify your server permissions because Fluxer returned a server error for this guild\'s metadata.';
+  }
+
+  if (!hasDirectPermissions && roleIds.length > 0 && !ctx.guildStateCache) {
+    return 'Could not verify your server permissions because this message only included role IDs and no cached guild role data was available.';
+  }
+
+  if (!hasDirectPermissions && roleIds.length > 0) {
+    return 'Could not verify your server permissions because Fluxer did not include direct permission bits in the message, and the bot could not resolve your role permissions for this server.';
+  }
+
+  if (!hasDirectPermissions && roleIds.length === 0) {
+    return 'Could not verify your server permissions because Fluxer did not include your permissions or roles in this message.';
+  }
+
+  return 'Could not verify your server permissions right now because Fluxer did not return enough permission data for this server.';
 }
 
 async function resolveManageGuildPermission(ctx) {
   const fromMessage = getManageGuildFromMessagePayload(ctx);
   if (fromMessage != null) {
     setCachedManageGuildPermission(ctx, fromMessage);
-    return fromMessage;
+    return { value: fromMessage, diagnostics: null };
   }
 
   const fromGatewayCache = getManageGuildFromGatewayCache(ctx);
   if (fromGatewayCache != null) {
     setCachedManageGuildPermission(ctx, fromGatewayCache);
-    return fromGatewayCache;
+    return { value: fromGatewayCache, diagnostics: null };
   }
 
   const cached = getCachedManageGuildPermission(ctx);
-  if (cached != null) return cached;
+  if (cached != null) return { value: cached, diagnostics: null };
 
   const fromRest = await getManageGuildFromRest(ctx);
-  if (fromRest != null) {
+  if (typeof fromRest === 'boolean') {
     setCachedManageGuildPermission(ctx, fromRest);
-    return fromRest;
+    return { value: fromRest, diagnostics: null };
   }
 
-  return null;
+  return { value: null, diagnostics: fromRest };
 }
 
 export function userHasDjAccess(ctx, session) {
@@ -334,10 +380,10 @@ export function ensureDjAccessByConfig(ctx, guildConfig, actionLabel) {
 }
 
 export async function ensureManageGuildAccess(ctx, actionLabel) {
-  const permission = await resolveManageGuildPermission(ctx);
+  const { value: permission, diagnostics } = await resolveManageGuildPermission(ctx);
   if (permission === true) return;
   if (permission === false) {
     throw new ValidationError(`You need the "Manage Server" permission to ${actionLabel}.`);
   }
-  throw new ValidationError('Could not verify your server permissions right now. Try again in a few seconds.');
+  throw new ValidationError(buildManageGuildVerificationMessage(ctx, diagnostics));
 }
