@@ -101,6 +101,19 @@ function extractErrorMessage(body, statusText) {
   return statusText || 'Unknown REST error';
 }
 
+function isKnownNonRetryableServerError(body) {
+  const code = String(body?.code ?? '').trim().toUpperCase();
+  const message = String(body?.message ?? '').trim();
+  if (!code || !message) return false;
+
+  if (code !== 'RESPONSE_VALIDATION_ERROR') return false;
+
+  return (
+    message.includes('disabled_operations')
+    && message.includes('INVALID_FORMAT')
+  );
+}
+
 function buildMessageNonce() {
   return `${Date.now()}${Math.floor(Math.random() * 100_000)}`;
 }
@@ -254,7 +267,7 @@ export class RestClient {
     }
 
     if (!response.ok) {
-      const retryable = response.status >= 500;
+      const retryable = response.status >= 500 && !isKnownNonRetryableServerError(parsedBody);
       throw new RestError(
         `[REST] ${method} ${path} -> ${response.status} (${extractErrorMessage(parsedBody, response.statusText)})`,
         {

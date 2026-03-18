@@ -109,3 +109,34 @@ test('editMessage does not retry transient PATCH failures', async () => {
     global.fetch = originalFetch;
   }
 });
+
+test('getGuild does not retry known disabled_operations validation 500 responses', async () => {
+  const originalFetch = global.fetch;
+  let call = 0;
+
+  global.fetch = async () => {
+    call += 1;
+    return jsonResponse({
+      code: 'RESPONSE_VALIDATION_ERROR',
+      message: 'Response validation failed: disabled_operations: INVALID_FORMAT.',
+    }, { status: 500 });
+  };
+
+  try {
+    const rest = new RestClient({
+      token: 'test-token',
+      base: 'https://api.fluxer.app/v1',
+      maxRetries: 4,
+    });
+
+    await assert.rejects(
+      () => rest.getGuild('guild-1'),
+      (error) => error instanceof RestError
+        && error.status === 500
+        && error.retryable === false
+    );
+    assert.equal(call, 1);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
