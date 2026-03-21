@@ -5,10 +5,13 @@
   "license": "SEE LICENSE IN LICENSE",
   "type": "module",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "node --watch src/index.js",
-    "test": "node --test",
-    "spotify:token": "node scripts/get-spotify-refresh-token.js"
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/src/index.js",
+    "dev": "node --import tsx --watch src/index.ts",
+    "test": "node --import tsx --test test/**/*.test.ts",
+    "spotify:token": "node --import tsx scripts/get-spotify-refresh-token.ts"
   },
   "engines": {
     "node": ">=20.0.0"
@@ -33,5 +36,10 @@
     "mongodb": "^7.1.0",
     "play-dl": "^1.9.7",
     "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.3"
   }
 }
