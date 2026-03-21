@@ -1,4 +1,18 @@
-FROM node:20-bookworm-slim
+FROM node:20-bookworm-slim AS build
+
+ENV NODE_OPTIONS="--max-old-space-size=1024 --openssl-legacy-provider"
+
+WORKDIR /app
+
+COPY package.json package-lock.json tsconfig.json tsconfig.build.json ./
+RUN npm ci
+
+COPY src ./src
+COPY scripts ./scripts
+
+RUN npm run build
+
+FROM node:20-bookworm-slim AS runtime
 
 ENV NODE_ENV=production \
     NODE_OPTIONS="--max-old-space-size=1024 --openssl-legacy-provider" \
@@ -16,7 +30,6 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
-COPY src ./src
-COPY scripts ./scripts
+COPY --from=build /app/dist ./dist
 
 CMD ["npm", "start"]
