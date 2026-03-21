@@ -36,6 +36,11 @@ type UrlResolverMethods = {
   _normalizeInputUrl(url: unknown): Promise<string>;
 };
 type UrlResolverRuntime = MusicPlayer & UrlResolverMethods;
+type NormalizedInputUrlCacheEntry = { url: string; expiresAtMs: number };
+
+const SHORT_URL_CACHE_TTL_MS = 10 * 60 * 1000;
+const SHORT_URL_HEAD_TIMEOUT_MS = 2_500;
+const SHORT_URL_GET_TIMEOUT_MS = 4_000;
 
 function isRadioPlaylistContentType(contentType: unknown) {
   const normalized = String(contentType ?? '').toLowerCase();
@@ -475,13 +480,27 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
         || parsed.hostname.includes('spotify.link')
       );
       if (shouldExpand) {
+        const cached = this.normalizedInputUrlCache.get(trimmed) as NormalizedInputUrlCacheEntry | undefined;
+        if (cached && cached.expiresAtMs > Date.now() && isHttpUrl(cached.url)) {
+          return cached.url;
+        }
+
         const response = await fetch(trimmed, {
-          method: 'GET',
+          method: 'HEAD',
           redirect: 'follow',
-          signal: AbortSignal.timeout(7_000),
-        }).catch(() => null);
+          signal: AbortSignal.timeout(SHORT_URL_HEAD_TIMEOUT_MS),
+        }).catch(() => null)
+          ?? await fetch(trimmed, {
+            method: 'GET',
+            redirect: 'follow',
+            signal: AbortSignal.timeout(SHORT_URL_GET_TIMEOUT_MS),
+          }).catch(() => null);
 
         if (response?.url && isHttpUrl(response.url)) {
+          this.normalizedInputUrlCache.set(trimmed, {
+            url: response.url,
+            expiresAtMs: Date.now() + SHORT_URL_CACHE_TTL_MS,
+          });
           return response.url;
         }
       }

@@ -318,6 +318,7 @@ export class MusicPlayer extends EventEmitter {
   soundcloudClientIdResolvedAt: number;
   _lastYtDlpDiagnostics: Record<string, unknown> | null;
   _lastFfmpegArgs: string[] | null;
+  normalizedInputUrlCache: Map<string, { url: string; expiresAtMs: number }>;
 
   constructor(voice: VoiceAdapterLike, options: MusicPlayerOptions = {}) {
     super();
@@ -403,6 +404,7 @@ export class MusicPlayer extends EventEmitter {
 
     this._lastYtDlpDiagnostics = null;
     this._lastFfmpegArgs = null;
+    this.normalizedInputUrlCache = new Map();
   }
 
   _useRuntimeYtDlpCookiesFile(): void {
