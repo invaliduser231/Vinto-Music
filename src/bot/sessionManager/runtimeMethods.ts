@@ -260,7 +260,9 @@ export const runtimeMethods: RuntimeMethods & ThisType<SessionManager> = {
 
   async flushDirtySnapshots() {
     for (const session of this.sessions.values()) {
-      if (!session?.snapshot?.dirty) continue;
+      if (!session?.snapshot) continue;
+      const shouldPersistActivePlayback = this._isSessionRestartRecoverable(session);
+      if (!session.snapshot.dirty && !shouldPersistActivePlayback) continue;
       await this.persistSessionSnapshot(session).catch(() => null);
     }
   },

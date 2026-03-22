@@ -60,14 +60,14 @@ export const deezerMethods: LooseMethodMap = {
     return this._resolveCrossSourceToYouTube([data], requestedBy, 'deezer');
   },
 
-  async _resolveDeezerCollection(url: string, requestedBy: string | null) {
+  async _resolveDeezerCollection(url: string, requestedBy: string | null, limit?: number | null) {
     if (!this.enableDeezerImport) {
       throw new ValidationError('Deezer import is currently disabled by bot configuration.');
     }
 
     if (this.deezerArl) {
       try {
-        const direct = await this._resolveDeezerCollectionDirect(url, requestedBy);
+        const direct = await this._resolveDeezerCollectionDirect(url, requestedBy, limit);
         if (direct.length) return direct;
       } catch (err) {
         this.logger?.warn?.('Direct Deezer collection resolve failed, falling back to mapped source', {
@@ -80,8 +80,9 @@ export const deezerMethods: LooseMethodMap = {
     const data = await playdl.deezer(url);
     if (!data || (data.type !== 'playlist' && data.type !== 'album')) return [];
 
+    const safeLimit = Math.max(1, Math.min(this.maxPlaylistTracks, Number.parseInt(String(limit), 10) || this.maxPlaylistTracks));
     const tracks = await (data as DeezerPlayableCollection).all_tracks();
-    return this._resolveCrossSourceToYouTube(tracks.slice(0, this.maxPlaylistTracks), requestedBy, `deezer-${data.type}`);
+    return this._resolveCrossSourceToYouTube(tracks.slice(0, safeLimit), requestedBy, `deezer-${data.type}`);
   },
 
   async _deezerApiRequest(pathname: string, timeoutMs = 10_000) {
@@ -139,9 +140,10 @@ export const deezerMethods: LooseMethodMap = {
     return track ? [track] : [];
   },
 
-  async _resolveDeezerCollectionDirect(url: string, requestedBy: string | null) {
+  async _resolveDeezerCollectionDirect(url: string, requestedBy: string | null, limit?: number | null) {
     let payload = null;
     let isPlaylist = false;
+    const safeLimit = Math.max(1, Math.min(this.maxPlaylistTracks, Number.parseInt(String(limit), 10) || this.maxPlaylistTracks));
 
     const parsed = new URL(url);
     const parts = String(parsed.pathname ?? '').split('/').map((segment) => segment.trim()).filter(Boolean);
@@ -163,7 +165,7 @@ export const deezerMethods: LooseMethodMap = {
     const rawTracks = Array.isArray(payload?.tracks?.data) ? payload.tracks.data : [];
     const tracks: unknown[] = [];
     for (const entry of rawTracks) {
-      if (tracks.length >= this.maxPlaylistTracks) break;
+      if (tracks.length >= safeLimit) break;
       const track = this._buildDeezerTrackFromMetadata(
         entry,
         requestedBy,

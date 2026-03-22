@@ -145,6 +145,7 @@ interface PreviewOptions extends SearchOptions {
 
 interface PlaylistResolveOptions {
   fallbackWatchUrl?: string | null;
+  limit?: number | null;
 }
 
 type PipelineStreamLike = NonNullable<PipelineProcess['stdout']>;
@@ -195,7 +196,7 @@ export class MusicPlayer extends EventEmitter {
   ) => Promise<Track[]>;
   declare _buildTrack: (input: BuiltTrackInput) => Track;
   declare _handleTrackClose: (track: Track, code: unknown, signal: unknown, playbackToken?: number | null) => Promise<void>;
-  declare _resolveTracks: (query: string, requestedBy: string | null) => Promise<Track[]>;
+  declare _resolveTracks: (query: string, requestedBy: string | null, limit?: number | null) => Promise<Track[]>;
   declare _resolveSearchTrack: (query: string, requestedBy: string | null) => Promise<Track[]>;
   declare _resolveAmazonTrack: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
   declare _resolveAmazonCollection: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;

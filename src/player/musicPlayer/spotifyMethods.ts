@@ -45,6 +45,12 @@ type SpotifyApiError = Error & {
   endpoint?: string;
 };
 
+function normalizeCollectionLimit(limit: number | null | undefined, fallback: number) {
+  const parsed = Number.parseInt(String(limit ?? ''), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.max(1, Math.min(fallback, parsed));
+}
+
 export const spotifyMethods: LooseMethodMap = {
   async _getSpotifyAccessToken() {
     const now = Date.now();
@@ -262,7 +268,7 @@ export const spotifyMethods: LooseMethodMap = {
     return this._resolveSpotifyMirror(metadataTrack, requestedBy);
   },
 
-  async _resolveSpotifyCollection(url: string, requestedBy: string | null) {
+  async _resolveSpotifyCollection(url: string, requestedBy: string | null, limit?: number | null) {
     if (!this.enableSpotifyImport) {
       throw new ValidationError('Spotify import is currently disabled by bot configuration.');
     }
@@ -283,8 +289,9 @@ export const spotifyMethods: LooseMethodMap = {
         .filter((item): item is SpotifyTrackLike => Boolean(item))
       : playlistItems;
 
+    const safeLimit = normalizeCollectionLimit(limit, this.maxPlaylistTracks);
     const resolved = [];
-    for (const item of rawItems.slice(0, this.maxPlaylistTracks)) {
+    for (const item of rawItems.slice(0, safeLimit)) {
       if (!item?.id || item?.is_local) continue;
       const metadataTrack = this._buildSpotifyMetadataTrack(item, requestedBy, `spotify-${entity.type}`);
       try {
@@ -296,13 +303,13 @@ export const spotifyMethods: LooseMethodMap = {
           error: err instanceof Error ? err.message : String(err),
         });
       }
-      if (resolved.length >= this.maxPlaylistTracks) break;
+      if (resolved.length >= safeLimit) break;
     }
 
     return resolved;
   },
 
-  async _resolveSpotifyArtist(url: string, requestedBy: string | null) {
+  async _resolveSpotifyArtist(url: string, requestedBy: string | null, limit?: number | null) {
     if (!this.enableSpotifyImport) {
       throw new ValidationError('Spotify import is currently disabled by bot configuration.');
     }
@@ -316,8 +323,9 @@ export const spotifyMethods: LooseMethodMap = {
       market: this.spotifyMarket || 'US',
     });
 
+    const safeLimit = normalizeCollectionLimit(limit, this.maxPlaylistTracks);
     const tracks = [];
-    for (const item of toArray<SpotifyTrackLike>(payload?.tracks).slice(0, this.maxPlaylistTracks)) {
+    for (const item of toArray<SpotifyTrackLike>(payload?.tracks).slice(0, safeLimit)) {
       const metadataTrack = this._buildSpotifyMetadataTrack(item, requestedBy, 'spotify-artist');
       try {
         const mirrored = await this._resolveSpotifyMirror(metadataTrack, requestedBy);
@@ -328,6 +336,7 @@ export const spotifyMethods: LooseMethodMap = {
           error: err instanceof Error ? err.message : String(err),
         });
       }
+      if (tracks.length >= safeLimit) break;
     }
     return tracks;
   },

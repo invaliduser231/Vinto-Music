@@ -32,6 +32,32 @@ interface ResponderOptions {
   enableEmbeds?: boolean;
 }
 
+export function renderMinimalEmbedContent(
+  description: string | null | undefined,
+  fields: EmbedField[] | null | undefined,
+  footer: string | null | undefined = null,
+): string {
+  const lines: string[] = [];
+  const safeDescription = String(description ?? '').trim();
+  if (safeDescription) lines.push(safeDescription);
+
+  for (const field of Array.isArray(fields) ? fields : []) {
+    const name = String(field.name ?? '-').trim() || '-';
+    const value = String(field.value ?? '-').trim() || '-';
+    if (value.includes('\n')) {
+      lines.push(`**${name}**`);
+      lines.push(value);
+      continue;
+    }
+    lines.push(`**${name}**: ${value}`);
+  }
+
+  const safeFooter = String(footer ?? '').trim();
+  if (safeFooter) lines.push(safeFooter);
+
+  return lines.join('\n').slice(0, 1900);
+}
+
 interface Responder {
   info: (
     channelId: string,
@@ -141,10 +167,15 @@ function createMessagePayload(
   text: string | null,
   embed: EmbedPayload | null,
   useEmbeds: boolean,
+  minimalMode = false,
   replyOptions: ReplyOptions | null = null,
 ): MessagePayload {
-  const payload: MessagePayload = (!useEmbeds || !embed)
-    ? { content: text }
+  const payload: MessagePayload = (!useEmbeds || !embed || minimalMode)
+    ? {
+      content: minimalMode && embed
+        ? renderMinimalEmbedContent(embed.description, embed.fields, embed.footer?.text ?? null)
+        : text,
+    }
     : {
       content: text || undefined,
       embeds: [embed],
@@ -170,6 +201,7 @@ export function makeResponder(rest: RestLike, options: ResponderOptions = {}): R
 
   return {
     async info(channelId, text, details = null, replyOptions = null, embedOptions = null) {
+      const minimalMode = embedOptions?.minimalMode === true;
       const payload = createMessagePayload(
         useEmbeds ? null : text,
         buildEmbed({
@@ -181,12 +213,14 @@ export function makeResponder(rest: RestLike, options: ResponderOptions = {}): R
           imageUrl: embedOptions?.imageUrl ?? null,
         }),
         useEmbeds,
+        minimalMode,
         replyOptions
       );
       return rest.sendMessage(channelId, payload);
     },
 
     async success(channelId, text, details = null, replyOptions = null, embedOptions = null) {
+      const minimalMode = embedOptions?.minimalMode === true;
       const payload = createMessagePayload(
         useEmbeds ? null : text,
         buildEmbed({
@@ -198,12 +232,14 @@ export function makeResponder(rest: RestLike, options: ResponderOptions = {}): R
           imageUrl: embedOptions?.imageUrl ?? null,
         }),
         useEmbeds,
+        minimalMode,
         replyOptions
       );
       return rest.sendMessage(channelId, payload);
     },
 
     async warning(channelId, text, details = null, replyOptions = null, embedOptions = null) {
+      const minimalMode = embedOptions?.minimalMode === true;
       const payload = createMessagePayload(
         useEmbeds ? null : text,
         buildEmbed({
@@ -215,12 +251,14 @@ export function makeResponder(rest: RestLike, options: ResponderOptions = {}): R
           imageUrl: embedOptions?.imageUrl ?? null,
         }),
         useEmbeds,
+        minimalMode,
         replyOptions
       );
       return rest.sendMessage(channelId, payload);
     },
 
     async error(channelId, text, details = null, replyOptions = null, embedOptions = null) {
+      const minimalMode = embedOptions?.minimalMode === true;
       const payload = createMessagePayload(
         useEmbeds ? null : text,
         buildEmbed({
@@ -232,13 +270,14 @@ export function makeResponder(rest: RestLike, options: ResponderOptions = {}): R
           imageUrl: embedOptions?.imageUrl ?? null,
         }),
         useEmbeds,
+        minimalMode,
         replyOptions
       );
       return rest.sendMessage(channelId, payload);
     },
 
     async plain(channelId, text, replyOptions = null) {
-      const payload = createMessagePayload(text, null, false, replyOptions);
+      const payload = createMessagePayload(text, null, false, false, replyOptions);
       return rest.sendMessage(channelId, payload);
     },
   };

@@ -166,6 +166,7 @@ export async function startApp() {
       settings: {
         dedupeEnabled: config.defaultDedupeEnabled,
         stayInVoiceEnabled: config.defaultStayInVoiceEnabled,
+        minimalMode: false,
         volumePercent: config.defaultVolumePercent,
         voteSkipRatio: config.voteSkipRatio,
         voteSkipMinVotes: config.voteSkipMinVotes,

@@ -1,5 +1,5 @@
 import type { EmbedField, MessagePayload, MessageReference } from '../../types/core.ts';
-import { buildEmbed, COLORS } from '../messageFormatter.ts';
+import { buildEmbed, COLORS, renderMinimalEmbedContent } from '../messageFormatter.ts';
 
 interface CommandContextLike {
   message?: {
@@ -10,6 +10,7 @@ interface CommandContextLike {
   guildId?: string | null;
   config?: {
     enableEmbeds?: boolean;
+    minimalMode?: boolean;
   } | null;
   rest?: {
     sendMessage?: (channelId: string, payload: MessagePayload) => Promise<unknown>;
@@ -85,13 +86,23 @@ export function buildInfoPayload(
     if (title) lines.push(title);
     if (description) lines.push(description);
     for (const field of fields ?? []) {
-      lines.push(`${field.name}: ${field.value}`);
+      const value = String(field.value ?? '').trim();
+      if (value.includes('\n')) {
+        lines.push(String(field.name));
+        lines.push(value);
+      } else {
+        lines.push(`${field.name}: ${field.value}`);
+      }
     }
 
     if (safeOptions.footer) {
       lines.push(String(safeOptions.footer));
     }
     return { content: lines.join('\n').slice(0, 1900) };
+  }
+
+  if (ctx.config?.minimalMode === true) {
+    return { content: renderMinimalEmbedContent(description, fields, safeOptions.footer ?? null) };
   }
 
   return {
@@ -151,9 +162,22 @@ export function buildStatusPayload(
   if (ctx.config?.enableEmbeds === false) {
     const lines = [description];
     for (const field of fields ?? []) {
-      lines.push(`${field.name}: ${field.value}`);
+      const value = String(field.value ?? '').trim();
+      if (value.includes('\n')) {
+        lines.push(String(field.name));
+        lines.push(value);
+      } else {
+        lines.push(`${field.name}: ${field.value}`);
+      }
+    }
+    if (safeOptions.footer) {
+      lines.push(String(safeOptions.footer));
     }
     return { content: lines.filter(Boolean).join('\n').slice(0, 1900) };
+  }
+
+  if (ctx.config?.minimalMode === true) {
+    return { content: renderMinimalEmbedContent(description, fields, safeOptions.footer ?? null) };
   }
 
   return {

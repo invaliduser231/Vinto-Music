@@ -28,7 +28,7 @@ import type { BivariantCallback, CommandDefinition, MessagePayload, ReplyOptions
 
 type RouterContextOptions = {
   prefix?: string;
-  guildConfig?: { prefix?: string } | null;
+  guildConfig?: { prefix?: string; settings?: { minimalMode?: boolean } } | null;
 };
 
 type RouterConfig = {
@@ -47,7 +47,7 @@ type RouterConfig = {
 };
 
 type GuildConfigResolver = {
-  get: (guildId: string) => Promise<{ prefix?: string } | null>;
+  get: (guildId: string) => Promise<{ prefix?: string; settings?: { minimalMode?: boolean } } | null>;
 };
 
 type RouterRest = {
@@ -66,6 +66,7 @@ type SessionLookup = {
   settings?: {
     musicLogChannelId?: string | null;
     stayInVoiceEnabled?: boolean;
+    minimalMode?: boolean;
     dedupeEnabled?: boolean;
     voteSkipRatio?: number;
     voteSkipMinVotes?: number;
@@ -119,7 +120,7 @@ type RouterReactionPayload = Record<string, unknown> & {
 
 type SessionEventPayload = {
   session?: SessionLookup | null;
-  track?: { title?: string; duration?: string; requestedBy?: string | null } | null;
+  track?: { title?: string; duration?: string; requestedBy?: string | null; source?: string | null } | null;
   error?: { message?: string | null } | null;
   reason?: string | null;
   seekRestart?: boolean;
@@ -429,8 +430,10 @@ export class CommandRouter {
     const activeVoiceChannelId = this.voiceStateStore.resolveMemberVoiceChannel?.(message) ?? null;
 
     return {
-      config: this.config,
-
+      config: {
+        ...this.config,
+        ...(options.guildConfig?.settings?.minimalMode === true ? { minimalMode: true } : {}),
+      },
       prefix: options.prefix ?? this.config.prefix,
       logger: this.logger,
       rest: this.rest,
@@ -486,16 +489,28 @@ export class CommandRouter {
 
       reply: {
         info: async (text: string, fields: unknown = null, embedOptions: unknown = null) => this._safeReply(
-          channelId, 'info', text, fields, commandReplyOptions ?? null, embedOptions as null | undefined
+          channelId, 'info', text, fields, commandReplyOptions ?? null, {
+            ...(embedOptions && typeof embedOptions === 'object' ? embedOptions as Record<string, unknown> : {}),
+            ...(options.guildConfig?.settings?.minimalMode === true ? { minimalMode: true } : {}),
+          }
         ),
         success: async (text: string, fields: unknown = null, embedOptions: unknown = null) => this._safeReply(
-          channelId, 'success', text, fields, commandReplyOptions ?? null, embedOptions as null | undefined
+          channelId, 'success', text, fields, commandReplyOptions ?? null, {
+            ...(embedOptions && typeof embedOptions === 'object' ? embedOptions as Record<string, unknown> : {}),
+            ...(options.guildConfig?.settings?.minimalMode === true ? { minimalMode: true } : {}),
+          }
         ),
         warning: async (text: string, fields: unknown = null, embedOptions: unknown = null) => this._safeReply(
-          channelId, 'warning', text, fields, commandReplyOptions ?? null, embedOptions as null | undefined
+          channelId, 'warning', text, fields, commandReplyOptions ?? null, {
+            ...(embedOptions && typeof embedOptions === 'object' ? embedOptions as Record<string, unknown> : {}),
+            ...(options.guildConfig?.settings?.minimalMode === true ? { minimalMode: true } : {}),
+          }
         ),
         error: async (text: string, fields: unknown = null, embedOptions: unknown = null) => this._safeReply(
-          channelId, 'error', text, fields, commandReplyOptions ?? null, embedOptions as null | undefined
+          channelId, 'error', text, fields, commandReplyOptions ?? null, {
+            ...(embedOptions && typeof embedOptions === 'object' ? embedOptions as Record<string, unknown> : {}),
+            ...(options.guildConfig?.settings?.minimalMode === true ? { minimalMode: true } : {}),
+          }
         ),
         plain: async (text: string) => this._safeReply(channelId, 'plain', text, null, commandReplyOptions ?? null),
       },
@@ -535,6 +550,12 @@ export class CommandRouter {
       const { session, track } = payload ?? {};
       const channelId = this._resolveEventChannelId(session);
       if (!channelId || !track) return;
+      const isYouTubeMixPlaceholder = String(track?.source ?? '').trim().toLowerCase() === 'youtube'
+        && String(track?.title ?? '').trim() === 'YouTube Mix Track'
+        && String(track?.duration ?? '').trim().toLowerCase() === 'unknown';
+      if (isYouTubeMixPlaceholder) {
+        return;
+      }
 
       await this._safeReply(
         channelId,
@@ -542,7 +563,7 @@ export class CommandRouter {
         `Now playing: **${track.title}** (${track.duration})`,
         null,
         null,
-        undefined
+        session?.settings?.minimalMode ? { minimalMode: true } : undefined
       );
       await this._emitWebhookEvent(session, 'track_start', `Now playing: ${summarizeTrack(track)}`);
     });
@@ -554,7 +575,10 @@ export class CommandRouter {
       await this._safeReply(
         channelId,
         'error',
-        `Playback error on **${track?.title ?? 'unknown'}**: ${error?.message ?? 'unknown error'}`
+        `Playback error on **${track?.title ?? 'unknown'}**: ${error?.message ?? 'unknown error'}`,
+        null,
+        null,
+        session?.settings?.minimalMode ? { minimalMode: true } : undefined
       );
       await this._emitWebhookEvent(session, 'track_error', `Playback error: ${error?.message ?? 'unknown error'}`);
     });
@@ -590,7 +614,10 @@ export class CommandRouter {
       await this._safeReply(
         channelId,
         'info',
-        `Queue is empty. ${suffix}`
+        `Queue is empty. ${suffix}`,
+        null,
+        null,
+        session?.settings?.minimalMode ? { minimalMode: true } : undefined
       );
       await this._emitWebhookEvent(session, 'queue_empty', 'Queue is now empty.');
     });
@@ -605,7 +632,7 @@ export class CommandRouter {
         ? 'Session closed due to inactivity.'
         : `Session closed (${reason}).`;
 
-      await this._safeReply(channelId, 'warning', reasonText);
+      await this._safeReply(channelId, 'warning', reasonText, null, null, session?.settings?.minimalMode ? { minimalMode: true } : undefined);
       await this._emitWebhookEvent(session, 'session_closed', reasonText);
     });
 

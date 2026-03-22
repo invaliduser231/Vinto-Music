@@ -56,9 +56,15 @@ type AppleMethods = {
   _resolveAppleFallbackSearch(url: string, requestedBy: string | null): Promise<Track[]>;
   _resolveAppleMirror(metadataTrack: AppleMetadataTrack, requestedBy: string | null): Promise<Track[]>;
   _resolveAppleTrack(url: string, requestedBy: string | null): Promise<Track[]>;
-  _resolveAppleCollection(url: string, requestedBy: string | null): Promise<Track[]>;
-  _resolveAppleByGuess(url: string, requestedBy: string | null): Promise<Track[]>;
+  _resolveAppleCollection(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
+  _resolveAppleByGuess(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
 };
+
+function normalizeAppleCollectionLimit(limit: number | null | undefined, fallback: number) {
+  const parsed = Number.parseInt(String(limit ?? ''), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.max(1, Math.min(fallback, parsed));
+}
 
 function toAppleDurationSeconds(value: unknown) {
   const parsed = Number.parseInt(String(value ?? ''), 10);
@@ -266,7 +272,7 @@ export const appleMethods: AppleMethods & ThisType<MusicPlayer> = {
     return methods._resolveAppleFallbackSearch(url, requestedBy);
   },
 
-  async _resolveAppleCollection(url, requestedBy) {
+  async _resolveAppleCollection(url, requestedBy, limit = null) {
     const methods = this as AppleMethods & ApplePlayer;
     const entity = extractAppleMusicEntity(url);
     if (!entity) {
@@ -282,12 +288,13 @@ export const appleMethods: AppleMethods & ThisType<MusicPlayer> = {
       throw new ValidationError('Could not extract numeric Apple Music collection id from URL.');
     }
 
+    const safeLimit = normalizeAppleCollectionLimit(limit, this.maxPlaylistTracks);
     const entityType = entity.type === 'artist' ? 'song' : 'song';
     const results = await methods._appleLookup({
       id: lookupId,
       entity: entityType,
       country: entity.countryCode || 'US',
-      limit: this.maxPlaylistTracks,
+      limit: safeLimit,
     }).catch(() => []);
 
     const tracks: Track[] = [];
@@ -303,14 +310,14 @@ export const appleMethods: AppleMethods & ThisType<MusicPlayer> = {
           error: err instanceof Error ? err.message : String(err),
         });
       }
-      if (tracks.length >= this.maxPlaylistTracks) break;
+      if (tracks.length >= safeLimit) break;
     }
 
     if (tracks.length) return tracks;
     throw new ValidationError('Could not resolve Apple Music collection to playable tracks.');
   },
 
-  async _resolveAppleByGuess(url, requestedBy) {
+  async _resolveAppleByGuess(url, requestedBy, limit = null) {
     const methods = this as AppleMethods & ApplePlayer;
     const entity = extractAppleMusicEntity(url);
     if (!entity) {
@@ -322,7 +329,7 @@ export const appleMethods: AppleMethods & ThisType<MusicPlayer> = {
     }
 
     if (entity.type === 'album' || entity.type === 'artist') {
-      return methods._resolveAppleCollection(url, requestedBy);
+      return methods._resolveAppleCollection(url, requestedBy, limit);
     }
 
     return methods._resolveAppleFallbackSearch(url, requestedBy);

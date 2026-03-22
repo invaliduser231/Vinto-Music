@@ -215,10 +215,12 @@ export const pipelineMethods: LooseMethodMap = {
     });
 
     try {
-      const waitTimeoutMs = seekSec > 0
-        ? Math.min(45_000, 10_000 + (Math.max(0, Number.parseInt(String(seekSec), 10) || 0) * 50))
-        : 10_000;
-      await this._awaitProcessOutput(this.sourceProc, waitTimeoutMs);
+      if (seekSec > 0) {
+        const waitTimeoutMs = Math.min(45_000, 10_000 + (Math.max(0, Number.parseInt(String(seekSec), 10) || 0) * 50));
+        await this._awaitProcessOutput(this.sourceProc, waitTimeoutMs);
+      } else {
+        await this._awaitYtDlpStartupGrace(this.sourceProc, 750);
+      }
     } catch (err: unknown) {
       if (stderr.trim()) {
         throw new Error(stderr.trim().split('\n').slice(-2).join(' | '));
@@ -655,6 +657,50 @@ export const pipelineMethods: LooseMethodMap = {
 
       const onError = (err: unknown) => {
         if (settled || sawOutput) return;
+        cleanup();
+        reject(err instanceof Error ? err : new Error(String(err)));
+      };
+
+      const cleanup = () => {
+        settled = true;
+        clearTimeout(timeout);
+        proc.stdout?.off?.('data', onData);
+        proc.off?.('close', onClose);
+        proc.off?.('error', onError);
+      };
+
+      proc.stdout?.on?.('data', onData);
+      proc.on?.('close', onClose);
+      proc.on?.('error', onError);
+    });
+  },
+
+  _awaitYtDlpStartupGrace(proc: ProcessOutputProc, timeoutMs = 750) {
+    return new Promise<void>((resolve, reject) => {
+      let settled = false;
+
+      const timeout = setTimeout(() => {
+        if (settled) return;
+        cleanup();
+        resolve();
+      }, Math.max(0, timeoutMs));
+
+      const onData = () => {
+        if (settled) return;
+        cleanup();
+        resolve();
+      };
+
+      const onClose = (code: unknown, signal: unknown) => {
+        if (settled) return;
+        cleanup();
+        const codeLabel = code == null ? 'unknown' : String(code);
+        const signalLabel = signal ? `, signal=${signal}` : '';
+        reject(new Error(`yt-dlp exited before startup grace completed (code=${codeLabel}${signalLabel}).`));
+      };
+
+      const onError = (err: unknown) => {
+        if (settled) return;
         cleanup();
         reject(err instanceof Error ? err : new Error(String(err)));
       };

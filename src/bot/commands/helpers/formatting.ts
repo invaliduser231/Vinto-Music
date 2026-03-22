@@ -15,6 +15,7 @@ type TrackLike = {
   duration?: string | null;
   title?: string | null;
   isLive?: boolean | null;
+  url?: string | null;
 };
 
 type SessionLike = {
@@ -42,11 +43,29 @@ function truncateWithEllipsis(text: unknown, maxChars: number | string) {
   return `${value.slice(0, limit - 3)}...`;
 }
 
-function formatTrackListLine(track: TrackLike, index: number | null = null, maxChars: number = TRACK_LINE_MAX_CHARS) {
+function compactTrackTitle(title: unknown) {
+  let value = String(title ?? '').trim() || 'Unknown title';
+  value = value.replace(/^[\[({<【❰「『].*?[\])}>】❱」』]\s*/u, '');
+  value = value.replace(/\s*[\[(](official (music )?video|official audio|official lyric video|lyric video|lyrics?|visualizer|audio|hd)[\])]\s*/gi, '');
+  value = value.replace(/\s+-\s+(official (music )?video|official audio|visualizer|audio|lyrics?)$/gi, '');
+  value = value.replace(/\s{2,}/g, ' ').trim();
+  return value || 'Unknown title';
+}
+
+function isSafeMarkdownLinkTarget(value: unknown) {
+  return /^https?:\/\//i.test(String(value ?? '').trim());
+}
+
+function formatTrackListLine(
+  track: TrackLike,
+  index: number | null = null,
+  maxChars: number = TRACK_LINE_MAX_CHARS,
+  options: { includeRequester?: boolean } = {},
+) {
   const prefix = Number.isFinite(index) ? `${index}. ` : '';
-  const by = track?.requestedBy ? ` • requested by <@${track.requestedBy}>` : '';
+  const by = options.includeRequester !== false && track?.requestedBy ? ` • requested by <@${track.requestedBy}>` : '';
   const duration = String(track?.duration ?? 'Unknown');
-  const titleRaw = String(track?.title ?? 'Unknown title').trim() || 'Unknown title';
+  const titleRaw = compactTrackTitle(track?.title);
   const staticLength = prefix.length + by.length + duration.length + 7;
   const titleBudget = Math.max(16, Number.parseInt(String(maxChars), 10) - staticLength);
   const safeTitle = truncateWithEllipsis(titleRaw, titleBudget);
@@ -100,6 +119,16 @@ export function parseVoiceChannelArgument(args: string[] | null | undefined) {
 export function trackLabel(track: TrackLike) {
   const by = track.requestedBy ? ` • requested by <@${track.requestedBy}>` : '';
   return `**${track.title}** (${track.duration})${by}`;
+}
+
+export function trackLabelWithLink(track: TrackLike) {
+  const duration = String(track?.duration ?? 'Unknown');
+  const title = compactTrackTitle(track?.title);
+  const linkedTitle = isSafeMarkdownLinkTarget(track?.url)
+    ? `[**${title}**](${String(track.url).trim()})`
+    : `**${title}**`;
+  const by = track?.requestedBy ? ` • requested by <@${track.requestedBy}>` : '';
+  return `${linkedTitle} (${duration})${by}`;
 }
 
 export function parseDurationToSeconds(value: unknown) {
@@ -165,6 +194,15 @@ function sumTrackDurationsSeconds(tracks: TrackLike[]) {
   return total;
 }
 
+function buildSessionStatusFooter(session: SessionLike, pendingDurationSec: number, pendingCount: number) {
+  return [
+    `Loop ${String(session.player?.loopMode ?? 'off')}`,
+    `Vol ${session.player?.volumePercent ?? 100}%`,
+    `Dedupe ${session.settings?.dedupeEnabled ? 'on' : 'off'}`,
+    `24/7 ${session.settings?.stayInVoiceEnabled ? 'on' : 'off'}`,
+  ].join(' | ');
+}
+
 export function formatQueuePage(session: SessionLike, page: number) {
   const pending = session.player?.pendingTracks ?? [];
   const current = session.player?.displayTrack ?? session.player?.currentTrack;
@@ -182,8 +220,8 @@ export function formatQueuePage(session: SessionLike, page: number) {
     fields.push({
       name: 'Now Playing',
       value: joinLinesWithinLimit([
-        formatTrackListLine(current, null, 760),
-        buildProgressBar(progressSec, durationSec ?? Number.NaN, 16, { isLive: Boolean(current?.isLive) }),
+        trackLabelWithLink(current),
+        buildProgressBar(progressSec, durationSec ?? Number.NaN, 12, { isLive: Boolean(current?.isLive) }),
       ], EMBED_FIELD_TEXT_LIMIT),
     });
   }
@@ -192,15 +230,17 @@ export function formatQueuePage(session: SessionLike, page: number) {
     fields.push({
       name: `Up Next (Page ${safePage}/${totalPages})`,
       value: joinLinesWithinLimit(
-        pageItems.map((track, i) => formatTrackListLine(track, start + i + 1, TRACK_LINE_MAX_CHARS)),
+        pageItems.map((track, i) => formatTrackListLine(track, start + i + 1, TRACK_LINE_MAX_CHARS, { includeRequester: false })),
         EMBED_FIELD_TEXT_LIMIT
       ),
     });
   }
 
   const pendingDurationSec = sumTrackDurationsSeconds(pending);
+  const footer = buildSessionStatusFooter(session, pendingDurationSec, pending.length);
   return {
-    description: `Loop: **${session.player?.loopMode ?? 'off'}** • Volume: **${session.player?.volumePercent ?? 100}%** • Pending duration: **${formatSeconds(pendingDurationSec)}** • Dedupe: **${session.settings?.dedupeEnabled ? 'on' : 'off'}** • 24/7: **${session.settings?.stayInVoiceEnabled ? 'on' : 'off'}**`,
+    description: `Queue: **${pending.length}** tracks • Remaining: **${formatSeconds(pendingDurationSec)}**`,
+    footer,
     fields,
   };
 }

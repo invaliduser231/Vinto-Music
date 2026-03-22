@@ -6,6 +6,7 @@ export type GuildConfigLike = {
   settings: {
     dedupeEnabled: boolean;
     stayInVoiceEnabled: boolean;
+    minimalMode?: boolean;
     volumePercent: number;
     voteSkipRatio: number;
     voteSkipMinVotes: number;
@@ -42,6 +43,7 @@ export type SessionLike = {
   settings: {
     dedupeEnabled: boolean;
     stayInVoiceEnabled: boolean;
+    minimalMode?: boolean;
     voteSkipRatio: number;
     voteSkipMinVotes: number;
     djRoleIds: Set<string>;
@@ -156,6 +158,7 @@ export type CommandContextLike = {
   config: {
     prefix: string;
     enableEmbeds?: boolean;
+    minimalMode?: boolean;
     defaultStayInVoiceEnabled?: boolean;
     maxConcurrentVoiceChannelsPerGuild?: number;
     maxPlaylistTracks?: number;

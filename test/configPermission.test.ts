@@ -17,6 +17,7 @@ function baseGuildConfig() {
     settings: {
       dedupeEnabled: false,
       stayInVoiceEnabled: false,
+      minimalMode: false,
       volumePercent: 100,
       voteSkipRatio: 0.5,
       voteSkipMinVotes: 2,

@@ -41,6 +41,7 @@ export interface VoiceProfileSettings {
 export interface SessionSettings {
   dedupeEnabled?: boolean;
   stayInVoiceEnabled?: boolean;
+  minimalMode?: boolean;
   volumePercent?: number;
   voteSkipRatio?: number;
   voteSkipMinVotes?: number;
@@ -54,6 +55,7 @@ export interface GuildConfig {
   settings: {
     dedupeEnabled?: boolean;
     stayInVoiceEnabled?: boolean;
+    minimalMode?: boolean;
     volumePercent?: number;
     voteSkipRatio?: number;
     voteSkipMinVotes?: number;

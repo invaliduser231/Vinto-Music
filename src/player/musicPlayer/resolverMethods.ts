@@ -28,12 +28,26 @@ type SearchResultLike = Record<string, unknown> & {
   duration?: unknown;
 };
 
+function normalizeResolveLimit(limit: number | null | undefined, fallback: number) {
+  const parsed = Number.parseInt(String(limit ?? ''), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.max(1, Math.min(fallback, parsed));
+}
+
+function isYouTubeWatchContextMixUrl(url: string | null | undefined) {
+  const normalized = String(url ?? '').trim().toLowerCase();
+  if (!normalized) return false;
+  return normalized.includes('/watch?') && (normalized.includes('start_radio=1') || normalized.includes('list=rd'));
+}
+
 export const resolverMethods: LooseMethodMap = {
-  async _resolveTracks(query: string, requestedBy: string | null) {
+  async _resolveTracks(query: string, requestedBy: string | null, limit?: number | null) {
     const raw = String(query ?? '').trim();
     if (!raw) {
       throw new ValidationError('Missing query.');
     }
+
+    const safeLimit = normalizeResolveLimit(limit, this.maxPlaylistTracks);
 
     if (!isHttpUrl(raw)) {
       return this._resolveSearchTrack(raw, requestedBy);
@@ -55,28 +69,29 @@ export const resolverMethods: LooseMethodMap = {
       case 'yt_playlist':
         return this._resolveYouTubePlaylistTracks(playlistUrl ?? url, requestedBy, {
           fallbackWatchUrl: toCanonicalYouTubeWatchUrl(url) ?? inferYouTubeWatchUrlFromPlaylist(url),
+          limit: safeLimit,
         });
       case 'so_track':
         return this.sources.soundcloud.resolveTrack(url, requestedBy);
       case 'so_playlist':
-        return this.sources.soundcloud.resolvePlaylist(url, requestedBy);
+        return this.sources.soundcloud.resolvePlaylist(url, requestedBy, safeLimit);
       case 'sp_track':
         return this.sources.resolver.resolveSpotifyTrack(url, requestedBy);
       case 'sp_playlist':
       case 'sp_album':
-        return this.sources.resolver.resolveSpotifyCollection(url, requestedBy);
+        return this.sources.resolver.resolveSpotifyCollection(url, requestedBy, safeLimit);
       case 'dz_track':
         return this.sources.deezer.resolveTrack(url, requestedBy);
       case 'dz_playlist':
       case 'dz_album':
-        return this.sources.deezer.resolveCollection(url, requestedBy);
+        return this.sources.deezer.resolveCollection(url, requestedBy, safeLimit);
       default:
         if (isAudiusUrl(url)) return this.sources.audius.resolveByUrl(url, requestedBy);
         if (isSoundCloudUrl(url)) return this.sources.soundcloud.resolveByGuess(url, requestedBy);
         if (isDeezerUrl(url)) return this.sources.deezer.resolveByGuess(url, requestedBy);
-        if (isSpotifyUrl(url)) return this.sources.resolver.resolveSpotifyByGuess(url, requestedBy);
-        if (isAmazonMusicUrl(url)) return this.sources.resolver.resolveAmazonByGuess(url, requestedBy);
-        if (isAppleMusicUrl(url)) return this.sources.resolver.resolveAppleByGuess(url, requestedBy);
+        if (isSpotifyUrl(url)) return this.sources.resolver.resolveSpotifyByGuess(url, requestedBy, safeLimit);
+        if (isAmazonMusicUrl(url)) return this.sources.resolver.resolveAmazonByGuess(url, requestedBy, safeLimit);
+        if (isAppleMusicUrl(url)) return this.sources.resolver.resolveAppleByGuess(url, requestedBy, safeLimit);
         return this.sources.resolver.resolveSingleUrlTrack(url, requestedBy);
     }
   },
@@ -203,12 +218,8 @@ export const resolverMethods: LooseMethodMap = {
 
   async previewTracks(query: string, options: { requestedBy?: string | null; limit?: number } = { requestedBy: null, limit: 0 }) {
     const requestedBy = options.requestedBy ?? null;
-    const tracks = await this._resolveTracks(query, requestedBy);
     const limit = Number.parseInt(String(options.limit ?? 0), 10);
-    if (Number.isFinite(limit) && limit > 0) {
-      return tracks.slice(0, limit);
-    }
-    return tracks;
+    return this._resolveTracks(query, requestedBy, Number.isFinite(limit) && limit > 0 ? limit : null);
   },
 
   createTrackFromData(data: Record<string, unknown>, requestedBy: string | null = null) {
@@ -336,9 +347,31 @@ export const resolverMethods: LooseMethodMap = {
     });
   },
 
-  async _resolveYouTubePlaylistTracks(url: string, requestedBy: string | null, options: { fallbackWatchUrl?: string | null } = { fallbackWatchUrl: null }) {
+  async _resolveYouTubePlaylistTracks(
+    url: string,
+    requestedBy: string | null,
+    options: { fallbackWatchUrl?: string | null; limit?: number | null } = { fallbackWatchUrl: null, limit: null }
+  ) {
     if (!this.enableYtPlayback) {
       throw new ValidationError('YouTube playback is currently disabled by bot configuration.');
+    }
+
+    const safeLimit = normalizeResolveLimit(options.limit, this.maxPlaylistTracks);
+    const watchUrl = options.fallbackWatchUrl ?? inferYouTubeWatchUrlFromPlaylist(url) ?? toCanonicalYouTubeWatchUrl(url);
+
+    // For watch-context mixes/radios, start immediately with the visible track
+    // instead of waiting for a playlist resolver to enumerate entries first.
+    if (safeLimit === 1 && watchUrl) {
+      if (isYouTubeWatchContextMixUrl(url)) {
+        return [this._buildTrack({
+          title: 'YouTube Mix Track',
+          url: watchUrl,
+          duration: 'Unknown',
+          requestedBy,
+          source: 'youtube',
+        })];
+      }
+      return this._resolveSingleYouTubeTrack(watchUrl, requestedBy);
     }
 
     const order = this.youtubePlaylistResolver === 'playdl' ? ['playdl', 'ytdlp'] : ['ytdlp', 'playdl'];
@@ -347,7 +380,7 @@ export const resolverMethods: LooseMethodMap = {
     for (const resolver of order) {
       if (resolver === 'ytdlp') {
         try {
-          const tracks = await this._resolveYouTubePlaylistTracksViaYtDlp(url, requestedBy);
+          const tracks = await this._resolveYouTubePlaylistTracksViaYtDlp(url, requestedBy, safeLimit);
           if (tracks.length) {
             this.logger?.info?.('Resolved YouTube playlist via yt-dlp', {
               url,
@@ -368,7 +401,7 @@ export const resolverMethods: LooseMethodMap = {
       }
 
       try {
-        const tracks = await this._resolveYouTubePlaylistTracksViaPlayDl(url, requestedBy);
+        const tracks = await this._resolveYouTubePlaylistTracksViaPlayDl(url, requestedBy, safeLimit);
         if (tracks.length) {
           if (this.youtubePlaylistResolver !== 'playdl') {
             this.logger?.info?.('Resolved YouTube playlist via play-dl fallback', {
@@ -388,7 +421,6 @@ export const resolverMethods: LooseMethodMap = {
       }
     }
 
-    const watchUrl = options.fallbackWatchUrl ?? inferYouTubeWatchUrlFromPlaylist(url) ?? toCanonicalYouTubeWatchUrl(url);
     if (watchUrl) {
       return this._resolveSingleYouTubeTrack(watchUrl, requestedBy);
     }
@@ -411,21 +443,22 @@ export const resolverMethods: LooseMethodMap = {
     return playdl.playlist_info(url, { incomplete: true });
   },
 
-  async _resolveYouTubePlaylistTracksViaPlayDl(url: string, requestedBy: string | null) {
+  async _resolveYouTubePlaylistTracksViaPlayDl(url: string, requestedBy: string | null, limit?: number | null) {
+    const safeLimit = normalizeResolveLimit(limit, this.maxPlaylistTracks);
     const playlist = await this._fetchYouTubePlaylistInfo(url);
-    await playlist.fetch(this.maxPlaylistTracks);
+    await playlist.fetch(safeLimit);
     const videos = [];
 
-    for (let page = 1; page <= playlist.total_pages && videos.length < this.maxPlaylistTracks; page += 1) {
+    for (let page = 1; page <= playlist.total_pages && videos.length < safeLimit; page += 1) {
       const items = playlist.page(page) ?? [];
       for (const item of items) {
         videos.push(item);
-        if (videos.length >= this.maxPlaylistTracks) break;
+        if (videos.length >= safeLimit) break;
       }
     }
 
     if (!videos.length && Array.isArray(playlist.videos)) {
-      videos.push(...playlist.videos.slice(0, this.maxPlaylistTracks));
+      videos.push(...playlist.videos.slice(0, safeLimit));
     }
 
     return videos.map((video) => this._buildTrack({
@@ -439,8 +472,8 @@ export const resolverMethods: LooseMethodMap = {
     }));
   },
 
-  async _resolveYouTubePlaylistTracksViaYtDlp(url: string, requestedBy: string | null) {
-    const safeLimit = Math.max(1, Number.parseInt(String(this.maxPlaylistTracks ?? 25), 10) || 25);
+  async _resolveYouTubePlaylistTracksViaYtDlp(url: string, requestedBy: string | null, limit?: number | null) {
+    const safeLimit = normalizeResolveLimit(limit, this.maxPlaylistTracks);
     const args = [
       '--ignore-config',
       '--quiet',

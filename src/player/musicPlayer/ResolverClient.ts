@@ -25,34 +25,34 @@ export class ResolverClient {
     return api._resolveAmazonTrack(url, requestedBy);
   }
 
-  resolveSpotifyCollection(url: string, requestedBy?: string | null) {
-    const api = this.host as { _resolveSpotifyCollection: (url: string, requestedBy?: string | null) => unknown };
-    return api._resolveSpotifyCollection(url, requestedBy);
+  resolveSpotifyCollection(url: string, requestedBy?: string | null, limit?: number | null) {
+    const api = this.host as { _resolveSpotifyCollection: (url: string, requestedBy?: string | null, limit?: number | null) => unknown };
+    return api._resolveSpotifyCollection(url, requestedBy, limit);
   }
 
-  resolveAppleCollection(url: string, requestedBy?: string | null) {
-    const api = this.host as { _resolveAppleCollection: (url: string, requestedBy?: string | null) => unknown };
-    return api._resolveAppleCollection(url, requestedBy);
+  resolveAppleCollection(url: string, requestedBy?: string | null, limit?: number | null) {
+    const api = this.host as { _resolveAppleCollection: (url: string, requestedBy?: string | null, limit?: number | null) => unknown };
+    return api._resolveAppleCollection(url, requestedBy, limit);
   }
 
-  resolveAmazonCollection(url: string, requestedBy?: string | null) {
-    const api = this.host as { _resolveAmazonCollection: (url: string, requestedBy?: string | null) => unknown };
-    return api._resolveAmazonCollection(url, requestedBy);
+  resolveAmazonCollection(url: string, requestedBy?: string | null, limit?: number | null) {
+    const api = this.host as { _resolveAmazonCollection: (url: string, requestedBy?: string | null, limit?: number | null) => unknown };
+    return api._resolveAmazonCollection(url, requestedBy, limit);
   }
 
-  resolveSpotifyByGuess(url: string, requestedBy?: string | null) {
-    const api = this.host as { _resolveSpotifyByGuess: (url: string, requestedBy?: string | null) => unknown };
-    return api._resolveSpotifyByGuess(url, requestedBy);
+  resolveSpotifyByGuess(url: string, requestedBy?: string | null, limit?: number | null) {
+    const api = this.host as { _resolveSpotifyByGuess: (url: string, requestedBy?: string | null, limit?: number | null) => unknown };
+    return api._resolveSpotifyByGuess(url, requestedBy, limit);
   }
 
-  resolveAppleByGuess(url: string, requestedBy?: string | null) {
-    const api = this.host as { _resolveAppleByGuess: (url: string, requestedBy?: string | null) => unknown };
-    return api._resolveAppleByGuess(url, requestedBy);
+  resolveAppleByGuess(url: string, requestedBy?: string | null, limit?: number | null) {
+    const api = this.host as { _resolveAppleByGuess: (url: string, requestedBy?: string | null, limit?: number | null) => unknown };
+    return api._resolveAppleByGuess(url, requestedBy, limit);
   }
 
-  resolveAmazonByGuess(url: string, requestedBy?: string | null) {
-    const api = this.host as { _resolveAmazonByGuess: (url: string, requestedBy?: string | null) => unknown };
-    return api._resolveAmazonByGuess(url, requestedBy);
+  resolveAmazonByGuess(url: string, requestedBy?: string | null, limit?: number | null) {
+    const api = this.host as { _resolveAmazonByGuess: (url: string, requestedBy?: string | null, limit?: number | null) => unknown };
+    return api._resolveAmazonByGuess(url, requestedBy, limit);
   }
 
   resolveFallback(url: string, requestedBy?: string | null, source?: string | null) {

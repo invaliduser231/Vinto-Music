@@ -165,6 +165,39 @@ test('playlist resolver uses play-dl fallback when yt-dlp fails in default mode'
   assert.equal(playdlCalls, 1);
 });
 
+test('watch-context YouTube mix with limit 1 skips metadata lookup and returns immediate watch track', async () => {
+  const player = createPlayer();
+  let singleCalls = 0;
+  let ytdlpCalls = 0;
+  let playdlCalls = 0;
+
+  player._resolveSingleYouTubeTrack = async () => {
+    singleCalls += 1;
+    throw new Error('single resolver should not be used');
+  };
+  player._resolveYouTubePlaylistTracksViaYtDlp = async () => {
+    ytdlpCalls += 1;
+    throw new Error('playlist ytdlp should not be used');
+  };
+  player._resolveYouTubePlaylistTracksViaPlayDl = async () => {
+    playdlCalls += 1;
+    throw new Error('playlist play-dl should not be used');
+  };
+
+  const tracks = await player._resolveYouTubePlaylistTracks(
+    'https://www.youtube.com/watch?v=NN96DHjYCzM&list=RDMM&start_radio=1',
+    'user-1',
+    { fallbackWatchUrl: 'https://www.youtube.com/watch?v=NN96DHjYCzM', limit: 1 } as PlaylistResolveOptions
+  );
+
+  assert.equal(tracks.length, 1);
+  assert.equal(tracks[0]!.url, 'https://www.youtube.com/watch?v=NN96DHjYCzM');
+  assert.equal(tracks[0]!.title, 'YouTube Mix Track');
+  assert.equal(singleCalls, 0);
+  assert.equal(ytdlpCalls, 0);
+  assert.equal(playdlCalls, 0);
+});
+
 
 
 

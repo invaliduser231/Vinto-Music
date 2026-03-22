@@ -66,13 +66,14 @@ function cloneConfig(config: GuildConfigDocument) {
   return {
     guildId: config.guildId,
     prefix: config.prefix,
-      settings: {
-        dedupeEnabled: config.settings.dedupeEnabled,
-        stayInVoiceEnabled: config.settings.stayInVoiceEnabled,
-        volumePercent: config.settings.volumePercent,
-        voteSkipRatio: config.settings.voteSkipRatio,
-        voteSkipMinVotes: config.settings.voteSkipMinVotes,
-        djRoleIds: [...config.settings.djRoleIds],
+    settings: {
+      dedupeEnabled: config.settings.dedupeEnabled,
+      stayInVoiceEnabled: config.settings.stayInVoiceEnabled,
+      minimalMode: config.settings.minimalMode,
+      volumePercent: config.settings.volumePercent,
+      voteSkipRatio: config.settings.voteSkipRatio,
+      voteSkipMinVotes: config.settings.voteSkipMinVotes,
+      djRoleIds: [...config.settings.djRoleIds],
       musicLogChannelId: config.settings.musicLogChannelId,
     },
     createdAt: config.createdAt,
@@ -91,6 +92,7 @@ type GuildConfigPatch = {
   settings?: {
     dedupeEnabled?: unknown;
     stayInVoiceEnabled?: unknown;
+    minimalMode?: unknown;
     volumePercent?: unknown;
     voteSkipRatio?: unknown;
     voteSkipMinVotes?: unknown;
@@ -104,6 +106,7 @@ type GuildConfigDocLike = {
   settings?: {
     dedupeEnabled?: unknown;
     stayInVoiceEnabled?: unknown;
+    minimalMode?: unknown;
     volumePercent?: unknown;
     voteSkipRatio?: unknown;
     voteSkipMinVotes?: unknown;
@@ -146,6 +149,7 @@ export class GuildConfigStore {
       settings: {
         dedupeEnabled: Boolean(options.defaults?.settings?.dedupeEnabled),
         stayInVoiceEnabled: Boolean(options.defaults?.settings?.stayInVoiceEnabled),
+        minimalMode: Boolean(options.defaults?.settings?.minimalMode),
         volumePercent: normalizeVolumePercent(options.defaults?.settings?.volumePercent, 100),
         voteSkipRatio: toRatio(options.defaults?.settings?.voteSkipRatio, 0.5),
         voteSkipMinVotes: toPositiveInt(options.defaults?.settings?.voteSkipMinVotes, 2),
@@ -229,6 +233,7 @@ export class GuildConfigStore {
           settings: {
             dedupeEnabled: next.settings.dedupeEnabled,
             stayInVoiceEnabled: next.settings.stayInVoiceEnabled,
+            minimalMode: next.settings.minimalMode,
             volumePercent: next.settings.volumePercent,
             voteSkipRatio: next.settings.voteSkipRatio,
             voteSkipMinVotes: next.settings.voteSkipMinVotes,
@@ -266,6 +271,10 @@ export class GuildConfigStore {
 
       if (settingsPatch.stayInVoiceEnabled !== undefined) {
         next.settings.stayInVoiceEnabled = toBool(settingsPatch.stayInVoiceEnabled, next.settings.stayInVoiceEnabled);
+      }
+
+      if (settingsPatch.minimalMode !== undefined) {
+        next.settings.minimalMode = toBool(settingsPatch.minimalMode, next.settings.minimalMode);
       }
 
       if (settingsPatch.volumePercent !== undefined) {
@@ -315,6 +324,7 @@ export class GuildConfigStore {
       settings: {
         dedupeEnabled: toBool(settings.dedupeEnabled, this.defaults.settings.dedupeEnabled),
         stayInVoiceEnabled: toBool(settings.stayInVoiceEnabled, this.defaults.settings.stayInVoiceEnabled),
+        minimalMode: toBool(settings.minimalMode, this.defaults.settings.minimalMode),
         volumePercent: normalizeVolumePercent(settings.volumePercent, this.defaults.settings.volumePercent),
         voteSkipRatio: toRatio(settings.voteSkipRatio, this.defaults.settings.voteSkipRatio),
         voteSkipMinVotes: toPositiveInt(settings.voteSkipMinVotes, this.defaults.settings.voteSkipMinVotes),
@@ -334,6 +344,7 @@ export class GuildConfigStore {
 
     if (as.dedupeEnabled !== bs.dedupeEnabled) return false;
     if (as.stayInVoiceEnabled !== bs.stayInVoiceEnabled) return false;
+    if (as.minimalMode !== bs.minimalMode) return false;
     if (as.volumePercent !== bs.volumePercent) return false;
     if (as.voteSkipRatio !== bs.voteSkipRatio) return false;
     if (as.voteSkipMinVotes !== bs.voteSkipMinVotes) return false;
@@ -380,6 +391,7 @@ import type { LoggerLike } from '../../types/core.ts';
 type GuildConfigSettings = {
   dedupeEnabled: boolean;
   stayInVoiceEnabled: boolean;
+  minimalMode: boolean;
   volumePercent: number;
   voteSkipRatio: number;
   voteSkipMinVotes: number;

@@ -6,6 +6,7 @@ import { GuildConfigStore } from '../src/bot/services/guildConfigStore.ts';
 type GuildSettingsRecord = {
   dedupeEnabled?: boolean;
   stayInVoiceEnabled?: boolean;
+  minimalMode?: boolean;
   volumePercent?: number;
   voteSkipRatio?: number;
   voteSkipMinVotes?: number;
@@ -76,6 +77,7 @@ function buildStore() {
       settings: {
         dedupeEnabled: false,
         stayInVoiceEnabled: false,
+        minimalMode: false,
         volumePercent: 100,
         voteSkipRatio: 0.5,
         voteSkipMinVotes: 2,
@@ -95,6 +97,7 @@ test('guild config store returns defaults for missing guild', async () => {
   assert.equal(cfg.guildId, 'guild-1');
   assert.equal(cfg.prefix, '!');
   assert.equal(cfg.settings.volumePercent, 100);
+  assert.equal(cfg.settings.minimalMode, false);
   assert.deepEqual(cfg.settings.djRoleIds, []);
 });
 
@@ -107,6 +110,7 @@ test('guild config store persists and normalizes settings updates', async () => 
     settings: {
       dedupeEnabled: true,
       stayInVoiceEnabled: true,
+      minimalMode: true,
       volumePercent: 35,
       voteSkipRatio: 0.75,
       voteSkipMinVotes: 3,
@@ -117,6 +121,7 @@ test('guild config store persists and normalizes settings updates', async () => 
   assert.equal(updated.prefix, '>>');
   assert.equal(updated.settings.dedupeEnabled, true);
   assert.equal(updated.settings.stayInVoiceEnabled, true);
+  assert.equal(updated.settings.minimalMode, true);
   assert.equal(updated.settings.volumePercent, 35);
   assert.equal(updated.settings.voteSkipRatio, 0.75);
   assert.equal(updated.settings.voteSkipMinVotes, 3);
@@ -124,6 +129,7 @@ test('guild config store persists and normalizes settings updates', async () => 
 
   const loaded = await store.get('guild-1');
   assert.equal(loaded.prefix, '>>');
+  assert.equal(loaded.settings.minimalMode, true);
   assert.equal(loaded.settings.volumePercent, 35);
   assert.deepEqual(loaded.settings.djRoleIds, ['1000000']);
 });

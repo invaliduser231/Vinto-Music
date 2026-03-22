@@ -15,6 +15,7 @@ import {
   applyVoiceProfileIfConfigured,
   resolveQueueGuard,
   trackLabel,
+  trackLabelWithLink,
   saveSearchSelection,
   normalizeIndex,
   consumeSearchSelection,
@@ -40,7 +41,7 @@ import {
 import { detectRadioNowPlaying } from './helpers/radioNowPlaying.ts';
 import type { CommandRegistry } from '../commandRegistry.ts';
 import type { EmbedField, MessagePayload } from '../../types/core.ts';
-import type { CommandContextLike, TrackDataLike } from './helpers/types.ts';
+import type { CommandContextLike, SessionLike, TrackDataLike } from './helpers/types.ts';
 
 const RADIO_RECOGNITION_SUPPORT_FOOTER = 'Radio recognition costs money to run. Support: https://ko-fi.com/Q5Q31VDH1Z';
 
@@ -72,6 +73,54 @@ type PlaybackCommandContext = CommandContextLike & {
     clearVoteSkips?: (guildId: string, selector?: { sessionId?: string | null } | null) => void;
   };
 };
+
+function isYouTubeMixPlaceholderTrack(track: TrackDataLike | null | undefined) {
+  return String(track?.source ?? '').trim().toLowerCase() === 'youtube'
+    && String(track?.title ?? '').trim() === 'YouTube Mix Track'
+    && String(track?.duration ?? '').trim().toLowerCase() === 'unknown';
+}
+
+function toCanonicalYouTubeWatchUrlFromValue(value: string | null | undefined) {
+  try {
+    const parsed = new URL(String(value ?? ''));
+    const host = parsed.hostname.toLowerCase();
+    if (!host.includes('youtube.com') && !host.includes('youtu.be')) return null;
+
+    if (host.includes('youtu.be')) {
+      const segment = String(parsed.pathname ?? '').split('/').filter(Boolean)[0];
+      return segment ? `https://www.youtube.com/watch?v=${encodeURIComponent(segment.trim())}` : null;
+    }
+
+    const videoId = String(parsed.searchParams.get('v') ?? '').trim();
+    return videoId ? `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}` : null;
+  } catch {
+    return null;
+  }
+}
+
+async function hydrateFirstYouTubeMixTrack(
+  player: SessionLike['player'],
+  track: TrackDataLike | null | undefined,
+  requestedBy: string | null,
+) {
+  if (!track) return null;
+  if (!isYouTubeMixPlaceholderTrack(track)) return null;
+  const targetTrack = track;
+
+  const watchUrl = toCanonicalYouTubeWatchUrlFromValue(String(targetTrack.url ?? '').trim());
+  if (!watchUrl) return null;
+
+  const resolved = await player.previewTracks(watchUrl, { requestedBy, limit: 1 }).catch(() => []);
+  const hydrated = resolved[0] ? player.createTrackFromData(resolved[0], requestedBy) : null;
+  if (!hydrated) return null;
+
+  const preservedId = targetTrack.id ?? null;
+  const preservedQueuedAt = targetTrack.queuedAt ?? null;
+  Object.assign(targetTrack, hydrated);
+  if (preservedId) targetTrack.id = preservedId;
+  if (typeof preservedQueuedAt === 'number') targetTrack.queuedAt = preservedQueuedAt;
+  return targetTrack;
+}
 
 function resolveGatewayLatencyMs(gateway: GatewayLike) {
   if (!gateway) return null;
@@ -159,6 +208,81 @@ function formatSearchResultLine(track: SearchTrack, index: number) {
   const shortTitle = title.length > 72 ? `${title.slice(0, 69)}...` : title;
   const duration = String(track?.duration ?? 'Unknown');
   return `${index}. **${shortTitle}** (${duration})`;
+}
+
+function isLikelyPlaylistLoad(query: string) {
+  const normalized = String(query ?? '').trim().toLowerCase();
+  if (!/^https?:\/\//.test(normalized)) return false;
+  return (
+    normalized.includes('list=')
+    || /open\.spotify\.com\/(playlist|album|artist)\//.test(normalized)
+    || /deezer\.com\/.+\/(playlist|album)\//.test(normalized)
+    || /soundcloud\.com\/.+\/sets\//.test(normalized)
+    || /music\.apple\.com\/.+\/(album|playlist)\//.test(normalized)
+    || /music\.amazon\.[^/]+\/.+\/(albums|playlists|artists)\//.test(normalized)
+  );
+}
+
+function buildTrackIdentity(track: TrackDataLike | null | undefined) {
+  const source = String(track?.source ?? '').trim().toLowerCase();
+  const url = String(track?.url ?? '').trim().toLowerCase();
+  const title = String(track?.title ?? '').trim().toLowerCase();
+  const artist = String(track?.artist ?? '').trim().toLowerCase();
+  return [source, url, title, artist].join('::');
+}
+
+function removeFirstMatchingTrack(tracks: TrackDataLike[], needle: TrackDataLike | null | undefined) {
+  const target = buildTrackIdentity(needle);
+  let removed = false;
+  return tracks.filter((track) => {
+    if (removed) return true;
+    if (buildTrackIdentity(track) !== target) return true;
+    removed = true;
+    return false;
+  });
+}
+
+async function enqueueTracksUntilFull(
+  player: SessionLike['player'],
+  tracks: TrackDataLike[],
+  options: { dedupe?: boolean; playNext?: boolean; queueGuard?: unknown },
+  onProgress?: ((state: { addedCount: number; totalCount: number; queueLimitReached: boolean }) => Promise<void> | void) | null
+) {
+  const added: TrackDataLike[] = [];
+  let queueLimitReached = false;
+  let lastReportedCount = 0;
+  const totalCount = tracks.length;
+
+  for (const track of tracks) {
+    try {
+      const next = player.enqueueResolvedTracks([track], options);
+      if (next.length) {
+        added.push(...next);
+      }
+    } catch (err) {
+      if (err instanceof ValidationError && /Queue limit exceeded/i.test(err.message)) {
+        queueLimitReached = true;
+        if (onProgress) {
+          await onProgress({ addedCount: added.length, totalCount, queueLimitReached });
+        }
+        break;
+      }
+      throw err;
+    }
+
+    if (onProgress) {
+      const shouldReport =
+        added.length === totalCount
+        || added.length === 1
+        || added.length >= (lastReportedCount + 5);
+      if (shouldReport) {
+        lastReportedCount = added.length;
+        await onProgress({ addedCount: added.length, totalCount, queueLimitReached: false });
+      }
+    }
+  }
+
+  return { added, queueLimitReached };
 }
 
 export function registerCorePlaybackCommands(registry: CommandRegistry) {
@@ -321,9 +445,10 @@ registry.register(createCommand({
         await applyVoiceProfileIfConfigured(ctx, session, explicitChannelId);
 
         const queueGuard = await resolveQueueGuard(ctx);
+        const shouldLoadPlaylistInBackground = isLikelyPlaylistLoad(query);
         const preview = await session.player.previewTracks(query, {
           requestedBy: ctx.authorId,
-          ...(ctx.config.maxPlaylistTracks != null ? { limit: ctx.config.maxPlaylistTracks } : {}),
+          ...(shouldLoadPlaylistInBackground ? { limit: 1 } : (ctx.config.maxPlaylistTracks != null ? { limit: ctx.config.maxPlaylistTracks } : {})),
         });
         const tracks = preview.map((track: TrackDataLike) => session.player.createTrackFromData(track, ctx.authorId));
         const activeTrack = session.player.currentTrack ?? null;
@@ -362,21 +487,95 @@ registry.register(createCommand({
           await progress.warning('No tracks were added.');
           return;
         }
-        if (shouldInterruptLivePlayback && added.length === 1) {
-          await progress.success(`Stopped live stream. Playing now: ${trackLabel(firstAdded)}`);
-        } else if (shouldInterruptLivePlayback) {
-          await progress.success(
-            `Stopped live stream and queued **${added.length}** tracks to start now.`,
-            [{ name: 'First Track', value: trackLabel(firstAdded) }]
-          );
-        } else if (added.length === 1) {
-          await progress.success(`Added to queue: ${trackLabel(firstAdded)}`);
-        } else {
-          await progress.success(
-            `Added **${added.length}** tracks from playlist.`,
-            [{ name: 'First Track', value: trackLabel(firstAdded) }]
-          );
+
+        if (!shouldLoadPlaylistInBackground) {
+          if (shouldInterruptLivePlayback && added.length === 1) {
+            await progress.success(`Stopped live stream. Playing now: ${trackLabel(firstAdded)}`);
+          } else if (shouldInterruptLivePlayback) {
+            await progress.success(
+              `Stopped live stream and queued **${added.length}** tracks to start now.`,
+              [{ name: 'First Track', value: trackLabel(firstAdded) }]
+            );
+          } else if (added.length === 1) {
+            await progress.success(`Added to queue: ${trackLabel(firstAdded)}`);
+          } else {
+            await progress.success(
+              `Added **${added.length}** tracks from playlist.`,
+              [{ name: 'First Track', value: trackLabel(firstAdded) }]
+            );
+          }
+          return;
         }
+
+        let firstTrackLabel = trackLabel(firstAdded);
+        await progress.info(
+          shouldInterruptLivePlayback
+            ? `Stopped live stream. Playing now: ${firstTrackLabel}\nLoading remaining playlist tracks in the background...`
+            : `Playing now: ${firstTrackLabel}\nLoading remaining playlist tracks in the background...`
+        );
+
+        const initialPreviewTrack = preview[0] ?? null;
+        void (async () => {
+          try {
+            const hydratedFirstTrack = await hydrateFirstYouTubeMixTrack(session.player, firstAdded, ctx.authorId).catch(() => null);
+            if (hydratedFirstTrack) {
+              firstTrackLabel = trackLabel(hydratedFirstTrack);
+              await progress.info(
+                shouldInterruptLivePlayback
+                  ? `Stopped live stream. Playing now: ${firstTrackLabel}\nLoading remaining playlist tracks in the background...`
+                  : `Playing now: ${firstTrackLabel}\nLoading remaining playlist tracks in the background...`
+              );
+            }
+
+            const resolved = await session.player.previewTracks(query, {
+              requestedBy: ctx.authorId,
+              ...(ctx.config.maxPlaylistTracks != null ? { limit: ctx.config.maxPlaylistTracks } : {}),
+            });
+            const resolvedTotalCount = resolved.length;
+            const remainingResolved = removeFirstMatchingTrack(resolved, initialPreviewTrack);
+            if (!remainingResolved.length) {
+              await progress.success(`Playing now: ${firstTrackLabel}\nQueued **${resolvedTotalCount}/${resolvedTotalCount}** playlist tracks.`);
+              return;
+            }
+
+            const remainingTracks = remainingResolved.map((track: TrackDataLike) => session.player.createTrackFromData(track, ctx.authorId));
+            const backgroundResult = await enqueueTracksUntilFull(session.player, remainingTracks, {
+              dedupe: session.settings.dedupeEnabled,
+              playNext: false,
+              queueGuard,
+            }, async ({ addedCount, totalCount, queueLimitReached }) => {
+              const loadedCount = 1 + addedCount;
+              const statusText = queueLimitReached
+                ? `Playing now: ${firstTrackLabel}\nQueued **${loadedCount}/${resolvedTotalCount}** playlist tracks before the queue limit was reached.`
+                : `Playing now: ${firstTrackLabel}\nLoading playlist tracks in the background... **${loadedCount}/${resolvedTotalCount}** queued.`;
+              await progress.info(statusText);
+            });
+            const totalAdded = 1 + backgroundResult.added.length;
+
+            if (!backgroundResult.added.length) {
+              await progress.success(
+                `Playing now: ${firstTrackLabel}`,
+                [{ name: 'Playlist Load', value: 'No additional tracks were queued.' }]
+              );
+              return;
+            }
+
+            const playlistLoadText = backgroundResult.queueLimitReached
+              ? `Playing now: ${firstTrackLabel}\nQueued **${totalAdded}/${resolvedTotalCount}** playlist tracks before the queue limit was reached.`
+              : `Playing now: ${firstTrackLabel}\nQueued **${totalAdded}/${resolvedTotalCount}** playlist tracks.`;
+            await progress.success(
+              playlistLoadText,
+              backgroundResult.queueLimitReached
+                ? [{ name: 'Queue Limit', value: 'Remaining playlist tracks were skipped.' }]
+                : null
+            );
+          } catch (err) {
+            await progress.warning(
+              `Playing now: ${firstTrackLabel}\nBackground playlist loading failed.`,
+              [{ name: 'Error', value: String(err instanceof Error ? err.message : err).slice(0, 1000) || 'Unknown error' }]
+            );
+          }
+        })();
       });
     },
   }));
@@ -670,20 +869,31 @@ registry.register(createCommand({
           ]
         : [
             { name: 'Progress', value: buildProgressBar(progressSec, totalSec ?? Number.NaN, 16, { isLive: Boolean(current?.isLive) }) },
-            { name: 'Loop', value: String(session.player.loopMode ?? 'off'), inline: true },
-            { name: 'Volume', value: `${session.player.volumePercent ?? 100}%`, inline: true },
             { name: 'Queued', value: String(session.player.pendingTracks.length), inline: true },
           ];
+
+      const pendingDurationSec = session.player.pendingTracks.reduce((sum, track) => {
+        const parsed = parseDurationToSeconds(track?.duration);
+        return parsed != null ? sum + parsed : sum;
+      }, 0);
+      const sessionFooter = isRadio
+        ? RADIO_RECOGNITION_SUPPORT_FOOTER
+        : [
+          `Loop ${String(session.player.loopMode ?? 'off')}`,
+          `Vol ${session.player.volumePercent ?? 100}%`,
+          `Dedupe ${session.settings?.dedupeEnabled ? 'on' : 'off'}`,
+          `24/7 ${session.settings?.stayInVoiceEnabled ? 'on' : 'off'}`,
+        ].join(' | ');
 
       const buildNowPlayingPayload = (nextFields: EmbedField[]) => buildInfoPayload(
         ctx,
         'Now Playing',
-        isRadio ? '' : trackLabel(current),
+        isRadio ? '' : trackLabelWithLink(current),
         nextFields,
         {
           thumbnailUrl: current.thumbnailUrl ?? null,
           imageUrl: current.thumbnailUrl ?? null,
-          ...(isRadio ? { footer: RADIO_RECOGNITION_SUPPORT_FOOTER } : {}),
+          footer: sessionFooter,
         }
       );
 
@@ -863,7 +1073,7 @@ registry.register(createCommand({
       if (ctx.args.length) {
         const page = parseRequiredInteger(ctx.args[0], 'Page');
         const queueData = formatQueuePage(session, page);
-        await ctx.reply.info(queueData.description, queueData.fields);
+        await ctx.reply.info(queueData.description, queueData.fields, { footer: queueData.footer ?? null });
         return;
       }
 
@@ -871,14 +1081,14 @@ registry.register(createCommand({
       const totalPages = Math.max(1, Math.ceil(pendingCount / PENDING_PAGE_SIZE));
       if (totalPages <= 1) {
         const queueData = formatQueuePage(session, 1);
-        await ctx.reply.info(queueData.description, queueData.fields);
+        await ctx.reply.info(queueData.description, queueData.fields, { footer: queueData.footer ?? null });
         return;
       }
 
       const pages = [];
       for (let page = 1; page <= totalPages; page += 1) {
         const queueData = formatQueuePage(session, page);
-        pages.push(buildInfoPayload(ctx, 'Queue', queueData.description, queueData.fields));
+        pages.push(buildInfoPayload(ctx, 'Queue', queueData.description, queueData.fields, { footer: queueData.footer ?? null }));
       }
       await ctx.sendPaginated(pages);
     },

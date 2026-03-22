@@ -24,7 +24,7 @@ type TestTrack = {
 type SessionPlayer = {
   playing?: boolean;
   currentTrack?: TestTrack | null;
-  previewTracks?: () => Promise<TestTrack[]>;
+  previewTracks?: (query: string, options?: { requestedBy?: string | null; limit?: number }) => Promise<TestTrack[]>;
   createTrackFromData?: (track: TestTrack, requestedBy: string) => TestTrack;
   enqueueResolvedTracks?: (tracks: TestTrack[], options: { playNext?: boolean; dedupe?: boolean }) => TestTrack[];
   skip?: () => boolean;
@@ -216,6 +216,92 @@ test('play keeps normal queue behavior when the current track is not live', asyn
     'enqueue:{"playNext":false,"dedupe":false}',
   ]);
   assert.ok(calls.some((entry) => entry.includes('Added to queue:')));
+});
+
+test('play starts the first playlist track immediately and loads the rest in the background', async () => {
+  const play = buildPlayCommand();
+  const execute = play?.execute as PlayExecute | undefined;
+  assert.ok(execute);
+
+  const calls: string[] = [];
+  const playerCalls: string[] = [];
+  let backgroundResolved = false;
+  let resolveBackground: ((tracks: TestTrack[]) => void) | null = null;
+
+  const firstTrack = {
+    title: 'Track 1',
+    duration: '03:00',
+    url: 'https://example.com/track-1',
+    source: 'youtube-playlist',
+  };
+  const secondTrack = {
+    title: 'Track 2',
+    duration: '03:30',
+    url: 'https://example.com/track-2',
+    source: 'youtube-playlist',
+  };
+
+  const ctx = createBaseContext({
+    playing: false,
+    async previewTracks(_query: string, options?: { limit?: number }) {
+      playerCalls.push(`previewTracks:${options?.limit ?? 'full'}`);
+      if (options?.limit === 1) {
+        return [firstTrack];
+      }
+      return await new Promise<TestTrack[]>((resolve) => {
+        resolveBackground = (tracks) => {
+          backgroundResolved = true;
+          resolve(tracks);
+        };
+      });
+    },
+    createTrackFromData(track: TestTrack, requestedBy: string) {
+      playerCalls.push(`createTrackFromData:${track.title}:${requestedBy}`);
+      return { ...track, requestedBy };
+    },
+    enqueueResolvedTracks(tracks: TestTrack[], options: { playNext?: boolean; dedupe?: boolean }) {
+      playerCalls.push(`enqueue:${tracks.map((track) => track.title).join(',')}:${JSON.stringify({ playNext: options.playNext, dedupe: options.dedupe })}`);
+      return tracks;
+    },
+    async play() {
+      playerCalls.push('play');
+    },
+    skip() {
+      playerCalls.push('skip');
+      return true;
+    },
+  }, calls);
+  ctx.args = ['https://www.youtube.com/playlist?list=demo'];
+
+  await execute(ctx);
+
+  assert.deepEqual(playerCalls, [
+    'previewTracks:1',
+    'createTrackFromData:Track 1:user-1',
+    'enqueue:Track 1:{"playNext":false,"dedupe":false}',
+    'play',
+    'previewTracks:25',
+  ]);
+  assert.equal(backgroundResolved, false);
+  assert.ok(calls.some((entry) => entry.includes('Loading remaining playlist tracks in the background')));
+
+  const finishBackground = resolveBackground as ((tracks: TestTrack[]) => void) | null;
+  if (typeof finishBackground === 'function') {
+    finishBackground([firstTrack, secondTrack]);
+  }
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.ok(backgroundResolved);
+  assert.deepEqual(playerCalls, [
+    'previewTracks:1',
+    'createTrackFromData:Track 1:user-1',
+    'enqueue:Track 1:{"playNext":false,"dedupe":false}',
+    'play',
+    'previewTracks:25',
+    'createTrackFromData:Track 2:user-1',
+    'enqueue:Track 2:{"playNext":false,"dedupe":false}',
+  ]);
+  assert.ok(calls.some((entry) => entry.includes('Queued **2** track(s) from playlist.')));
 });
 
 

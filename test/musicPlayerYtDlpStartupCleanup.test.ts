@@ -51,17 +51,17 @@ test('yt-dlp startup retries clean up failed attempt processes before retrying',
     return proc;
   };
 
-  let awaitCalls = 0;
-  player._awaitProcessOutput = async (proc: FakeProcess) => {
-    awaitCalls += 1;
+  let graceCalls = 0;
+  player._awaitYtDlpStartupGrace = async (proc: FakeProcess) => {
+    graceCalls += 1;
     if (proc === firstSourceProc) {
-      throw new Error('yt-dlp did not produce audio output in time.');
+      throw new Error('yt-dlp exited before startup grace completed (code=1).');
     }
   };
 
   await player._startYtDlpPipeline('https://www.youtube.com/watch?v=demo1234567', 0);
 
-  assert.equal(awaitCalls, 2);
+  assert.equal(graceCalls, 2);
   assert.deepEqual(firstSourceProc.killCalls, ['SIGKILL']);
   assert.deepEqual(firstFfmpeg.killCalls, ['SIGKILL']);
   assert.equal(player.sourceProc, secondSourceProc);

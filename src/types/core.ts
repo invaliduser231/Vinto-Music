@@ -68,6 +68,7 @@ export interface MessagePayload {
 }
 
 export interface ResponderEmbedOptions {
+  minimalMode?: boolean;
   thumbnailUrl?: string | null;
   imageUrl?: string | null;
 }

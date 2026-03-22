@@ -60,6 +60,33 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
   }));
 
   registry.register(createCommand({
+    name: 'minimalmode',
+    aliases: ['minimal'],
+    description: 'Toggle compact text replies instead of embeds.',
+    usage: 'minimalmode [on|off]',
+    async execute(ctx: CommandContextLike) {
+      ensureGuild(ctx);
+      const guildConfig = await getGuildConfigOrThrow(ctx);
+      await ensureManageGuildAccess(ctx, 'change minimal mode');
+
+      if (!ctx.args.length) {
+        await ctx.reply.info(`Minimal mode is currently **${guildConfig.settings.minimalMode ? 'on' : 'off'}**.`);
+        return;
+      }
+
+      const value = parseOnOff(ctx.args[0], null);
+      if (value == null) {
+        throw new ValidationError('Use `on` or `off`.');
+      }
+
+      await updateGuildConfig(ctx, {
+        settings: { minimalMode: value },
+      });
+      await ctx.reply.success(`Minimal mode is now **${value ? 'on' : 'off'}**.`);
+    },
+  }));
+
+  registry.register(createCommand({
     name: 'volumedefault',
     aliases: ['volcfg', 'defaultvolume'],
     description: 'Show or set the default volume for new guild sessions.',
@@ -313,6 +340,7 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
       await ctx.reply.info('Guild configuration', [
         { name: 'Prefix', value: guildConfig.prefix, inline: true },
         { name: 'Dedupe', value: guildConfig.settings.dedupeEnabled ? 'on' : 'off', inline: true },
+        { name: 'Minimal Mode', value: guildConfig.settings.minimalMode ? 'on' : 'off', inline: true },
         { name: 'Default Volume', value: `${guildConfig.settings.volumePercent}%`, inline: true },
         { name: '24/7', value: stayInVoiceEnabled ? 'on' : 'off', inline: true },
         { name: 'Vote Ratio', value: String(guildConfig.settings.voteSkipRatio), inline: true },

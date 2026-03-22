@@ -147,6 +147,7 @@ export function defaultSettings(config: SessionManagerConfigLike): SessionSettin
   return {
     dedupeEnabled: Boolean(config.defaultDedupeEnabled),
     stayInVoiceEnabled: Boolean(config.defaultStayInVoiceEnabled),
+    minimalMode: false,
     volumePercent: toVolumePercent(config.defaultVolumePercent, 100),
     voteSkipRatio: toRatio(config.voteSkipRatio, 0.5),
     voteSkipMinVotes: toPositiveInt(config.voteSkipMinVotes, 2),
@@ -189,6 +190,7 @@ export function settingsFromGuildConfig(
     stayInVoiceEnabled: typeof profile.stayInVoiceEnabled === 'boolean'
       ? profile.stayInVoiceEnabled
       : toBool(source.stayInVoiceEnabled, fallbackStayInVoiceEnabled),
+    minimalMode: toBool(source.minimalMode, defaults.minimalMode ?? false),
     volumePercent: toVolumePercent(source.volumePercent, fallbackVolumePercent),
     voteSkipRatio: toRatio(source.voteSkipRatio, fallbackVoteSkipRatio),
     voteSkipMinVotes: toPositiveInt(source.voteSkipMinVotes, fallbackVoteSkipMinVotes),

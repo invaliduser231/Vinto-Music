@@ -10,14 +10,14 @@ export class SpotifyClient {
     return api._resolveSpotifyTrack(url, requestedBy);
   }
 
-  resolveCollection(url: string, requestedBy?: string | null) {
-    const api = this.host as { _resolveSpotifyCollection: (url: string, requestedBy?: string | null) => unknown };
-    return api._resolveSpotifyCollection(url, requestedBy);
+  resolveCollection(url: string, requestedBy?: string | null, limit?: number | null) {
+    const api = this.host as { _resolveSpotifyCollection: (url: string, requestedBy?: string | null, limit?: number | null) => unknown };
+    return api._resolveSpotifyCollection(url, requestedBy, limit);
   }
 
-  resolveArtist(url: string, requestedBy?: string | null) {
-    const api = this.host as { _resolveSpotifyArtist: (url: string, requestedBy?: string | null) => unknown };
-    return api._resolveSpotifyArtist(url, requestedBy);
+  resolveArtist(url: string, requestedBy?: string | null, limit?: number | null) {
+    const api = this.host as { _resolveSpotifyArtist: (url: string, requestedBy?: string | null, limit?: number | null) => unknown };
+    return api._resolveSpotifyArtist(url, requestedBy, limit);
   }
 
   resolveByGuess(url: string, requestedBy?: string | null) {

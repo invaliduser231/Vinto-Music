@@ -60,9 +60,9 @@ export const soundcloudMethods: LooseMethodMap = {
     return [this._buildSoundCloudTrackFromMetadata(data, requestedBy, 'soundcloud-direct')];
   },
 
-  async _resolveSoundCloudPlaylist(url: string, requestedBy: string | null) {
+  async _resolveSoundCloudPlaylist(url: string, requestedBy: string | null, limit?: number | null) {
     try {
-      const direct = await this._resolveSoundCloudPlaylistDirect(url, requestedBy);
+      const direct = await this._resolveSoundCloudPlaylistDirect(url, requestedBy, limit);
       if (direct.length) return direct;
     } catch (err) {
       this.logger?.warn?.('Direct SoundCloud playlist resolve failed, falling back to play-dl resolver', {
@@ -86,9 +86,10 @@ export const soundcloudMethods: LooseMethodMap = {
       return this._resolveFromUrlFallbackSearch(url, requestedBy, 'soundcloud-fallback');
     }
 
+    const safeLimit = Math.max(1, Math.min(this.maxPlaylistTracks, Number.parseInt(String(limit), 10) || this.maxPlaylistTracks));
     const tracks = await (data as SoundCloudPlaylist).all_tracks();
     return tracks
-      .slice(0, this.maxPlaylistTracks)
+      .slice(0, safeLimit)
       .map((track: unknown) => this._buildSoundCloudTrackFromMetadata(track, requestedBy, 'soundcloud-playlist-direct'))
       .filter(Boolean);
   },
@@ -227,17 +228,18 @@ export const soundcloudMethods: LooseMethodMap = {
     return track ? [track] : [];
   },
 
-  async _resolveSoundCloudPlaylistDirect(url: string, requestedBy: string | null) {
+  async _resolveSoundCloudPlaylistDirect(url: string, requestedBy: string | null, limit?: number | null) {
     const payload = await this._soundCloudResolve(url);
     const kind = String(payload?.kind ?? '').toLowerCase();
     if (kind !== 'playlist' && kind !== 'system-playlist') {
       throw new Error(`resolved object is not a playlist (${kind || 'unknown'})`);
     }
 
+    const safeLimit = Math.max(1, Math.min(this.maxPlaylistTracks, Number.parseInt(String(limit), 10) || this.maxPlaylistTracks));
     const tracks = Array.isArray(payload?.tracks) ? payload.tracks : [];
     const resolved = [];
     for (const entry of tracks) {
-      if (resolved.length >= this.maxPlaylistTracks) break;
+      if (resolved.length >= safeLimit) break;
       const track = this._buildSoundCloudTrackFromMetadata(entry, requestedBy, 'soundcloud-playlist-direct');
       if (track) resolved.push(track);
     }

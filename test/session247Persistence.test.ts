@@ -714,6 +714,68 @@ test('session snapshot persistence stores current track, queue and seek position
   assert.equal(snapshotCall.snapshot.pendingTracks.length, 1);
 });
 
+test('snapshot flush loop persists updated playback progress for active sessions even without new dirty events', async () => {
+  type ProgressSnapshot = {
+    state: { progressSec: number };
+    currentTrack: { seekStartSec: number } | null;
+  };
+  const snapshots: Array<{ guildId: string; voiceChannelId: string; snapshot: ProgressSnapshot }> = [];
+  const library = {
+    async upsertSessionSnapshot(guildId: string, voiceChannelId: string, snapshot: ProgressSnapshot) {
+      snapshots.push({ guildId, voiceChannelId, snapshot });
+    },
+  };
+
+  let progressSec = 12;
+  const manager = createManager({
+    config: {
+      sessionIdleMs: 10_000,
+      defaultDedupeEnabled: false,
+      defaultStayInVoiceEnabled: false,
+      defaultVolumePercent: 100,
+      minVolumePercent: 0,
+      maxVolumePercent: 200,
+      voteSkipRatio: 0.5,
+      voteSkipMinVotes: 2,
+      voiceMaxBitrate: 192000,
+      maxQueueSize: 100,
+      maxPlaylistTracks: 25,
+      enableYtSearch: true,
+      enableYtPlayback: true,
+      enableSpotifyImport: true,
+      enableDeezerImport: true,
+      youtubePlaylistResolver: 'ytdlp',
+      sessionSnapshotMinWriteIntervalMs: 0,
+    },
+    library,
+  });
+
+  const session = await manager.ensure('919191', null, { voiceChannelId: '232323' });
+  session.settings.stayInVoiceEnabled = false;
+  session.player.playing = true;
+  session.player.currentTrack = {
+    title: 'Keep Progress',
+    url: 'https://example.com/progress',
+    duration: '3:00',
+    source: 'youtube',
+    seekStartSec: 0,
+  };
+  session.player.pendingTracks = [];
+  session.player.canSeekCurrentTrack = () => true;
+  session.player.getProgressSeconds = () => progressSec;
+
+  session.snapshot!.dirty = false;
+  await manager.flushDirtySnapshots();
+  progressSec = 28;
+  await manager.flushDirtySnapshots();
+
+  assert.equal(snapshots.length, 2);
+  assert.equal(snapshots[0]!.snapshot.state.progressSec, 12);
+  assert.equal(snapshots[0]!.snapshot.currentTrack?.seekStartSec, 12);
+  assert.equal(snapshots[1]!.snapshot.state.progressSec, 28);
+  assert.equal(snapshots[1]!.snapshot.currentTrack?.seekStartSec, 28);
+});
+
 test('session snapshot persistence also stores active non-24/7 sessions for restart recovery', async () => {
   type PersistedRecoverySnapshot = {
     currentTrack: { title: string; seekStartSec: number };

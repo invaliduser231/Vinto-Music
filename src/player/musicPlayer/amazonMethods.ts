@@ -144,8 +144,8 @@ type AmazonMethods = {
   _resolveAmazonFallbackSearch(url: string, requestedBy: string | null): Promise<Track[]>;
   _resolveAmazonMirror(metadataTrack: Partial<Track> & { durationInSec?: number | null }, requestedBy: string | null): Promise<Track[]>;
   _resolveAmazonTrack(url: string, requestedBy: string | null): Promise<Track[]>;
-  _resolveAmazonCollection(url: string, requestedBy: string | null): Promise<Track[]>;
-  _resolveAmazonByGuess(url: string, requestedBy: string | null): Promise<Track[]>;
+  _resolveAmazonCollection(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
+  _resolveAmazonByGuess(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
 };
 type AmazonRuntime = AmazonPlayer & AmazonMethods;
 
@@ -226,6 +226,12 @@ function parseIsoDurationToSeconds(value: unknown) {
   const seconds = Number.parseInt(match[3] ?? '0', 10) || 0;
   const total = (hours * 3600) + (minutes * 60) + seconds;
   return total > 0 ? total : null;
+}
+
+function normalizeAmazonCollectionLimit(limit: number | null | undefined, fallback: number) {
+  const parsed = Number.parseInt(String(limit ?? ''), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.max(1, Math.min(fallback, parsed));
 }
 
 function pickArtist(value: unknown): string | null {
@@ -657,7 +663,8 @@ export const amazonMethods: AmazonMethods & ThisType<AmazonPlayer> = {
     return this._resolveAmazonFallbackSearch(url, requestedBy);
   },
 
-  async _resolveAmazonCollection(this: AmazonRuntime, url, requestedBy) {
+  async _resolveAmazonCollection(this: AmazonRuntime, url, requestedBy, limit = null) {
+    const safeLimit = normalizeAmazonCollectionLimit(limit, this.maxPlaylistTracks);
     const entity = extractAmazonMusicEntity(url);
     if (entity?.type === 'album' && entity?.id) {
       const payload = await this._amazonLegacyLookup(url, [entity.id], 'FULL_CATALOG').catch(() => null);
@@ -666,7 +673,7 @@ export const amazonMethods: AmazonMethods & ThisType<AmazonPlayer> = {
         const deezerAlbumTracks = await this._searchDeezerAlbumMirrorTracks(
           lookupAlbum.primaryArtistName ?? lookupAlbum.artist?.name,
           lookupAlbum.title,
-          this.maxPlaylistTracks,
+          safeLimit,
           requestedBy
         ).catch(() => []);
         if (deezerAlbumTracks.length) {
@@ -683,7 +690,7 @@ export const amazonMethods: AmazonMethods & ThisType<AmazonPlayer> = {
     }
 
     const pageMetadata = await this._fetchAmazonPageMetadata(url).catch(() => null);
-    const sourceTracks = (pageMetadata?.tracks ?? []).slice(0, this.maxPlaylistTracks);
+    const sourceTracks = (pageMetadata?.tracks ?? []).slice(0, safeLimit);
 
     const tracks: Track[] = [];
     for (const item of sourceTracks) {
@@ -698,7 +705,7 @@ export const amazonMethods: AmazonMethods & ThisType<AmazonPlayer> = {
           error: err instanceof Error ? err.message : String(err),
         });
       }
-      if (tracks.length >= this.maxPlaylistTracks) break;
+      if (tracks.length >= safeLimit) break;
     }
 
     if (tracks.length) return tracks;
@@ -706,7 +713,7 @@ export const amazonMethods: AmazonMethods & ThisType<AmazonPlayer> = {
     return this._resolveAmazonFallbackSearch(url, requestedBy);
   },
 
-  async _resolveAmazonByGuess(this: AmazonRuntime, url, requestedBy) {
+  async _resolveAmazonByGuess(this: AmazonRuntime, url, requestedBy, limit = null) {
     const entity = extractAmazonMusicEntity(url);
     if (!entity) {
       return this._resolveAmazonFallbackSearch(url, requestedBy);
@@ -717,7 +724,7 @@ export const amazonMethods: AmazonMethods & ThisType<AmazonPlayer> = {
     }
 
     if (entity.type === 'album' || entity.type === 'playlist' || entity.type === 'artist') {
-      return this._resolveAmazonCollection(url, requestedBy);
+      return this._resolveAmazonCollection(url, requestedBy, limit);
     }
 
     return this._resolveAmazonTrack(url, requestedBy);
