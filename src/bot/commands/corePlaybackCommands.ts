@@ -234,12 +234,16 @@ function buildTrackIdentity(track: TrackDataLike | null | undefined) {
 function removeFirstMatchingTrack(tracks: TrackDataLike[], needle: TrackDataLike | null | undefined) {
   const target = buildTrackIdentity(needle);
   let removed = false;
-  return tracks.filter((track) => {
+  const filtered = tracks.filter((track) => {
     if (removed) return true;
     if (buildTrackIdentity(track) !== target) return true;
     removed = true;
     return false;
   });
+  if (!removed && needle && tracks.length) {
+    return tracks.slice(1);
+  }
+  return filtered;
 }
 
 async function enqueueTracksUntilFull(
