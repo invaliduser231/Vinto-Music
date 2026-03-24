@@ -162,6 +162,9 @@ These are used only by `npm run spotify:token`.
 | `MONITORING_ENABLED` | `1` | Start monitoring HTTP server. |
 | `MONITORING_HOST` | `0.0.0.0` | Monitoring bind host. Restrict this in untrusted environments. |
 | `MONITORING_PORT` | `9091` | Monitoring bind port. |
+| `UNHEALTHY_EXIT_ENABLED` | `1` | Exit the process when runtime readiness stays unhealthy long enough, so Docker restart policies can recover it. |
+| `UNHEALTHY_EXIT_AFTER_MS` | `180000` | How long `/readyz` may stay unhealthy before the process exits with code `1`. |
+| `UNHEALTHY_CHECK_INTERVAL_MS` | `5000` | How often the runtime checks whether unhealthy state should trigger a forced exit. |
 | `SENTRY_DSN` | empty | Optional Sentry DSN. |
 | `SENTRY_ENVIRONMENT` | `production` | Sentry environment label. |
 

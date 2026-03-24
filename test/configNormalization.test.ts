@@ -57,6 +57,14 @@ test('loadConfig rejects invalid YOUTUBE_PLAYLIST_RESOLVER values', () => {
   );
 });
 
+test('loadConfig enables unhealthy-exit watchdog by default', () => {
+  const config = loadConfig(buildEnv());
+
+  assert.equal(config.unhealthyExitEnabled, true);
+  assert.equal(config.unhealthyExitAfterMs, 180000);
+  assert.equal(config.unhealthyCheckIntervalMs, 5000);
+});
+
 
 
 

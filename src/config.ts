@@ -214,6 +214,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     monitoringEnabled: parseBool(env.MONITORING_ENABLED, true),
     monitoringHost: (env.MONITORING_HOST ?? '0.0.0.0').trim() || '0.0.0.0',
     monitoringPort: parsePositiveInt(env.MONITORING_PORT, 9091),
+    unhealthyExitEnabled: parseBool(env.UNHEALTHY_EXIT_ENABLED, true),
+    unhealthyExitAfterMs: parsePositiveInt(env.UNHEALTHY_EXIT_AFTER_MS, 180_000),
+    unhealthyCheckIntervalMs: parsePositiveInt(env.UNHEALTHY_CHECK_INTERVAL_MS, 5_000),
 
     sentryDsn: env.SENTRY_DSN?.trim() || null,
     sentryEnvironment: (env.SENTRY_ENVIRONMENT?.trim() || env.NODE_ENV?.trim() || 'production'),

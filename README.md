@@ -128,6 +128,7 @@ This repo now includes [`docker-compose.yml`](docker-compose.yml) and a producti
 - Expose port `9091` if you want Coolify or external monitoring to reach `/healthz`, `/readyz`, and `/metrics`.
 - Add any optional provider secrets such as `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `SPOTIFY_REFRESH_TOKEN`, `DEEZER_ARL`, or `SENTRY_DSN` directly in Coolify as environment variables.
 - The bundled Docker defaults already set conservative memory values: `NODE_OPTIONS=--max-old-space-size=1024 --openssl-legacy-provider`, `MONGODB_MAX_POOL_SIZE=20`, and `MONGODB_MIN_POOL_SIZE=2`. Override them in Coolify only if you want different limits.
+- The app now exits with code `1` if it stays unhealthy for too long, so `restart: unless-stopped` can actually restart the container. Tune this with `UNHEALTHY_EXIT_AFTER_MS` if needed.
 
 If you use an external MongoDB instead of the bundled container, set:
 
@@ -187,6 +188,7 @@ With `DEEZER_ARL` configured, plain text `play` resolution prefers Deezer before
 | YouTube playback fails | `ffmpeg`, `yt-dlp`, `YTDLP_COOKIES_FILE`, `YTDLP_COOKIES_FROM_BROWSER`, `YTDLP_YOUTUBE_CLIENT` |
 | Commands fail but gateway connects | `API_BASE`, token validity, runtime REST access |
 | Voice joins but no audio | Fluxer voice-side setup, `VOICE_MAX_BITRATE`, LiveKit-based publisher flow, and whether a restart recovery snapshot existed before reboot |
+| Container becomes `unhealthy` and just sits there | Docker does not restart a process only because the healthcheck failed. Keep `UNHEALTHY_EXIT_ENABLED=1` so prolonged `/readyz` failure forces a real restart, and inspect gateway/API reachability |
 
 <details>
 <summary><strong>More detail</strong></summary>

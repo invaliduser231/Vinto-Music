@@ -102,6 +102,8 @@ export async function startApp() {
   const metricSet = createAppMetrics();
   let gatewayConnected = false;
   let shuttingDown = false;
+  let unhealthySince = 0;
+  let unhealthyExitHandle: NodeJS.Timeout | null = null;
 
   (dns as DnsWithDefaultOrder).setDefaultResultOrder?.(config.dnsResultOrder);
   logger.info('DNS resolution order configured', { order: config.dnsResultOrder });
@@ -343,6 +345,42 @@ export async function startApp() {
     });
   });
 
+  const getRuntimeHealth = () => ({
+    ok: !shuttingDown && (gatewayConnected || Date.now() - startedAt < 60_000),
+    gatewayConnected,
+    shuttingDown,
+  });
+
+  if (config.unhealthyExitEnabled) {
+    unhealthyExitHandle = setInterval(() => {
+      const health = getRuntimeHealth();
+      if (health.ok) {
+        unhealthySince = 0;
+        return;
+      }
+
+      if (!unhealthySince) {
+        unhealthySince = Date.now();
+        logger.warn('Runtime became unhealthy', {
+          unhealthyExitAfterMs: config.unhealthyExitAfterMs,
+        });
+        return;
+      }
+
+      const unhealthyForMs = Date.now() - unhealthySince;
+      if (unhealthyForMs < config.unhealthyExitAfterMs) return;
+
+      logger.error('Runtime stayed unhealthy beyond threshold, exiting for container restart', {
+        unhealthyForMs,
+        unhealthyExitAfterMs: config.unhealthyExitAfterMs,
+        gatewayConnected,
+        startedAt,
+      });
+      process.exit(1);
+    }, config.unhealthyCheckIntervalMs);
+    unhealthyExitHandle.unref?.();
+  }
+
   gateway.on('MESSAGE_CREATE', (message) => {
     router.handleMessage(message).catch((err) => {
       logger.error('Unhandled MESSAGE_CREATE handler error', {
@@ -388,6 +426,10 @@ export async function startApp() {
     if (presenceUpdateHandle) {
       clearInterval(presenceUpdateHandle);
       presenceUpdateHandle = null;
+    }
+    if (unhealthyExitHandle) {
+      clearInterval(unhealthyExitHandle);
+      unhealthyExitHandle = null;
     }
 
     gateway.disconnect();
