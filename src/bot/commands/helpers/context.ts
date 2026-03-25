@@ -3,11 +3,8 @@ import { applyMoodPreset } from '../advancedCommands.ts';
 import type { CommandContextLike, GuildConfigLike, LibraryLike, SessionLike } from './types.ts';
 
 type VoiceStateLike = {
-  deaf?: boolean;
   self_deaf?: boolean;
   selfDeaf?: boolean;
-  is_deafened?: boolean;
-  isDeafened?: boolean;
 };
 
 type MemberLike = {
@@ -86,16 +83,17 @@ function isVoiceStateDeafened(voiceState: VoiceStateLike | null | undefined): bo
   if (!voiceState || typeof voiceState !== 'object') return false;
 
   return [
-    voiceState.deaf,
     voiceState.self_deaf,
     voiceState.selfDeaf,
-    voiceState.is_deafened,
-    voiceState.isDeafened,
   ].some((value) => value === true);
 }
 
 async function isBotCurrentlyDeafened(ctx: CommandContextLike): Promise<boolean> {
-  if (!ctx?.guildId || !ctx?.botUserId || typeof ctx?.rest?.getGuildMember !== 'function') {
+  if (!ctx?.guildId || !ctx?.botUserId) {
+    return false;
+  }
+
+  if (typeof ctx?.rest?.getGuildMember !== 'function') {
     return false;
   }
 

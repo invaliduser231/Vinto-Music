@@ -38,6 +38,12 @@ function delay(ms: number): Promise<void> {
   });
 }
 
+type GatewayVoiceStateUpdate = {
+  guild_id?: string | null;
+  user_id?: string | null;
+  channel_id?: string | null;
+};
+
 export class SessionManager extends EventEmitter {
   [key: string]: unknown;
   declare _startSnapshotFlushLoop: () => void;
@@ -101,6 +107,48 @@ export class SessionManager extends EventEmitter {
     this.sessions = new Map();
     this.snapshotFlushHandle = null;
     this._startSnapshotFlushLoop();
+
+    this.gateway.on('VOICE_STATE_UPDATE', (payload: GatewayVoiceStateUpdate) => {
+      this._handleBotVoiceStateUpdate(payload).catch((err) => {
+        this.logger?.debug?.('Failed to handle bot voice state update', {
+          guildId: payload?.guild_id ?? null,
+          userId: payload?.user_id ?? null,
+          channelId: payload?.channel_id ?? null,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    });
+  }
+
+  async _handleBotVoiceStateUpdate(payload: GatewayVoiceStateUpdate): Promise<void> {
+    const botUserId = String(this.botUserId ?? '').trim();
+    const guildId = String(payload?.guild_id ?? '').trim();
+    const userId = String(payload?.user_id ?? '').trim();
+    const channelId = toChannelId(payload?.channel_id);
+    if (!botUserId || !guildId || !userId || userId !== botUserId || channelId) {
+      return;
+    }
+
+    const sessions = this.listByGuild(guildId).filter((session) => (
+      Boolean(normalizeSessionChannelId(session?.connection?.channelId))
+      || Boolean(normalizeSessionChannelId(session?.targetVoiceChannelId))
+    ));
+    if (!sessions.length) return;
+
+    this.logger?.warn?.('Bot was disconnected from voice externally; destroying guild sessions', {
+      guildId,
+      sessions: sessions.map((session) => ({
+        sessionId: session.sessionId ?? null,
+        channelId: normalizeSessionChannelId(session?.connection?.channelId)
+          ?? normalizeSessionChannelId(session?.targetVoiceChannelId),
+      })),
+    });
+
+    for (const session of sessions) {
+      await this.destroy(guildId, 'external_voice_disconnect', {
+        sessionId: session.sessionId!,
+      }).catch(() => null);
+    }
   }
 
   _isSessionRestartRecoverable(session: Session | null | undefined): boolean {

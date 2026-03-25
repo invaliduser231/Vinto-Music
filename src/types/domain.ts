@@ -200,8 +200,8 @@ export interface SessionManagerOptions {
   gateway: {
     joinVoice: (guildId: string, channelId: string) => void;
     leaveVoice: (guildId: string) => void;
-    on: (event: string, listener: BivariantCallback<[VoiceServerUpdate], void>) => void;
-    off: (event: string, listener: BivariantCallback<[VoiceServerUpdate], void>) => void;
+    on: (event: string, listener: BivariantCallback<[unknown], void>) => void;
+    off: (event: string, listener: BivariantCallback<[unknown], void>) => void;
   };
   config: SessionManagerConfigLike;
   logger?: LoggerLike | null | undefined;

@@ -149,7 +149,8 @@ export class VoiceStateStore {
 
     const next = new Map<string, string>();
     for (const state of states ?? []) {
-      if (!state?.user_id || !state?.channel_id) continue;
+      if (!state?.user_id) continue;
+      if (!state?.channel_id) continue;
       next.set(state.user_id, state.channel_id);
     }
 
@@ -157,7 +158,11 @@ export class VoiceStateStore {
     return next.size;
   }
 
-  _upsert(guildId: string | null | undefined, userId: string | null | undefined, channelId: string | null | undefined) {
+  _upsert(
+    guildId: string | null | undefined,
+    userId: string | null | undefined,
+    channelId: string | null | undefined,
+  ) {
     if (!guildId || !userId) return;
 
     let map = this.guildVoiceStates.get(guildId);
