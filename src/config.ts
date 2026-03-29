@@ -144,6 +144,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     maxConcurrentVoiceChannelsPerGuild: parsePositiveInt(env.MAX_CONCURRENT_VOICE_CHANNELS_PER_GUILD, 5),
     sessionSnapshotMinWriteIntervalMs: parsePositiveInt(env.SESSION_SNAPSHOT_MIN_WRITE_INTERVAL_MS, 10_000),
     sessionSnapshotFlushIntervalMs: parsePositiveInt(env.SESSION_SNAPSHOT_FLUSH_INTERVAL_MS, 30_000),
+    sessionSnapshotMaxPendingTracks: parsePositiveInt(env.SESSION_SNAPSHOT_MAX_PENDING_TRACKS, 25),
     maxQueueSize: parsePositiveInt(env.MAX_QUEUE_SIZE, 100),
     maxPlaylistTracks: parsePositiveInt(env.MAX_PLAYLIST_TRACKS, 25),
     maxSavedPlaylistsPerGuild: parsePositiveInt(env.MAX_SAVED_PLAYLISTS_PER_GUILD, 100),

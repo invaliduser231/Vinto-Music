@@ -26,6 +26,7 @@ services:
       MONITORING_ENABLED: ${MONITORING_ENABLED:-1}
       MONITORING_HOST: 0.0.0.0
       MONITORING_PORT: ${MONITORING_PORT:-9091}
+      VOICE_MAX_BITRATE: ${VOICE_MAX_BITRATE:-128000}
     volumes:
       - /vinto/cookies.txt:/app/cookies.txt:ro
     ports:

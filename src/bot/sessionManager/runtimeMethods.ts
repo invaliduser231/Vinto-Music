@@ -272,6 +272,10 @@ export const runtimeMethods: RuntimeMethods & ThisType<SessionManager> = {
     const voiceChannelId = toChannelId(session?.connection?.channelId) ?? toChannelId(session?.targetVoiceChannelId);
     if (!session?.guildId || !voiceChannelId) return null;
     if (!session?.settings?.stayInVoiceEnabled && !this._isSessionRestartRecoverable(session)) return null;
+    const maxPendingTracks = Math.max(
+      1,
+      Number.parseInt(String(this.config.sessionSnapshotMaxPendingTracks ?? 25), 10) || 25
+    );
 
     const currentTrack = player?.currentTrack ?? null;
     const progressSec = typeof player?.getProgressSeconds === 'function'
@@ -295,6 +299,7 @@ export const runtimeMethods: RuntimeMethods & ThisType<SessionManager> = {
       currentTrack: cloneTrackForSnapshot(currentTrack, canSeekCurrent ? progressSec : 0),
       pendingTracks: Array.isArray(player?.pendingTracks)
         ? (player.pendingTracks as Track[])
+          .slice(0, maxPendingTracks)
           .map((track) => cloneTrackForSnapshot(track, 0))
           .filter((track): track is Track => track !== null)
         : [],

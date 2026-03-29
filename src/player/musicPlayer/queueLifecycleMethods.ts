@@ -22,7 +22,9 @@ type QueueLifecycleMethods = {
   stop(): void;
   _handleTrackClose(track: Track, code: unknown, signal: unknown, playbackToken?: number | null): Promise<void>;
 };
-type QueueLifecycleRuntime = MusicPlayer & QueueLifecycleMethods;
+type QueueLifecycleRuntime = MusicPlayer & QueueLifecycleMethods & {
+  getProgressSeconds(): number;
+};
 
 export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecycleRuntime> = {
   clearQueue(this: QueueLifecycleRuntime) {
@@ -56,7 +58,10 @@ export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecy
 
   refreshCurrentTrackProcessing(this: QueueLifecycleRuntime) {
     if (!this.playing || !this.currentTrack) return false;
-    this.pendingSeekTrack = this._cloneTrack(this.currentTrack, { seekStartSec: 0 });
+    const seekStartSec = this.canSeekCurrentTrack()
+      ? this.getProgressSeconds()
+      : 0;
+    this.pendingSeekTrack = this._cloneTrack(this.currentTrack, { seekStartSec });
     this._invalidatePlaybackStartup();
     this.skipRequested = true;
     this._stopVoiceStream();

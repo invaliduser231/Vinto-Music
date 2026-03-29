@@ -71,6 +71,7 @@ All environment variables are parsed in `src/config.ts`. `.env.example` is the t
 | `MAX_CONCURRENT_VOICE_CHANNELS_PER_GUILD` | `5` | Max simultaneously active voice-channel sessions per guild. New sessions above this limit are rejected. |
 | `SESSION_SNAPSHOT_MIN_WRITE_INTERVAL_MS` | `10000` | Minimum time between persisted session-snapshot writes for the same voice-channel session. Used for 24/7 resume and restart recovery. |
 | `SESSION_SNAPSHOT_FLUSH_INTERVAL_MS` | `30000` | Background flush interval for dirty persistent session snapshots. |
+| `SESSION_SNAPSHOT_MAX_PENDING_TRACKS` | `25` | Max queued tracks copied into each persisted session snapshot. Lower this on memory-constrained hosts to reduce periodic clone/write overhead. |
 | `MAX_QUEUE_SIZE` | `100` | Max pending queue size per voice-channel session. |
 | `MAX_PLAYLIST_TRACKS` | `25` | Max tracks pulled from a single external playlist/import resolution. |
 | `MAX_SAVED_PLAYLISTS_PER_GUILD` | `100` | Max persisted guild playlists. |
@@ -86,7 +87,7 @@ All environment variables are parsed in `src/config.ts`. `.env.example` is the t
 | `DEFAULT_VOLUME_PERCENT` | `100` | Initial playback volume. |
 | `MIN_VOLUME_PERCENT` | `0` | Lower volume bound. |
 | `MAX_VOLUME_PERCENT` | `200` | Upper volume bound. |
-| `VOICE_MAX_BITRATE` | `192000` | Max outbound voice track bitrate in bps. |
+| `VOICE_MAX_BITRATE` | `128000` | Max outbound voice track bitrate in bps. Lower this on multi-stream hosts to cut CPU and network pressure. |
 
 ## Guild Defaults
 

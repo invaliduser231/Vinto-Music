@@ -347,6 +347,15 @@ export const pipelineMethods: LooseMethodMap = {
     return new LiveAudioProcessor(this._getLiveAudioProcessorState());
   },
 
+  _shouldUseLiveAudioProcessor() {
+    const state = this._getLiveAudioProcessorState();
+    return (
+      state.volumePercent !== 100
+      || state.filterPreset !== 'off'
+      || state.eqPreset !== 'flat'
+    );
+  },
+
   _syncLiveAudioProcessor() {
     if (!this.liveAudioProcessor) return false;
     try {

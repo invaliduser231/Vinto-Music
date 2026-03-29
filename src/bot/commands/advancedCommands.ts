@@ -35,6 +35,8 @@ type AdvancedCommandHelpers = Pick<
 >;
 const partyStates = new Map<string, PartyState>();
 const pendingImports = new Map<string, PendingImportState>();
+const PARTY_STATE_TTL_MS = 12 * 60 * 60 * 1000;
+const PENDING_IMPORT_TTL_MS = 15 * 60 * 1000;
 
 const MOOD_PRESETS: Record<string, MoodPreset> = {
   chill: { filter: 'soft', eq: 'vocal', tempo: 0.95, pitch: 0 },
@@ -81,6 +83,20 @@ function trackLabel(track: AnyTrack) {
 
 function pendingImportKey(ctx: Pick<CommandContextLike, 'guildId' | 'authorId'>) {
   return `${String(ctx.guildId)}:${String(ctx.authorId)}`;
+}
+
+function pruneEphemeralState(now: number = Date.now()) {
+  for (const [key, state] of partyStates.entries()) {
+    if ((now - state.startedAt) > PARTY_STATE_TTL_MS) {
+      partyStates.delete(key);
+    }
+  }
+
+  for (const [key, state] of pendingImports.entries()) {
+    if ((now - state.createdAt) > PENDING_IMPORT_TTL_MS) {
+      pendingImports.delete(key);
+    }
+  }
 }
 
 function formatTaste(taste: Array<{ term?: string; count?: number }> | null | undefined, limit: number = 8) {
@@ -566,6 +582,7 @@ export function registerAdvancedCommands(registry: RegistryLike, h: AdvancedComm
     usage: 'party <start|join|vote|status|end> ...',
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
+      pruneEphemeralState();
       const action = String(ctx.args[0] ?? 'status').toLowerCase();
       const guildId = String(ctx.guildId);
       const state = partyStates.get(guildId) ?? {
@@ -642,6 +659,7 @@ export function registerAdvancedCommands(registry: RegistryLike, h: AdvancedComm
     usage: 'import <preview|apply|cancel> ...',
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
+      pruneEphemeralState();
       const library = requireLibrary(ctx);
       const action = String(ctx.args[0] ?? '').toLowerCase();
 

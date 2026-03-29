@@ -258,7 +258,8 @@ export class MusicPlayer extends EventEmitter {
   declare _parseDurationSeconds: (value: unknown) => number | null;
   declare _setPipelinePaused: (paused: boolean) => boolean;
   declare _createLiveAudioProcessor: () => LiveAudioProcessor;
-  declare _awaitInitialPlaybackChunk: BivariantCallback<[LiveAudioProcessor, PipelineProcess, number], Promise<void>>;
+  declare _shouldUseLiveAudioProcessor: () => boolean;
+  declare _awaitInitialPlaybackChunk: BivariantCallback<[NonNullable<PipelineProcess['stdout']>, PipelineProcess, number], Promise<void>>;
   declare _getInitialPlaybackChunkTimeoutMs: (track: Track) => number;
   declare _startPlayDlPipeline: (url: string, seekSec?: number) => Promise<void>;
   declare _startHttpUrlPipeline: BivariantCallback<[string, number, ({ isLive?: boolean } | undefined)?], Promise<void>>;
@@ -677,13 +678,19 @@ export class MusicPlayer extends EventEmitter {
         await this._handleTrackClose(track, code, signal, playbackToken);
       });
 
-      this.liveAudioProcessor = this._createLiveAudioProcessor();
-      this._bindPipelineErrorHandler(this.liveAudioProcessor, 'liveAudioProcessor');
-      ffmpegProc.stdout.pipe(this.liveAudioProcessor);
-      await this.voice.sendAudio?.(this.liveAudioProcessor);
+      const playbackOutput = this._shouldUseLiveAudioProcessor()
+        ? (() => {
+            this.liveAudioProcessor = this._createLiveAudioProcessor();
+            this._bindPipelineErrorHandler(this.liveAudioProcessor, 'liveAudioProcessor');
+            ffmpegProc.stdout?.pipe?.(this.liveAudioProcessor);
+            return this.liveAudioProcessor as NonNullable<PipelineProcess['stdout']>;
+          })()
+        : ffmpegProc.stdout;
+
+      await this.voice.sendAudio?.(playbackOutput);
       this._ensurePlaybackStartupActive(startupToken);
       await this._awaitInitialPlaybackChunk(
-        this.liveAudioProcessor,
+        playbackOutput,
         ffmpegProc,
         this._getInitialPlaybackChunkTimeoutMs(track)
       );
