@@ -50,6 +50,7 @@ function createRouter(restOverrides: Record<string, unknown> = {}) {
 function cleanupRouter(router: CommandRouter) {
   if (router.sessionPanelLiveHandle) clearInterval(router.sessionPanelLiveHandle);
   if (router.weeklySweepHandle) clearInterval(router.weeklySweepHandle);
+  if (router.ephemeralCleanupHandle) clearInterval(router.ephemeralCleanupHandle);
 }
 
 test('pagination reactions are removed after page navigation', async () => {
@@ -107,7 +108,6 @@ test('search reaction picks also remove the user reaction', async () => {
   let picked: { pickedIndex: number; userId: string } | null = null;
   router._applySearchReactionSelection = async (_state, pickedIndex, userId) => {
     picked = { pickedIndex, userId };
-    return null;
   };
 
   try {
@@ -138,4 +138,15 @@ test('search reaction picks also remove the user reaction', async () => {
     userId: 'user-1',
   }]);
   assert.deepEqual(picked, { pickedIndex: 1, userId: 'user-1' });
+});
+
+test('ephemeral cleanup starts even when weekly recap services are unavailable', () => {
+  const router = createRouter();
+
+  try {
+    assert.ok(router.ephemeralCleanupHandle);
+    assert.equal(router.weeklySweepHandle, null);
+  } finally {
+    cleanupRouter(router);
+  }
 });

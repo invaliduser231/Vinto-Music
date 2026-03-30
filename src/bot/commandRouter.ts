@@ -216,6 +216,7 @@ export class CommandRouter {
   searchReactionSelections: Map<string, SearchReactionState>;
   sessionPanelLiveHandle: NodeJS.Timeout | null;
   weeklySweepHandle: NodeJS.Timeout | null;
+  ephemeralCleanupHandle: NodeJS.Timeout | null;
   commandRateLimiter: CommandRateLimiter;
   responder: ReturnType<typeof makeResponder>;
   registry: CommandRegistry;
@@ -240,6 +241,7 @@ export class CommandRouter {
     this.searchReactionSelections = new Map();
     this.sessionPanelLiveHandle = null;
     this.weeklySweepHandle = null;
+    this.ephemeralCleanupHandle = null;
     const rateLimiterOptions = {
       ...(this.logger?.child ? { logger: this.logger.child('rate-limit') } : {}),
       ...(this.config.commandRateLimitEnabled !== undefined ? { enabled: this.config.commandRateLimitEnabled } : {}),
@@ -717,18 +719,6 @@ export class CommandRouter {
   }
 
   _startBackgroundTasks() {
-    if (!this.library?.buildGuildRecap || !this.library?.getRecapState) return;
-    const run = () => {
-      this._runWeeklyRecapSweep().catch((err) => {
-        this.logger?.warn?.('Weekly recap sweep failed', {
-          error: err instanceof Error ? err.message : String(err),
-        });
-      });
-    };
-    this.weeklySweepHandle = setInterval(run, 60 * 60 * 1000);
-    this.weeklySweepHandle.unref?.();
-    run();
-
     const cleanup = () => {
       const now = Date.now();
       for (const [key, state] of this.helpPaginations.entries()) {
@@ -741,9 +731,27 @@ export class CommandRouter {
           this.searchReactionSelections.delete(key);
         }
       }
+      for (const [key, startedAt] of this.guildOpLocks.entries()) {
+        if ((now - startedAt) > (5 * 60 * 1000)) {
+          this.guildOpLocks.delete(key);
+        }
+      }
     };
-    const helpCleanupHandle = setInterval(cleanup, 5 * 60 * 1000);
-    helpCleanupHandle.unref?.();
+    cleanup();
+    this.ephemeralCleanupHandle = setInterval(cleanup, 5 * 60 * 1000);
+    this.ephemeralCleanupHandle.unref?.();
+
+    if (!this.library?.buildGuildRecap || !this.library?.getRecapState) return;
+    const run = () => {
+      this._runWeeklyRecapSweep().catch((err) => {
+        this.logger?.warn?.('Weekly recap sweep failed', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    };
+    this.weeklySweepHandle = setInterval(run, 60 * 60 * 1000);
+    this.weeklySweepHandle.unref?.();
+    run();
   }
 
   _startSessionPanelLiveTicker() {

@@ -94,6 +94,7 @@ export class VoiceConnection {
   _transportStatsState: { bytesSent: number; tsMs: number } | null;
   _pumpStats: PumpStats;
   _pumpStatsSample: { tsMs: number; bytesIn: number; framesCaptured: number } | null;
+  roomDisconnectedListener: (() => void) | null;
   constructor(gateway: GatewayLike, guildId: string, options: VoiceConnectionOptions = {}) {
     this.gateway = gateway;
     this.guildId = guildId;
@@ -116,6 +117,7 @@ export class VoiceConnection {
     this._transportStatsState = null;
     this._pumpStats = this._createPumpStats();
     this._pumpStatsSample = null;
+    this.roomDisconnectedListener = null;
   }
 
   get connected() {
@@ -150,9 +152,10 @@ export class VoiceConnection {
       : `wss://${endpoint}`;
 
     this.room = new Room();
-    this.room.on(RoomEvent.Disconnected, () => {
+    this.roomDisconnectedListener = () => {
       this.logger?.warn?.('Voice room disconnected', { guildId: this.guildId });
-    });
+    };
+    this.room.on(RoomEvent.Disconnected, this.roomDisconnectedListener);
 
     await this.room.connect(roomUrl, token);
     this.channelId = channelId;
@@ -168,6 +171,7 @@ export class VoiceConnection {
     this._stopAudioPump();
     this.gateway.leaveVoice(this.guildId);
 
+    this._detachRoomListeners();
     await this.room?.disconnect().catch(() => null);
 
     this.room = null;
@@ -175,6 +179,27 @@ export class VoiceConnection {
     this.audioSource = null;
     this.audioTrack = null;
     this.audioTrackSid = null;
+  }
+
+  _detachRoomListeners() {
+    const room = this.room as {
+      off?: (event: string, listener: () => void) => unknown;
+      removeListener?: (event: string, listener: () => void) => unknown;
+      removeAllListeners?: (event?: string) => unknown;
+    } | null;
+    const listener = this.roomDisconnectedListener;
+    this.roomDisconnectedListener = null;
+    if (!room || !listener) return;
+
+    if (typeof room.off === 'function') {
+      room.off(RoomEvent.Disconnected, listener);
+      return;
+    }
+    if (typeof room.removeListener === 'function') {
+      room.removeListener(RoomEvent.Disconnected, listener);
+      return;
+    }
+    room.removeAllListeners?.(RoomEvent.Disconnected);
   }
 
   async sendAudio(pcmStream: unknown) {

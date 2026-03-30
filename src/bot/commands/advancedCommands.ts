@@ -37,6 +37,7 @@ const partyStates = new Map<string, PartyState>();
 const pendingImports = new Map<string, PendingImportState>();
 const PARTY_STATE_TTL_MS = 12 * 60 * 60 * 1000;
 const PENDING_IMPORT_TTL_MS = 15 * 60 * 1000;
+const EPHEMERAL_STATE_PRUNE_INTERVAL_MS = 5 * 60 * 1000;
 
 const MOOD_PRESETS: Record<string, MoodPreset> = {
   chill: { filter: 'soft', eq: 'vocal', tempo: 0.95, pitch: 0 },
@@ -98,6 +99,12 @@ function pruneEphemeralState(now: number = Date.now()) {
     }
   }
 }
+
+const ephemeralStateSweepHandle = setInterval(() => {
+  pruneEphemeralState();
+}, EPHEMERAL_STATE_PRUNE_INTERVAL_MS);
+
+ephemeralStateSweepHandle.unref?.();
 
 function formatTaste(taste: Array<{ term?: string; count?: number }> | null | undefined, limit: number = 8) {
   if (!Array.isArray(taste) || !taste.length) return 'No taste profile yet.';

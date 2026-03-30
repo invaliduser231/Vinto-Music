@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { SessionManager } from '../src/bot/sessionManager.ts';
 
 function createManager() {
@@ -66,6 +67,26 @@ test('destroying one voice-channel session leaves the others intact', async () =
   assert.equal(manager.get('guild-1', { voiceChannelId: 'voice-a' }), null);
   assert.equal(manager.get('guild-1', { voiceChannelId: 'voice-b' }), second);
   assert.equal(manager.listByGuild('guild-1').length, 1);
+});
+
+test('destroy detaches session-scoped player listeners', async () => {
+  const manager = createManager();
+  const session = await manager.ensure('guild-1', null, { voiceChannelId: 'voice-a' });
+  const player = session.player as EventEmitter;
+
+  manager._clearIdleTimer(session);
+
+  assert.equal(manager.playerSessionListeners.size, 1);
+  assert.ok(player.listenerCount('trackStart') > 0);
+
+  await manager.destroy('guild-1', 'manual_command', { voiceChannelId: 'voice-a' });
+
+  assert.equal(manager.playerSessionListeners.size, 0);
+  assert.equal(player.listenerCount('tracksAdded'), 0);
+  assert.equal(player.listenerCount('trackStart'), 0);
+  assert.equal(player.listenerCount('trackEnd'), 0);
+  assert.equal(player.listenerCount('trackError'), 0);
+  assert.equal(player.listenerCount('queueEmpty'), 0);
 });
 
 

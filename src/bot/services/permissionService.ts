@@ -109,6 +109,7 @@ export class PermissionService {
   guildMemberCache: Map<string, CachedEntry<unknown>>;
   guildCache: Map<string, CachedEntry<unknown>>;
   channelPermCache: Map<string, CachedEntry<PermissionResolution>>;
+  cacheSweepHandle: NodeJS.Timeout | null;
 
   constructor(options: PermissionServiceOptions = {}) {
     this.rest = options.rest;
@@ -122,6 +123,12 @@ export class PermissionService {
     this.guildMemberCache = new Map();
     this.guildCache = new Map();
     this.channelPermCache = new Map();
+    this.cacheSweepHandle = setInterval(() => {
+      this._pruneExpiredEntries(this.guildMemberCache);
+      this._pruneExpiredEntries(this.guildCache);
+      this._pruneExpiredEntries(this.channelPermCache);
+    }, Math.max(5_000, this.cacheTtlMs));
+    this.cacheSweepHandle.unref?.();
   }
 
   setBotUserId(botUserId: unknown): void {

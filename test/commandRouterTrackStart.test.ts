@@ -28,7 +28,7 @@ function createRouter(sessions: EventEmitter) {
       on() {},
       off() {},
     },
-    sessions: sessions as ConstructorParameters<typeof CommandRouter>[0]['sessions'],
+    sessions: sessions as unknown as ConstructorParameters<typeof CommandRouter>[0]['sessions'],
     guildConfigs: null,
     voiceStateStore: {
       countUsersInChannel() {
@@ -71,6 +71,7 @@ test('trackStart popup includes the active voice channel mention', async () => {
   } finally {
     if (router.sessionPanelLiveHandle) clearInterval(router.sessionPanelLiveHandle);
     if (router.weeklySweepHandle) clearInterval(router.weeklySweepHandle);
+    if (router.ephemeralCleanupHandle) clearInterval(router.ephemeralCleanupHandle);
   }
 
   assert.deepEqual(calls, [{

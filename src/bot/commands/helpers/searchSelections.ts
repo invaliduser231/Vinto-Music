@@ -7,6 +7,22 @@ type SearchSelectionContext = {
 };
 
 const pendingSearchSelections = new Map<string, { tracks: unknown[]; expiresAt: number }>();
+const SEARCH_SELECTION_PRUNE_INTERVAL_MS = 60_000;
+const SEARCH_SELECTION_PRUNE_THRESHOLD = 500;
+
+function pruneExpiredSearchSelections(now: number = Date.now()) {
+  for (const [entryKey, entry] of pendingSearchSelections.entries()) {
+    if (entry.expiresAt <= now) {
+      pendingSearchSelections.delete(entryKey);
+    }
+  }
+}
+
+const searchSelectionSweepHandle = setInterval(() => {
+  pruneExpiredSearchSelections();
+}, SEARCH_SELECTION_PRUNE_INTERVAL_MS);
+
+searchSelectionSweepHandle.unref?.();
 
 function searchSelectionKey(ctx: SearchSelectionContext) {
   const guildId = String(ctx.guildId ?? '');
@@ -24,12 +40,8 @@ export function saveSearchSelection(ctx: SearchSelectionContext, tracks: unknown
     expiresAt: now + ttl,
   });
 
-  if (pendingSearchSelections.size > 10_000) {
-    for (const [entryKey, entry] of pendingSearchSelections.entries()) {
-      if (entry.expiresAt <= now) {
-        pendingSearchSelections.delete(entryKey);
-      }
-    }
+  if (pendingSearchSelections.size > SEARCH_SELECTION_PRUNE_THRESHOLD) {
+    pruneExpiredSearchSelections(now);
   }
 
   return ttl;

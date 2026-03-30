@@ -44,6 +44,14 @@ type GatewayVoiceStateUpdate = {
   channel_id?: string | null;
 };
 
+type PlayerSessionListeners = {
+  tracksAdded: (...args: unknown[]) => void;
+  trackStart: (...args: unknown[]) => void;
+  trackEnd: (...args: unknown[]) => void;
+  trackError: (...args: unknown[]) => void;
+  queueEmpty: (...args: unknown[]) => void;
+};
+
 export class SessionManager extends EventEmitter {
   [key: string]: unknown;
   declare _startSnapshotFlushLoop: () => void;
@@ -91,6 +99,7 @@ export class SessionManager extends EventEmitter {
   botUserId: string | null;
   sessions: Map<string, Session>;
   snapshotFlushHandle: NodeJS.Timeout | null;
+  playerSessionListeners: Map<string, PlayerSessionListeners>;
 
   constructor(options: SessionManagerOptions) {
     super();
@@ -106,6 +115,7 @@ export class SessionManager extends EventEmitter {
 
     this.sessions = new Map();
     this.snapshotFlushHandle = null;
+    this.playerSessionListeners = new Map();
     this._startSnapshotFlushLoop();
   }
 
@@ -267,28 +277,31 @@ export class SessionManager extends EventEmitter {
       },
     };
 
-    player.on('tracksAdded', (tracks) => {
+    const playerListeners: PlayerSessionListeners = {
+      tracksAdded: (tracks) => {
       if (!this._hasSessionInstance(session)) return;
       this.touch(guildId, { sessionId: session.sessionId! });
       this.markSnapshotDirty(session);
       this._syncPersistentVoiceStateSoon(guildId, 'tracks_added');
       this.emit('tracksAdded', { session, tracks });
-    });
+      },
 
-    player.on('trackStart', (track) => {
+      trackStart: (track) => {
+      const currentTrack = track as { id?: string | null } | null | undefined;
       if (!this._hasSessionInstance(session)) return;
       delete session.restoreState;
       session.idleTimeoutIgnoreListeners = false;
       this._clearIdleTimer(session);
-      this._resetVoteState(session, track?.id ?? null);
+      this._resetVoteState(session, currentTrack?.id ?? null);
       this._startPlaybackDiagnostics(session);
       this.touch(guildId, { sessionId: session.sessionId! });
       this.markSnapshotDirty(session, true);
       this._syncPersistentVoiceStateSoon(guildId, 'track_start');
       this.emit('trackStart', { session, track });
-    });
+      },
 
-    player.on('trackEnd', (event: Record<string, unknown> = {}) => {
+      trackEnd: (event = {}) => {
+      const eventPayload = (event && typeof event === 'object' ? event : {}) as Record<string, unknown>;
       if (!this._hasSessionInstance(session)) return;
       if (!this._isSessionPlaybackActive(session)) {
         this._stopPlaybackDiagnostics(session);
@@ -296,10 +309,13 @@ export class SessionManager extends EventEmitter {
       this.touch(guildId, { sessionId: session.sessionId! });
       this.markSnapshotDirty(session, true);
       this._syncPersistentVoiceStateSoon(guildId, 'track_end');
-      this.emit('trackEnd', { session, ...event });
-    });
+      this.emit('trackEnd', { session, ...eventPayload });
+      },
 
-    player.on('trackError', ({ track, error }: { track: unknown; error: unknown }) => {
+      trackError: (payload) => {
+      const { track, error } = (payload && typeof payload === 'object'
+        ? payload as { track: unknown; error: unknown }
+        : { track: null, error: null });
       if (!this._hasSessionInstance(session)) return;
       this.touch(guildId, { sessionId: session.sessionId! });
       this.markSnapshotDirty(session, true);
@@ -332,9 +348,10 @@ export class SessionManager extends EventEmitter {
         return;
       }
       this.emit('trackError', { session, track, error });
-    });
+      },
 
-    player.on('queueEmpty', (event: Record<string, unknown> = {}) => {
+      queueEmpty: (event = {}) => {
+      const eventPayload = (event && typeof event === 'object' ? event : {}) as Record<string, unknown>;
       if (!this._hasSessionInstance(session)) return;
       const trackActive = Boolean(session?.player?.playing || session?.player?.currentTrack);
       if (trackActive) {
@@ -350,15 +367,23 @@ export class SessionManager extends EventEmitter {
       this.touch(guildId, { sessionId: session.sessionId! });
       this.markSnapshotDirty(session, true);
       this._syncPersistentVoiceStateSoon(guildId, 'queue_empty');
-      this._handleQueueEmpty(session, event).catch((err: unknown) => {
+      this._handleQueueEmpty(session, eventPayload).catch((err: unknown) => {
         this.logger?.warn?.('Queue empty handler failed', {
           guildId,
           error: err instanceof Error ? err.message : String(err),
         });
       });
-    });
+      },
+    };
+
+    player.on('tracksAdded', playerListeners.tracksAdded);
+    player.on('trackStart', playerListeners.trackStart);
+    player.on('trackEnd', playerListeners.trackEnd);
+    player.on('trackError', playerListeners.trackError);
+    player.on('queueEmpty', playerListeners.queueEmpty);
 
     this.sessions.set(session.sessionId!, session);
+    this.playerSessionListeners.set(session.sessionId!, playerListeners);
     this._scheduleIdleTimeout(session);
 
     return session;
@@ -589,6 +614,8 @@ export class SessionManager extends EventEmitter {
         // ignore player stop errors during cleanup
       }
 
+      this._detachPlayerListeners(session);
+
       await session.connection.disconnect?.().catch(() => null);
       this.emit('destroyed', { session, reason });
 
@@ -610,6 +637,40 @@ export class SessionManager extends EventEmitter {
     });
 
     return true;
+  }
+
+  _detachPlayerListeners(session: Session): void {
+    const sessionId = String(session?.sessionId ?? '').trim();
+    if (!sessionId) return;
+
+    const listeners = this.playerSessionListeners.get(sessionId);
+    this.playerSessionListeners.delete(sessionId);
+    if (!listeners) return;
+
+    const player = session.player as {
+      off?: (event: string, listener: (...args: unknown[]) => void) => unknown;
+      removeListener?: (event: string, listener: (...args: unknown[]) => void) => unknown;
+      removeAllListeners?: (event?: string) => unknown;
+    } | null | undefined;
+    if (!player) return;
+
+    const detach = (event: string, listener: (...args: unknown[]) => void) => {
+      if (typeof player.off === 'function') {
+        player.off(event, listener);
+        return;
+      }
+      if (typeof player.removeListener === 'function') {
+        player.removeListener(event, listener);
+        return;
+      }
+      player.removeAllListeners?.(event);
+    };
+
+    detach('tracksAdded', listeners.tracksAdded);
+    detach('trackStart', listeners.trackStart);
+    detach('trackEnd', listeners.trackEnd);
+    detach('trackError', listeners.trackError);
+    detach('queueEmpty', listeners.queueEmpty);
   }
 
   async shutdown(): Promise<void> {
