@@ -81,10 +81,18 @@ For most operators, the practical requirements are:
 
 ## Quick Start
 
-### 1. Install and copy env
+### 1. Install pnpm, then copy env
+
+If `pnpm` is not installed yet, enable it through Corepack first:
 
 ```bash
-npm install
+corepack enable
+```
+
+Then install dependencies and create your env file:
+
+```bash
+pnpm install
 cp .env.example .env
 ```
 
@@ -104,17 +112,17 @@ MONGODB_URI=mongodb://127.0.0.1:27017
 ### 3. Start the bot
 
 ```bash
-npm start
+pnpm start
 ```
 
 Useful commands:
 
 | Action | Command |
 | --- | --- |
-| Start | `npm start` |
-| Dev mode | `npm run dev` |
-| Tests | `npm test` |
-| Spotify token helper | `npm run spotify:token` |
+| Start | `pnpm start` |
+| Dev mode | `pnpm dev` |
+| Tests | `pnpm test` |
+| Spotify token helper | `pnpm spotify:token` |
 
 ## Deploy On Coolify
 

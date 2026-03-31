@@ -4,13 +4,15 @@ ENV NODE_OPTIONS="--max-old-space-size=1024 --openssl-legacy-provider"
 
 WORKDIR /app
 
-COPY package.json package-lock.json tsconfig.json tsconfig.build.json ./
-RUN npm ci
+RUN corepack enable
+
+COPY package.json pnpm-lock.yaml tsconfig.json tsconfig.build.json ./
+RUN pnpm install --frozen-lockfile
 
 COPY src ./src
 COPY scripts ./scripts
 
-RUN npm run build
+RUN pnpm run build
 
 FROM node:20-bookworm-slim AS runtime
 
@@ -27,9 +29,11 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN corepack enable
+
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --prod --frozen-lockfile
 
 COPY --from=build /app/dist ./dist
 
-CMD ["npm", "start"]
+CMD ["pnpm", "start"]

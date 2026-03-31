@@ -8,7 +8,7 @@ Describe what changed and why.
 
 ## Validation
 
-- [ ] `npm test` passed locally
+- [ ] `pnpm test` passed locally
 - [ ] I added/updated tests for behavior changes
 - [ ] I updated docs for user-visible changes
 - [ ] I did not commit secrets or local-only files

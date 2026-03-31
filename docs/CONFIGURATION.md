@@ -125,7 +125,7 @@ All environment variables are parsed in `src/config.ts`. `.env.example` is the t
 
 ## Spotify Token Helper
 
-These are used only by `npm run spotify:token`.
+These are used only by `pnpm spotify:token`.
 
 | Variable | Default | Notes |
 | --- | --- | --- |

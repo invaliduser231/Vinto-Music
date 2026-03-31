@@ -4,13 +4,14 @@
   "description": "Production-minded music bot for Fluxer with resilient playback, persistence, and monitoring.",
   "license": "SEE LICENSE IN LICENSE",
   "type": "module",
+  "packageManager": "pnpm@10.12.1",
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
-    "build": "npm run clean && tsc -p tsconfig.build.json",
+    "build": "pnpm run clean && tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/src/index.js",
     "dev": "node --import tsx --watch src/index.ts",
-    "test": "node --import tsx --test test",
+    "test": "node --import tsx --test \"test/**/*.test.ts\"",
     "spotify:token": "node --import tsx scripts/get-spotify-refresh-token.ts"
   },
   "engines": {
@@ -41,5 +42,11 @@
     "@types/node": "^24.6.0",
     "tsx": "^4.20.5",
     "typescript": "^5.9.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "ffmpeg-static"
+    ]
   }
 }
