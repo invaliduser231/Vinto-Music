@@ -11,7 +11,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/src/index.js",
     "dev": "node --import tsx --watch src/index.ts",
-    "test": "node --import tsx --test \"test/**/*.test.ts\"",
+    "test": "node scripts/run-tests.mjs",
     "spotify:token": "node --import tsx scripts/get-spotify-refresh-token.ts"
   },
   "engines": {
