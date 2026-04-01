@@ -176,6 +176,13 @@ type BuiltTrackInput = {
   isLive?: boolean;
   seekStartSec?: number;
 };
+type SourceProcessCloseInfo = {
+  code: number | null;
+  signal: string | null;
+  atMs: number;
+  stderrTail: string | null;
+  url: string | null;
+};
 
 export class MusicPlayer extends EventEmitter {
   [key: string]: unknown;
@@ -340,6 +347,7 @@ export class MusicPlayer extends EventEmitter {
   _lastFfmpegArgs: string[] | null;
   normalizedInputUrlCache: Map<string, { url: string; expiresAtMs: number }>;
   consecutiveStartupFailures: number;
+  activeSourceProcessCloseInfo: SourceProcessCloseInfo | null;
 
   constructor(voice: VoiceAdapterLike, options: MusicPlayerOptions = {}) {
     super();
@@ -432,6 +440,7 @@ export class MusicPlayer extends EventEmitter {
     this._lastFfmpegArgs = null;
     this.normalizedInputUrlCache = new Map();
     this.consecutiveStartupFailures = 0;
+    this.activeSourceProcessCloseInfo = null;
   }
 
   _setNormalizedInputUrlCacheEntry(key: string, value: { url: string; expiresAtMs: number }): void {
@@ -667,6 +676,7 @@ export class MusicPlayer extends EventEmitter {
     let ffmpegStartupStderr = '';
     let onFfmpegStartupStderr = null;
     let ffmpegProc = null;
+    this.activeSourceProcessCloseInfo = null;
 
     try {
       this._ensurePlaybackStartupActive(startupToken);
@@ -731,11 +741,18 @@ export class MusicPlayer extends EventEmitter {
       this._ensurePlaybackStartupActive(startupToken);
       playbackStarted = true;
       this.consecutiveStartupFailures = 0;
+      this.activeSourceProcessCloseInfo = null;
       this._startPlaybackClock(track.seekStartSec ?? 0);
       this.lastKnownTrack = track;
       this.lastKnownTrackAtMs = Date.now();
       this.emit('trackStart', track);
-      this.logger?.info?.('Playback started', { title: track.title, url: track.url, seek: track.seekStartSec ?? 0 });
+      this.logger?.info?.('Playback started', {
+        title: track.title,
+        url: track.url,
+        seek: track.seekStartSec ?? 0,
+        guildId: String((this.voice as { guildId?: unknown } | null | undefined)?.guildId ?? '').trim() || null,
+        channelId: String((this.voice as { channelId?: unknown } | null | undefined)?.channelId ?? '').trim() || null,
+      });
     } catch (err) {
       const startupAborted = this._isPlaybackStartupAbortedError(err);
       let normalizedMessage = '';

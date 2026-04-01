@@ -88,6 +88,7 @@ export function cleanupProcesses(player: ProcessUtilsPlayer) {
 
   ffmpeg?.kill?.('SIGKILL');
   player.ffmpeg = null;
+  player.activeSourceProcessCloseInfo = null;
   clearPipelineErrorHandlers(player);
 }
 
@@ -96,6 +97,7 @@ export function clearPipelineState(player: ProcessUtilsPlayer) {
   player.liveAudioProcessor = null;
   player.deezerDecryptStream = null;
   player.sourceStream = null;
+  player.activeSourceProcessCloseInfo = null;
 }
 
 export function stopVoiceStream(player: ProcessUtilsPlayer) {

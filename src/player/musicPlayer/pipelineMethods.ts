@@ -245,17 +245,31 @@ export const pipelineMethods: LooseMethodMap = {
       }
     };
     this.sourceProc.stderr?.on?.('data', onStderr);
+    this.sourceProc.once?.('close', (code: unknown, signal: unknown) => {
+      const normalizedCode = typeof code === 'number' && Number.isFinite(code) ? code : null;
+      const normalizedSignal = signal ? String(signal) : null;
+      const stderrTail = stderr.trim().split(/\r?\n/).map((line) => line.trim()).filter(Boolean).slice(-4).join(' | ') || null;
+      this.activeSourceProcessCloseInfo = {
+        code: normalizedCode,
+        signal: normalizedSignal,
+        atMs: Date.now(),
+        stderrTail,
+        url,
+      };
+      this.sourceProc?.stderr?.off?.('data', onStderr);
+    });
 
     const ffmpegArgs = this._ffmpegArgs(seekSec);
     this._lastFfmpegArgs = [...ffmpegArgs];
     this.ffmpeg = await this._spawnProcess(this.ffmpegBin, ffmpegArgs, {
-      stdio: ['pipe', 'pipe', 'ignore'],
+      stdio: ['pipe', 'pipe', 'pipe'],
     });
 
     this._bindPipelineErrorHandler(this.sourceProc.stdout, 'sourceProc.stdout');
     this._bindPipelineErrorHandler(this.sourceProc.stderr, 'sourceProc.stderr');
     this._bindPipelineErrorHandler(this.ffmpeg.stdin, 'ffmpeg.stdin');
     this._bindPipelineErrorHandler(this.ffmpeg.stdout, 'ffmpeg.stdout');
+    this._bindPipelineErrorHandler(this.ffmpeg.stderr, 'ffmpeg.stderr');
 
     this.sourceProc.stdout.pipe(this.ffmpeg.stdin);
     this.sourceProc.once('close', () => {
@@ -281,7 +295,6 @@ export const pipelineMethods: LooseMethodMap = {
           this.logger?.info?.('yt-dlp verbose', { line: trailing });
         }
       }
-      this.sourceProc.stderr?.off?.('data', onStderr);
     }
   },
 

@@ -235,6 +235,7 @@ export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecy
       ? this.getProgressSeconds()
       : null;
     const expectedDurationSeconds = this._parseDurationSeconds(track?.duration);
+    const sourceCloseInfo = this.activeSourceProcessCloseInfo;
     this.pendingSeekTrack = null;
 
     this._cleanupProcesses();
@@ -272,6 +273,29 @@ export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecy
       });
     }
 
+    const sourceEndedUnexpectedly = (
+      !wasSkip
+      && !pendingSeekTrack
+      && sourceCloseInfo
+      && String(track?.source ?? '').startsWith('youtube')
+      && expectedDurationSeconds != null
+      && elapsedSeconds != null
+      && elapsedSeconds >= 5
+      && elapsedSeconds < Math.max(10, expectedDurationSeconds - 120)
+    );
+    if (sourceEndedUnexpectedly) {
+      this.logger?.warn?.('Source process ended before expected track duration', {
+        title: track?.title ?? null,
+        url: track?.url ?? null,
+        sourceUrl: sourceCloseInfo.url,
+        elapsedSeconds,
+        expectedDurationSeconds,
+        sourceCode: sourceCloseInfo.code,
+        sourceSignal: sourceCloseInfo.signal,
+        sourceStderrTail: sourceCloseInfo.stderrTail,
+      });
+    }
+
     if (!pendingSeekTrack) {
       this._rememberTrack(track);
     }
@@ -295,6 +319,7 @@ export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecy
       return;
     }
 
+    this.activeSourceProcessCloseInfo = null;
     this.consecutiveStartupFailures = 0;
     this._cleanupRuntimeYtDlpCookiesFile?.();
     this._stopVoiceStream();
