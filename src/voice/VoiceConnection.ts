@@ -48,6 +48,8 @@ type GatewayLike = {
 
 type PcmReadableLike = AsyncIterable<unknown> & {
   destroy?: (error?: Error) => void;
+  pause?: () => void;
+  resume?: () => void;
 };
 
 type PeerConnectionLike = {
@@ -556,6 +558,29 @@ export class VoiceConnection {
   async _pumpPcmStream(stream: PcmReadableLike, source: AudioSource, token: number) {
     let pending: Uint8Array = Buffer.alloc(0);
     const stats = this._pumpStats ?? this._createPumpStats();
+    const targetPendingBytes = Math.max(BYTES_PER_FRAME, Math.round((TARGET_QUEUE_MS / FRAME_DURATION_MS) * BYTES_PER_FRAME));
+    const maxPendingBytes = Math.max(targetPendingBytes, Math.round((MAX_QUEUE_MS / FRAME_DURATION_MS) * BYTES_PER_FRAME));
+    let inputPaused = false;
+
+    const pauseInput = () => {
+      if (inputPaused || typeof stream.pause !== 'function') return;
+      try {
+        stream.pause();
+        inputPaused = true;
+      } catch {
+        // ignore source pause failures
+      }
+    };
+
+    const resumeInput = () => {
+      if (!inputPaused || typeof stream.resume !== 'function') return;
+      try {
+        stream.resume();
+        inputPaused = false;
+      } catch {
+        // ignore source resume failures
+      }
+    };
 
     try {
       for await (const chunk of stream) {
@@ -569,6 +594,9 @@ export class VoiceConnection {
 
         pending = pending.length ? Buffer.concat([pending, asBuffer]) : asBuffer;
         stats.pendingBufferBytes = pending.length;
+        if (pending.length >= maxPendingBytes || Number(source.queuedDuration) >= MAX_QUEUE_MS) {
+          pauseInput();
+        }
 
         while (pending.length >= BYTES_PER_FRAME && token === this.audioPumpToken) {
           await this._waitWhilePaused(token);
@@ -580,7 +608,7 @@ export class VoiceConnection {
           const samples = new Int16Array(frameBytes.buffer, frameBytes.byteOffset, SAMPLES_PER_FRAME);
           const frame = new AudioFrame(new Int16Array(samples), SAMPLE_RATE, CHANNELS, SAMPLES_PER_CHANNEL);
 
-          if (source.queuedDuration > 500) {
+          if (source.queuedDuration > TARGET_QUEUE_MS) {
             stats.backpressureWaits += 1;
             await source.waitForPlayout();
           }
@@ -591,6 +619,9 @@ export class VoiceConnection {
           await source.captureFrame(frame);
           stats.framesCaptured += 1;
           stats.pendingBufferBytes = pending.length;
+          if (inputPaused && pending.length <= targetPendingBytes && Number(source.queuedDuration) <= TARGET_QUEUE_MS) {
+            resumeInput();
+          }
         }
       }
 
@@ -605,6 +636,7 @@ export class VoiceConnection {
         stats.pendingBufferBytes = 0;
       }
     } finally {
+      resumeInput();
       if (token === this.audioPumpToken) {
         this.currentAudioStream = null;
       }
