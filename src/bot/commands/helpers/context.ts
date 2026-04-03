@@ -152,7 +152,7 @@ export async function ensureConnectedSession(ctx: CommandContextLike, explicitCh
     );
   }
 
-  let session = await ctx.sessions.ensure(ctx.guildId, ctx.guildConfig, {
+  const session = await ctx.sessions.ensure(ctx.guildId, ctx.guildConfig, {
     voiceChannelId: resolvedVoice,
     textChannelId: ctx.channelId,
   });
@@ -160,13 +160,6 @@ export async function ensureConnectedSession(ctx: CommandContextLike, explicitCh
   const hasUsablePlayer = typeof session.connection?.hasUsablePlayer === 'function'
     ? session.connection.hasUsablePlayer()
     : true;
-  if (hadSession && !session.connection.connected) {
-    await ctx.sessions.destroy(ctx.guildId, 'stale_disconnected_session', { sessionId: session.sessionId }).catch(() => null);
-    session = await ctx.sessions.ensure(ctx.guildId, ctx.guildConfig, {
-      voiceChannelId: resolvedVoice,
-      textChannelId: ctx.channelId,
-    });
-  }
 
   ctx.sessions.bindTextChannel(ctx.guildId, ctx.channelId, selector);
   if (session.connection.connected && hasUsablePlayer) return session;
@@ -178,7 +171,7 @@ export async function ensureConnectedSession(ctx: CommandContextLike, explicitCh
   } catch (err: unknown) {
     const message = String((err as { message?: string })?.message ?? '').toLowerCase();
     const shouldResetSession = (
-      !session.connection?.connected
+      !hadSession
       || !hasUsablePlayer
       || message.includes('already been destroyed')
       || message.includes('wait_pc_connection timed out')
