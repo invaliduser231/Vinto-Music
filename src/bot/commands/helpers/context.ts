@@ -151,15 +151,24 @@ export async function ensureConnectedSession(ctx: CommandContextLike, explicitCh
       `This server already has the maximum number of active voice sessions (${maxConcurrentVoiceChannels}).`
     );
   }
-  const session = await ctx.sessions.ensure(ctx.guildId, ctx.guildConfig, {
+
+  let session = await ctx.sessions.ensure(ctx.guildId, ctx.guildConfig, {
     voiceChannelId: resolvedVoice,
     textChannelId: ctx.channelId,
   });
-  ctx.sessions.bindTextChannel(ctx.guildId, ctx.channelId, selector);
 
   const hasUsablePlayer = typeof session.connection?.hasUsablePlayer === 'function'
     ? session.connection.hasUsablePlayer()
     : true;
+  if (hadSession && !session.connection.connected) {
+    await ctx.sessions.destroy(ctx.guildId, 'stale_disconnected_session', { sessionId: session.sessionId }).catch(() => null);
+    session = await ctx.sessions.ensure(ctx.guildId, ctx.guildConfig, {
+      voiceChannelId: resolvedVoice,
+      textChannelId: ctx.channelId,
+    });
+  }
+
+  ctx.sessions.bindTextChannel(ctx.guildId, ctx.channelId, selector);
   if (session.connection.connected && hasUsablePlayer) return session;
 
   try {
@@ -167,9 +176,16 @@ export async function ensureConnectedSession(ctx: CommandContextLike, explicitCh
     ctx.sessions.adoptVoiceChannel?.(session, resolvedVoice);
     await ctx.sessions.syncPersistentVoiceState?.(ctx.guildId);
   } catch (err: unknown) {
-    const shouldResetSession = !hadSession || String((err as { message?: string })?.message ?? '').toLowerCase().includes('already been destroyed');
+    const message = String((err as { message?: string })?.message ?? '').toLowerCase();
+    const shouldResetSession = (
+      !session.connection?.connected
+      || !hasUsablePlayer
+      || message.includes('already been destroyed')
+      || message.includes('wait_pc_connection timed out')
+      || message.includes('timeout waiting for voice_server_update')
+    );
     if (shouldResetSession) {
-      await ctx.sessions.destroy(ctx.guildId, 'connect_failed', { voiceChannelId: resolvedVoice }).catch(() => null);
+      await ctx.sessions.destroy(ctx.guildId, 'connect_failed', { sessionId: session.sessionId }).catch(() => null);
     }
     if (await isBotCurrentlyDeafened(ctx)) {
       throw new ValidationError('Cannot connect to VC because I am Deafened - please undeafen me.');
