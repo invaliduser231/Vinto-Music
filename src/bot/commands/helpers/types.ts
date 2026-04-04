@@ -35,6 +35,17 @@ export type TrackDataLike = {
   [key: string]: unknown;
 };
 
+export type RadioStationDataLike = {
+  key?: string | null;
+  name?: string | null;
+  url?: string | null;
+  description?: string | null;
+  tags?: string[] | null;
+  updatedBy?: string | null;
+  updatedAt?: string | Date | null;
+  [key: string]: unknown;
+};
+
 export type SessionLike = {
   guildId?: string | null;
   sessionId?: string | null;
@@ -124,11 +135,21 @@ export type LibraryLike = {
     webhookUrl?: string | null;
     recapChannelId?: string | null;
     queueGuard?: QueueGuardLike | null;
+    stations?: RadioStationDataLike[] | null;
     [key: string]: unknown;
   }>;
   patchGuildFeatureConfig: (guildId: string, patch: Record<string, unknown>) => Promise<unknown>;
   getVoiceProfile: (guildId: string, channelId: string) => Promise<{ moodPreset?: string | null; stayInVoiceEnabled?: boolean | null } | null>;
   setVoiceProfile: (guildId: string, channelId: string, patch: Record<string, unknown>) => Promise<unknown>;
+  listGuildStations?: (guildId: string) => Promise<RadioStationDataLike[]>;
+  getGuildStation?: (guildId: string, name: string) => Promise<RadioStationDataLike | null>;
+  setGuildStation?: (
+    guildId: string,
+    name: string,
+    station: { url: string; description?: string | null; tags?: string[] | null },
+    authorId?: string | null
+  ) => Promise<RadioStationDataLike>;
+  deleteGuildStation?: (guildId: string, name: string) => Promise<boolean>;
   listQueueTemplates: (guildId: string) => Promise<Array<{ name: string; tracks: TrackDataLike[] }>>;
   setQueueTemplate: (guildId: string, name: string, tracks: unknown[], authorId?: string | null) => Promise<{ name: string; tracks: TrackDataLike[] }>;
   deleteQueueTemplate: (guildId: string, name: string) => Promise<boolean>;

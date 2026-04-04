@@ -1,11 +1,18 @@
 import { ValidationError } from '../../core/errors.ts';
-import { buildSingleFieldInfoPayload } from './responseUtils.ts';
+import { buildInfoPayload, buildSingleFieldInfoPayload } from './responseUtils.ts';
+import {
+  listAvailableRadioStations,
+  resolveRadioStationSelection,
+  type RadioStationRecord,
+  type ResolvedRadioStation,
+} from './helpers/radioStations.ts';
 import type { CommandRegistry } from '../commandRegistry.ts';
 import type { TrackLike } from '../../types/core.ts';
 import type { CommandContextLike, GuildConfigLike, LibraryLike, QueueGuardLike, SessionLike, TrackDataLike } from './helpers/types.ts';
 
 type PlaylistListItem = { name: string; trackCount?: number | null };
 type PlaylistLike = { name: string; tracks: TrackDataLike[] };
+type SavedStationInput = { url: string; description?: string | null; tags?: string[] | null };
 type PlaylistLibrary = LibraryLike & {
   listGuildPlaylists: (guildId: string, page: number, pageSize: number) => Promise<{
     items: PlaylistListItem[];
@@ -36,6 +43,10 @@ type PlaylistLibrary = LibraryLike & {
   }>;
   removeUserFavorite: (userId: string, index: number) => Promise<TrackDataLike | null>;
   getUserFavorite: (userId: string, index: number) => Promise<TrackDataLike | null>;
+  listGuildStations?: (guildId: string) => Promise<RadioStationRecord[]>;
+  getGuildStation?: (guildId: string, name: string) => Promise<RadioStationRecord | null>;
+  setGuildStation?: (guildId: string, name: string, station: SavedStationInput, authorId?: string | null) => Promise<RadioStationRecord>;
+  deleteGuildStation?: (guildId: string, name: string) => Promise<boolean>;
   recordUserSignal?: (guildId: string, userId: string, signal: string, track?: TrackDataLike | null) => Promise<unknown>;
 };
 type LibraryCommandContext = CommandContextLike & {
@@ -99,6 +110,57 @@ function chunkLines(lines: unknown, maxChars = 1000): string[] {
   }
   if (current) pages.push(current);
   return pages.length ? pages : ['-'];
+}
+
+function isHttpUrl(value: string) {
+  return /^https?:\/\//i.test(value);
+}
+
+function formatStationLine(station: ResolvedRadioStation, index: number) {
+  const scope = station.scope === 'guild' ? 'Guild' : 'Built-in';
+  const tags = station.tags.length ? ` - ${station.tags.join(', ')}` : '';
+  return `${index}. **${station.name}** [${scope}]${tags}`;
+}
+
+function paginate<T>(items: T[], page: number, pageSize: number) {
+  const total = items.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.max(1, Math.min(page, totalPages));
+  const start = (safePage - 1) * pageSize;
+  return {
+    items: items.slice(start, start + pageSize),
+    page: safePage,
+    pageSize,
+    total,
+    totalPages,
+    start,
+  };
+}
+
+async function validateRadioStationUrl(ctx: CommandContextLike, url: string) {
+  const session = await ctx.sessions.ensure(ctx.guildId, ctx.guildConfig, {
+    voiceChannelId: ctx.activeVoiceChannelId,
+    textChannelId: ctx.channelId,
+  });
+  ctx.sessions.bindTextChannel(ctx.guildId, ctx.channelId, {
+    voiceChannelId: ctx.activeVoiceChannelId,
+    textChannelId: ctx.channelId,
+  });
+
+  const preview = await session.player.previewTracks(url, {
+    requestedBy: ctx.authorId,
+    limit: 1,
+  });
+  const track = preview[0] ?? null;
+  if (!track) {
+    throw new ValidationError('No playable stream found for that station URL.');
+  }
+
+  if (String(track.source ?? '').trim().toLowerCase() !== 'radio-stream') {
+    throw new ValidationError('That URL resolved to a normal track/file, not a live radio stream.');
+  }
+
+  return track;
 }
 
 export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHelperBundle) {
@@ -329,6 +391,216 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
       throw new ValidationError(
         `Usage: ${ctx.prefix}playlist <create|add|remove|show|list|delete|play> ...`
       );
+    },
+  }));
+
+  registry.register(createCommand({
+    name: 'stations',
+    aliases: ['radiolist'],
+    description: 'Browse built-in and guild-saved radio presets.',
+    usage: 'stations [filter] [page]',
+    async execute(ctx: CommandContextLike) {
+      const typedCtx = ctx as LibraryCommandContext;
+      ensureGuild(ctx);
+      const library = requireLibrary(ctx) as PlaylistLibrary;
+      const args = [...ctx.args];
+      const maybePage = args.length ? String(args[args.length - 1] ?? '').trim() : '';
+      const pageProvided = /^\d+$/.test(maybePage);
+      const page = pageProvided ? parseRequiredInteger(args.pop(), 'Page') : 1;
+      const query = args.join(' ').trim();
+      const guildStations = await library.listGuildStations?.(ctx.guildId).catch(() => []) ?? [];
+      const stations = listAvailableRadioStations(guildStations, query);
+      if (!stations.length) {
+        await ctx.reply.warning(
+          query
+            ? `No radio stations matched **${query}**.`
+            : 'No radio stations are available yet.'
+        );
+        return;
+      }
+
+      if (!pageProvided) {
+        const totalPages = Math.max(1, Math.ceil(stations.length / h.PLAYLIST_PAGE_SIZE));
+        if (totalPages > 1) {
+          const payloads = [];
+          for (let nextPage = 1; nextPage <= totalPages; nextPage += 1) {
+            const next = paginate(stations, nextPage, h.PLAYLIST_PAGE_SIZE);
+            const lines = next.items.map((station, idx) => formatStationLine(station, next.start + idx + 1));
+            const summary = query
+              ? `Stations for **${query}** • Page **${next.page}/${next.totalPages}** • Total: **${next.total}**`
+              : `Radio stations • Page **${next.page}/${next.totalPages}** • Total: **${next.total}**`;
+            payloads.push(buildInfoPayload(ctx, 'Stations', summary, [
+              { name: 'Stations', value: lines.join('\n') || '-' },
+              { name: 'Use', value: `\`${ctx.prefix}radio <number|name|url>\`` },
+            ]));
+          }
+
+          await typedCtx.sendPaginated(payloads);
+          return;
+        }
+      }
+
+      const result = paginate(stations, page, h.PLAYLIST_PAGE_SIZE);
+      const lines = result.items.map((station, idx) => formatStationLine(station, result.start + idx + 1));
+      const pages = chunkLines(lines, 1000);
+      const summary = query
+        ? `Stations for **${query}** • Page **${result.page}/${result.totalPages}** • Total: **${result.total}**`
+        : `Radio stations • Page **${result.page}/${result.totalPages}** • Total: **${result.total}**`;
+
+      if (pages.length === 1) {
+        await ctx.reply.info(summary, [
+          { name: 'Stations', value: pages[0]! },
+          { name: 'Use', value: `\`${ctx.prefix}radio <number|name|url>\`` },
+        ]);
+        return;
+      }
+
+      await typedCtx.sendPaginated(pages.map((value, idx) => buildSingleFieldInfoPayload(
+        ctx,
+        `Stations (${idx + 1}/${pages.length})`,
+        summary,
+        'Stations',
+        value
+      )));
+    },
+  }));
+
+  registry.register(createCommand({
+    name: 'station',
+    aliases: ['presetstation'],
+    description: 'Manage guild radio station presets.',
+    usage: 'station <list|show|save|delete> ...',
+    async execute(ctx: CommandContextLike) {
+      const typedCtx = ctx as LibraryCommandContext;
+      ensureGuild(ctx);
+      const library = requireLibrary(ctx) as PlaylistLibrary;
+      const action = String(ctx.args[0] ?? 'list').trim().toLowerCase();
+      const guildConfig = await getGuildConfigOrThrow(ctx);
+      const enforceWriteAccess = () => ensureDjAccessByConfig(ctx, guildConfig, 'manage radio presets');
+
+      if (action === 'list') {
+        const pageProvided = Boolean(ctx.args[1]);
+        const page = pageProvided ? parseRequiredInteger(ctx.args[1], 'Page') : 1;
+        const guildStations = await library.listGuildStations?.(ctx.guildId).catch(() => []) ?? [];
+        if (!guildStations.length) {
+          await ctx.reply.warning('No guild radio presets saved yet.');
+          return;
+        }
+
+        const resolved = listAvailableRadioStations(guildStations)
+          .filter((station) => station.scope === 'guild');
+        if (!pageProvided) {
+          const totalPages = Math.max(1, Math.ceil(resolved.length / h.PLAYLIST_PAGE_SIZE));
+          if (totalPages > 1) {
+            const payloads = [];
+            for (let nextPage = 1; nextPage <= totalPages; nextPage += 1) {
+              const next = paginate(resolved, nextPage, h.PLAYLIST_PAGE_SIZE);
+              const value = next.items.map((station, idx) => formatStationLine(station, next.start + idx + 1)).join('\n') || '-';
+              payloads.push(buildSingleFieldInfoPayload(
+                ctx,
+                'Guild radio presets',
+                `Page **${next.page}/${next.totalPages}** • Total: **${next.total}**`,
+                'Presets',
+                value
+              ));
+            }
+            await typedCtx.sendPaginated(payloads);
+            return;
+          }
+        }
+
+        const result = paginate(resolved, page, h.PLAYLIST_PAGE_SIZE);
+        const lines = result.items.map((station, idx) => formatStationLine(station, result.start + idx + 1));
+        const pages = chunkLines(lines, 1000);
+        const summary = `Guild radio presets • Page **${result.page}/${result.totalPages}** • Total: **${result.total}**`;
+
+        if (pages.length === 1) {
+          await ctx.reply.info(summary, [{ name: 'Presets', value: pages[0]! }]);
+          return;
+        }
+
+        await typedCtx.sendPaginated(pages.map((value, idx) => buildSingleFieldInfoPayload(
+          ctx,
+          `Guild radio presets (${idx + 1}/${pages.length})`,
+          summary,
+          'Presets',
+          value
+        )));
+        return;
+      }
+
+      if (action === 'show') {
+        const query = ctx.args.slice(1).join(' ').trim();
+        if (!query) {
+          throw new ValidationError(`Usage: ${ctx.prefix}station show <name>`);
+        }
+
+        const guildStations = await library.listGuildStations?.(ctx.guildId).catch(() => []) ?? [];
+        const selection = resolveRadioStationSelection(guildStations, query);
+        if (!selection.station) {
+          if (selection.matches.length) {
+            await ctx.reply.info(`Multiple stations matched **${query}**.`, [
+              { name: 'Matches', value: selection.matches.map((station, idx) => formatStationLine(station, idx + 1)).join('\n') },
+            ]);
+            return;
+          }
+          await ctx.reply.warning(`Station **${query}** not found.`);
+          return;
+        }
+
+        const station = selection.station;
+        await ctx.reply.info(`Station: **${station.name}**`, [
+          { name: 'Source', value: station.scope === 'guild' ? 'Guild preset' : 'Built-in preset', inline: true },
+          { name: 'Tags', value: station.tags.length ? station.tags.join(', ') : '-', inline: true },
+          { name: 'URL', value: station.url },
+          ...(station.description ? [{ name: 'Description', value: station.description }] : []),
+        ]);
+        return;
+      }
+
+      if (action === 'save') {
+        enforceWriteAccess();
+        const url = String(ctx.args[ctx.args.length - 1] ?? '').trim();
+        const name = ctx.args.slice(1, -1).join(' ').trim();
+        if (!name || !isHttpUrl(url)) {
+          throw new ValidationError(`Usage: ${ctx.prefix}station save <name> <http(s) url>`);
+        }
+
+        await typedCtx.safeTyping?.();
+        const validatedTrack = await validateRadioStationUrl(ctx, url);
+        const saved = await library.setGuildStation?.(ctx.guildId, name, {
+          url: String(validatedTrack.url ?? url).trim() || url,
+          description: null,
+          tags: [],
+        }, ctx.authorId);
+        if (!saved) {
+          throw new ValidationError('Guild station storage is unavailable.');
+        }
+
+        await ctx.reply.success(`Saved radio preset **${saved.name ?? name}**.`, [
+          { name: 'Resolved Stream', value: String(validatedTrack.url ?? url).trim() || url },
+        ]);
+        return;
+      }
+
+      if (action === 'delete') {
+        enforceWriteAccess();
+        const name = ctx.args.slice(1).join(' ').trim();
+        if (!name) {
+          throw new ValidationError(`Usage: ${ctx.prefix}station delete <name>`);
+        }
+
+        const removed = await library.deleteGuildStation?.(ctx.guildId, name);
+        if (!removed) {
+          await ctx.reply.warning(`Guild radio preset **${name}** not found.`);
+          return;
+        }
+
+        await ctx.reply.success(`Deleted radio preset **${name}**.`);
+        return;
+      }
+
+      throw new ValidationError(`Usage: ${ctx.prefix}station <list|show|save|delete> ...`);
     },
   }));
 

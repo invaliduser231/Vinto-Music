@@ -8,6 +8,10 @@ import {
   normalizeGuildId,
   normalizePlaylistName,
   normalizePlaylistNameKey,
+  normalizeStationName,
+  normalizeStationNameKey,
+  normalizeStationTags,
+  normalizeStationUrl,
   normalizeTrack,
   normalizeUserId,
   paginateList,
@@ -43,6 +47,16 @@ interface VoiceProfile {
   [key: string]: unknown;
 }
 
+interface RadioStationPreset {
+  key: string;
+  name: string;
+  url: string;
+  description: string | null;
+  tags: string[];
+  updatedBy: string | null;
+  updatedAt: Date;
+}
+
 interface QueueGuardConfig {
   enabled: boolean;
   maxPerRequesterWindow: number;
@@ -61,6 +75,7 @@ interface FeatureConfigDoc {
   persistentVoiceChannelId: string | null;
   persistentTextChannelId: string | null;
   persistentVoiceUpdatedAt: Date | null;
+  stations: RadioStationPreset[];
   queueTemplates: QueueTemplate[];
   voiceProfiles: VoiceProfile[];
   queueGuard: QueueGuardConfig;
@@ -129,6 +144,23 @@ type TrackInputLike = Parameters<typeof normalizeTrack>[0];
 type TrackRequesterLike = Parameters<typeof normalizeTrack>[1];
 type NormalizedStoredTrack = ReturnType<typeof normalizeTrack>;
 type UserSignalTrack = Parameters<typeof applyUserProfileSignal>[3];
+
+function normalizeStoredStation(station: unknown): RadioStationPreset | null {
+  if (!station || typeof station !== 'object' || Array.isArray(station)) return null;
+  const safeStation = station as Record<string, unknown>;
+  const name = normalizeStationName(safeStation.name ?? safeStation.key ?? '');
+  return {
+    key: normalizeStationNameKey(safeStation.key ?? name),
+    name,
+    url: normalizeStationUrl(safeStation.url),
+    description: safeStation.description != null ? String(safeStation.description).trim() || null : null,
+    tags: normalizeStationTags(safeStation.tags),
+    updatedBy: safeStation.updatedBy != null ? String(safeStation.updatedBy) : null,
+    updatedAt: safeStation.updatedAt instanceof Date
+      ? safeStation.updatedAt
+      : new Date(safeStation.updatedAt != null ? String(safeStation.updatedAt) : Date.now()),
+  };
+}
 
 interface GuildRecapDoc {
   guildId: string;
@@ -272,6 +304,17 @@ export class MusicLibraryStore {
     return {
       ...defaultGuildFeatureConfig(normalizedGuildId),
       ...doc,
+      stations: Array.isArray(doc.stations)
+        ? doc.stations
+          .map((station) => {
+            try {
+              return normalizeStoredStation(station);
+            } catch {
+              return null;
+            }
+          })
+          .filter((station): station is RadioStationPreset => station != null)
+        : [],
       queueTemplates: Array.isArray(doc.queueTemplates) ? doc.queueTemplates : [],
       voiceProfiles: Array.isArray(doc.voiceProfiles) ? doc.voiceProfiles : [],
       queueGuard: {
@@ -340,6 +383,60 @@ export class MusicLibraryStore {
     });
 
     return payload;
+  }
+
+  async setGuildStation(
+    guildId: unknown,
+    name: unknown,
+    station: { url: unknown; description?: unknown; tags?: unknown },
+    createdBy: unknown = null,
+  ) {
+    const normalizedGuildId = normalizeGuildId(guildId);
+    const stationName = normalizeStationName(name);
+    const stationKey = normalizeStationNameKey(name);
+    const payload: RadioStationPreset = {
+      key: stationKey,
+      name: stationName,
+      url: normalizeStationUrl(station.url),
+      description: station.description != null ? String(station.description).trim() || null : null,
+      tags: normalizeStationTags(station.tags),
+      updatedBy: createdBy ? String(createdBy) : null,
+      updatedAt: new Date(),
+    };
+
+    const config = await this.getGuildFeatureConfig(normalizedGuildId);
+    const stations = Array.isArray(config.stations) ? [...config.stations] : [];
+    const existingIndex = stations.findIndex((entry) => entry?.key === stationKey);
+    if (existingIndex >= 0) {
+      stations[existingIndex] = payload;
+    } else {
+      stations.push(payload);
+    }
+
+    await this.patchGuildFeatureConfig(normalizedGuildId, { stations });
+    return payload;
+  }
+
+  async listGuildStations(guildId: unknown) {
+    const config = await this.getGuildFeatureConfig(guildId);
+    return Array.isArray(config.stations) ? config.stations : [];
+  }
+
+  async getGuildStation(guildId: unknown, name: unknown) {
+    const stationKey = normalizeStationNameKey(name);
+    const stations = await this.listGuildStations(guildId);
+    return stations.find((entry) => entry?.key === stationKey) ?? null;
+  }
+
+  async deleteGuildStation(guildId: unknown, name: unknown) {
+    const stationKey = normalizeStationNameKey(name);
+    const config = await this.getGuildFeatureConfig(guildId);
+    const stations = Array.isArray(config.stations) ? config.stations : [];
+    const next = stations.filter((entry) => entry?.key !== stationKey);
+    if (next.length === stations.length) return false;
+
+    await this.patchGuildFeatureConfig(guildId, { stations: next });
+    return true;
   }
 
   async listQueueTemplates(guildId: unknown) {

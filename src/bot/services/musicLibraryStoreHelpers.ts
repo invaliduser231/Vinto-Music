@@ -63,6 +63,65 @@ export function normalizePlaylistNameKey(name: unknown): string {
   return normalizePlaylistName(name).toLowerCase();
 }
 
+export function normalizeStationName(name: unknown): string {
+  const value = String(name ?? '').trim();
+  if (!value) {
+    throw new ValidationError('Station name is required.');
+  }
+  if (value.length > 80) {
+    throw new ValidationError('Station name must be at most 80 characters.');
+  }
+  return value;
+}
+
+export function normalizeStationNameKey(name: unknown): string {
+  return normalizeStationName(name)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function normalizeStationUrl(url: unknown): string {
+  const value = String(url ?? '').trim();
+  if (!value) {
+    throw new ValidationError('Station URL is required.');
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new ValidationError('Station URL must be a valid http:// or https:// URL.');
+  }
+
+  if (!/^https?:$/i.test(parsed.protocol)) {
+    throw new ValidationError('Station URL must start with http:// or https://');
+  }
+
+  return parsed.toString().slice(0, 2048);
+}
+
+export function normalizeStationTags(tags: unknown): string[] {
+  const raw = Array.isArray(tags)
+    ? tags
+    : (typeof tags === 'string' ? String(tags).split(',') : []);
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const entry of raw) {
+    const value = String(entry ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    normalized.push(value.slice(0, 32));
+  }
+  return normalized.slice(0, 8);
+}
+
 export function normalizeTrack(track: Record<string, unknown> | null | undefined, fallbackRequester: string | null = null) {
   const title = String(track?.title ?? '').trim() || 'Unknown title';
   const url = String(track?.url ?? '').trim();
@@ -138,6 +197,7 @@ export function defaultGuildFeatureConfig(guildId: string) {
     persistentVoiceChannelId: null,
     persistentTextChannelId: null,
     persistentVoiceUpdatedAt: null,
+    stations: [],
     queueTemplates: [],
     voiceProfiles: [],
     queueGuard: {

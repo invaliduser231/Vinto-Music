@@ -40,6 +40,13 @@ import {
   createProgressReporter,
   withCommandReplyReference,
 } from './responseUtils.ts';
+import {
+  listAvailableRadioStations,
+  pickRandomRadioStation,
+  resolveRadioStationIndexSelection,
+  resolveRadioStationSelection,
+  type ResolvedRadioStation,
+} from './helpers/radioStations.ts';
 import { detectRadioNowPlaying } from './helpers/radioNowPlaying.ts';
 import type { CommandRegistry } from '../commandRegistry.ts';
 import type { EmbedField, MessagePayload } from '../../types/core.ts';
@@ -359,6 +366,12 @@ function formatSearchResultLine(track: SearchTrack, index: number) {
   return `${index}. **${shortTitle}** (${duration})`;
 }
 
+function formatRadioStationSummary(station: ResolvedRadioStation, index: number) {
+  const scope = station.scope === 'guild' ? 'Guild' : 'Built-in';
+  const tags = station.tags.length ? ` - ${station.tags.join(', ')}` : '';
+  return `${index}. **${station.name}** [${scope}]${tags}`;
+}
+
 function isLikelyPlaylistLoad(query: string) {
   const normalized = String(query ?? '').trim().toLowerCase();
   if (!/^https?:\/\//.test(normalized)) return false;
@@ -573,6 +586,139 @@ registry.register(createCommand({
       }
 
       await ctx.reply.success('Disconnected from voice and cleared session.');
+    },
+  }));
+
+  registry.register(createCommand({
+    name: 'radio',
+    description: 'Play a built-in or guild-saved radio station preset.',
+    usage: 'radio <station|random|url>',
+    async execute(ctx: PlaybackCommandContext) {
+      ensureGuild(ctx);
+      const rawQuery = ctx.args.join(' ').trim();
+      const guildStations = await ctx.library?.listGuildStations?.(ctx.guildId).catch(() => []) ?? [];
+
+      if (!rawQuery) {
+        const featured = listAvailableRadioStations(guildStations).slice(0, 12);
+        if (!featured.length) {
+          await ctx.reply.info('No radio presets are available yet.', [
+            { name: 'Usage', value: `\`${ctx.prefix}radio <number|station|random|url>\`\n\`${ctx.prefix}stations [filter] [page]\`` },
+          ]);
+          return;
+        }
+
+        await ctx.reply.info('Radio presets', [
+          { name: 'Try one of these', value: featured.map((station, idx) => formatRadioStationSummary(station, idx + 1)).join('\n') },
+          { name: 'Usage', value: `\`${ctx.prefix}radio <number|station|random|url>\`\n\`${ctx.prefix}stations [filter] [page]\`` },
+        ]);
+        return;
+      }
+
+      let targetLabel = rawQuery;
+      let targetUrl = rawQuery;
+      if (!/^https?:\/\//i.test(rawQuery)) {
+        if (/^random(?:\s+|$)/i.test(rawQuery)) {
+          const filter = rawQuery.replace(/^random\b/i, '').trim();
+          const randomStation = pickRandomRadioStation(guildStations, filter || null);
+          if (!randomStation) {
+            await ctx.reply.warning(
+              filter
+                ? `No radio stations matched **${filter}** for random selection.`
+                : 'No radio stations are available for random selection.'
+            );
+            return;
+          }
+          targetLabel = randomStation.name;
+          targetUrl = randomStation.url;
+        } else if (/^\d+$/.test(rawQuery)) {
+          const indexed = resolveRadioStationIndexSelection(guildStations, rawQuery);
+          if (!indexed.station) {
+            await ctx.reply.warning(
+              indexed.total > 0
+                ? `Radio station index out of range. Choose **1-${indexed.total}** or use \`${ctx.prefix}stations\`.`
+                : 'No radio stations are available yet.'
+            );
+            return;
+          }
+
+          targetLabel = indexed.station.name;
+          targetUrl = indexed.station.url;
+        } else {
+          const selection = resolveRadioStationSelection(guildStations, rawQuery);
+          if (!selection.station) {
+            if (selection.matches.length) {
+              await ctx.reply.info(`Multiple stations matched **${rawQuery}**.`, [
+                { name: 'Matches', value: selection.matches.map((station, idx) => formatRadioStationSummary(station, idx + 1)).join('\n') },
+              ]);
+              return;
+            }
+            await ctx.reply.warning(`No radio station matched **${rawQuery}**.`);
+            return;
+          }
+
+          targetLabel = selection.station.name;
+          targetUrl = selection.station.url;
+        }
+      }
+
+      await ctx.withGuildOpLock('radio', async () => {
+        const progress = await createProgressReporter(ctx, `Tuning in: **${targetLabel}**`, null, null, { replyReference: true });
+        await ctx.safeTyping();
+
+        const preparedSession = await prepareSessionConnection(ctx);
+        const connectPromise = connectPreparedSession(ctx, preparedSession);
+        const previewPromise = preparedSession.session.player.previewTracks(targetUrl, {
+          requestedBy: ctx.authorId,
+          limit: 1,
+        });
+        const [session, preview] = await Promise.all([connectPromise, previewPromise]);
+        const resolved = preview[0] ?? null;
+
+        if (!resolved) {
+          await progress.warning('No playable radio stream found for that selection.');
+          return;
+        }
+
+        if (String(resolved.source ?? '').trim().toLowerCase() !== 'radio-stream') {
+          await progress.warning('That selection did not resolve to a live radio stream.');
+          return;
+        }
+
+        resolved.title = targetLabel;
+        await applyVoiceProfileIfConfigured(ctx, session);
+
+        const activeTrack = session.player.currentTrack ?? null;
+        const shouldInterruptLivePlayback = Boolean(
+          session.player.playing
+          && activeTrack
+          && (
+            activeTrack.isLive === true
+            || String(activeTrack.source ?? '').startsWith('radio')
+          )
+        );
+
+        const track = session.player.createTrackFromData(resolved, ctx.authorId);
+        const added = session.player.enqueueResolvedTracks([track], {
+          dedupe: false,
+          playNext: shouldInterruptLivePlayback,
+        });
+        if (!added.length) {
+          await progress.warning('The station could not be queued.');
+          return;
+        }
+
+        if (shouldInterruptLivePlayback) {
+          session.player.skip();
+          await progress.success(`Stopped live stream. Tuning into ${trackLabel(added[0] ?? track)}.`);
+        } else if (!session.player.playing) {
+          await session.player.play();
+          await progress.success(`Tuning into ${trackLabel(added[0] ?? track)}.`);
+        } else {
+          await progress.success(`Queued station: ${trackLabel(added[0] ?? track)}.`);
+        }
+
+        ctx.sessions.markSnapshotDirty?.(session, true);
+      });
     },
   }));
 
