@@ -127,6 +127,7 @@ type SessionEventPayload = {
   reason?: string | null;
   seekRestart?: boolean;
   skipped?: boolean;
+  restoredFromPersistentSession?: boolean;
 };
 
 type VoiceStateStoreLike = {
@@ -563,9 +564,12 @@ export class CommandRouter {
 
   _bindSessionEvents() {
     this.sessions.on('trackStart', async (payload?: SessionEventPayload) => {
-      const { session, track } = payload ?? {};
+      const { session, track, restoredFromPersistentSession } = payload ?? {};
       const channelId = this._resolveEventChannelId(session);
       if (!channelId || !track) return;
+      if (restoredFromPersistentSession) {
+        return;
+      }
       const voiceChannelId = String(session?.connection?.channelId ?? '').trim();
       const voiceChannelTag = voiceChannelId ? ` in <#${voiceChannelId}>` : '';
       const isYouTubeMixPlaceholder = String(track?.source ?? '').trim().toLowerCase() === 'youtube'

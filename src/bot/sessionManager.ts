@@ -355,6 +355,7 @@ export class SessionManager extends EventEmitter {
       trackStart: (track) => {
       const currentTrack = track as { id?: string | null } | null | undefined;
       if (!this._hasSessionInstance(session)) return;
+      const restoredFromPersistentSession = Boolean(session.restoreState?.inProgress);
       delete session.restoreState;
       session.idleTimeoutIgnoreListeners = false;
       this._clearIdleTimer(session);
@@ -363,7 +364,7 @@ export class SessionManager extends EventEmitter {
       this.touch(guildId, { sessionId: session.sessionId! });
       this.markSnapshotDirty(session, true);
       this._syncPersistentVoiceStateSoon(guildId, 'track_start');
-      this.emit('trackStart', { session, track });
+      this.emit('trackStart', { session, track, restoredFromPersistentSession });
       },
 
       trackEnd: (event = {}) => {

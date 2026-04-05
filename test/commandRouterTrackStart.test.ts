@@ -126,3 +126,38 @@ test('trackStart popup waits briefly for deferred metadata before sending', asyn
     text: 'Now playing in <#voice-1>: **Hydrated Track** (3:33)',
   }]);
 });
+
+test('trackStart popup is suppressed for persistent session restore playback', async () => {
+  const sessions = new EventEmitter();
+  const router = createRouter(sessions);
+  const calls: Array<{ channelId: string; type: string; text: string }> = [];
+
+  router._safeReply = (async (channelId: string, type: string, text: string) => {
+    calls.push({ channelId, type, text });
+    return null;
+  }) as CommandRouter['_safeReply'];
+
+  try {
+    sessions.emit('trackStart', {
+      session: {
+        textChannelId: 'text-1',
+        connection: { channelId: 'voice-1' },
+        settings: {},
+      },
+      track: {
+        title: 'Restored Track',
+        duration: '3:00',
+        source: 'youtube',
+      },
+      restoredFromPersistentSession: true,
+    });
+
+    await new Promise((resolve) => setImmediate(resolve));
+  } finally {
+    if (router.sessionPanelLiveHandle) clearInterval(router.sessionPanelLiveHandle);
+    if (router.weeklySweepHandle) clearInterval(router.weeklySweepHandle);
+    if (router.ephemeralCleanupHandle) clearInterval(router.ephemeralCleanupHandle);
+  }
+
+  assert.deepEqual(calls, []);
+});
