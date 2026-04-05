@@ -82,6 +82,14 @@ const DEEZER_STREAM_META_CACHE_MAX_SIZE = 1_000;
 const STARTUP_FAILURE_STREAK_LIMIT = 3;
 const NEXT_TRACK_PREFETCH_TTL_MS = 10 * 60_000;
 
+function parseEnabledFlag(value: unknown, fallback = false): boolean {
+  if (value == null) return fallback;
+  const normalized = String(value).trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return fallback;
+}
+
 interface VoiceAdapterLike {
   sendAudio?: (stream: unknown) => Promise<unknown>;
   isStreaming?: boolean;
@@ -124,6 +132,7 @@ interface MusicPlayerOptions {
   soundcloudClientId?: string | null;
   soundcloudAutoClientId?: boolean;
   youtubePlaylistResolver?: string | null;
+  enableYouTubePrefetchedPlayback?: boolean | null;
   defaultVolumePercent?: number;
   maxHistorySize?: number;
 }
@@ -321,6 +330,7 @@ export class MusicPlayer extends EventEmitter {
   soundcloudClientId: string | null;
   soundcloudAutoClientId: boolean;
   youtubePlaylistResolver: string;
+  enableYouTubePrefetchedPlayback: boolean;
   deezerTrackFormats: string[];
   filterPreset: string;
   eqPreset: string;
@@ -414,6 +424,10 @@ export class MusicPlayer extends EventEmitter {
     this.soundcloudAutoClientId = options.soundcloudAutoClientId !== false;
     this.youtubePlaylistResolver = normalizeYouTubePlaylistResolver(
       options.youtubePlaylistResolver ?? process.env.YOUTUBE_PLAYLIST_RESOLVER
+    );
+    this.enableYouTubePrefetchedPlayback = parseEnabledFlag(
+      options.enableYouTubePrefetchedPlayback ?? process.env.ENABLE_YOUTUBE_PREFETCHED_PLAYBACK,
+      false
     );
 
     this.filterPreset = 'off';
@@ -715,7 +729,7 @@ export class MusicPlayer extends EventEmitter {
 
       if (isYouTubeUrl(trackUrl)) {
         const seekStartSec = Math.max(0, Number.parseInt(String(track.seekStartSec ?? 0), 10) || 0);
-        const prefetchedStreamUrl = seekStartSec <= 0
+        const prefetchedStreamUrl = this.enableYouTubePrefetchedPlayback && seekStartSec <= 0
           ? this._consumeNextTrackPrefetch(track)
           : null;
         if (prefetchedStreamUrl) {
@@ -973,6 +987,11 @@ export class MusicPlayer extends EventEmitter {
   }
 
   _scheduleNextTrackPrefetch(): void {
+    if (!this.enableYouTubePrefetchedPlayback) {
+      this._clearNextTrackPrefetch();
+      return;
+    }
+
     const nextTrack = this.pendingTracks[0] ?? null;
     if (!this._canPrefetchTrack(nextTrack)) {
       this._clearNextTrackPrefetch();
@@ -1036,6 +1055,11 @@ export class MusicPlayer extends EventEmitter {
   }
 
   async prefetchTrackPlayback(track: Track | null | undefined): Promise<void> {
+    if (!this.enableYouTubePrefetchedPlayback) {
+      this._clearNextTrackPrefetch();
+      return;
+    }
+
     if (!this._canPrefetchTrack(track)) return;
 
     const key = this._getTrackPrefetchKey(track);

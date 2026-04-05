@@ -325,9 +325,63 @@ test('play() uses shorter startup timeout for the next track after a skip transi
   assert.equal(startupTimeoutMs, 4_000);
 });
 
-test('play() uses a prefetched YouTube stream URL when available', async () => {
+test('play() ignores a prefetched YouTube stream URL by default and uses yt-dlp startup instead', async () => {
   const voice = createVoice();
   const player = new MusicPlayer(voice, {});
+  let startedUrl: string | null = null;
+  let youtubePipelineStarts = 0;
+
+  player._scheduleNextTrackPrefetch = () => {};
+  player._startHttpUrlPipeline = async (url: string) => {
+    startedUrl = url;
+    player.ffmpeg = {
+      stdout: {
+        pipe() {},
+      },
+      once() {},
+      stderr: new PassThrough(),
+    } as unknown as typeof player.ffmpeg;
+  };
+  player._awaitInitialPlaybackChunk = async () => {};
+  player._startYouTubePipeline = async () => {
+    youtubePipelineStarts += 1;
+    player.ffmpeg = {
+      stdout: {
+        pipe() {},
+      },
+      once() {},
+      stderr: new PassThrough(),
+    } as unknown as typeof player.ffmpeg;
+  };
+
+  player.enqueueResolvedTracks([
+    player._buildTrack({
+      title: 'Prefetched Track',
+      url: 'https://www.youtube.com/watch?v=abcdefghijk',
+      duration: '03:00',
+      source: 'youtube',
+      requestedBy: 'user-1',
+    }),
+  ]);
+
+  const queuedTrack = player.pendingTracks[0] ?? null;
+  const prefetchKey = player._getTrackPrefetchKey(queuedTrack);
+  assert.ok(prefetchKey);
+  player.nextTrackPrefetchState = {
+    key: String(prefetchKey),
+    streamUrl: 'https://stream.example.com/audio',
+    createdAtMs: Date.now(),
+  };
+
+  await player.play();
+
+  assert.equal(startedUrl, null);
+  assert.equal(youtubePipelineStarts, 1);
+});
+
+test('play() uses a prefetched YouTube stream URL when prefetched playback is enabled', async () => {
+  const voice = createVoice();
+  const player = new MusicPlayer(voice, { enableYouTubePrefetchedPlayback: true });
   let startedUrl: string | null = null;
 
   player._scheduleNextTrackPrefetch = () => {};
