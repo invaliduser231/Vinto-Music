@@ -48,7 +48,6 @@ function createRouter(restOverrides: Record<string, unknown> = {}) {
 }
 
 function cleanupRouter(router: CommandRouter) {
-  if (router.sessionPanelLiveHandle) clearInterval(router.sessionPanelLiveHandle);
   if (router.weeklySweepHandle) clearInterval(router.weeklySweepHandle);
   if (router.ephemeralCleanupHandle) clearInterval(router.ephemeralCleanupHandle);
 }

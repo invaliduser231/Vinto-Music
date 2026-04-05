@@ -46,9 +46,10 @@ Resilient, self-hosted music bot for Fluxer with persistent music data, queue sa
 - Independent multi-voice playback sessions per guild, with separate queues per voice channel.
 - Voice-channel-scoped 24/7 mode plus one-shot restart recovery for active non-24/7 sessions.
 - Fast playlist UX with first-track start plus background queueing for large external playlists and mixes.
+- Optional opportunistic YouTube startup prefetch to reduce time-to-audio for direct video playback.
 - Persistent guild playlists, favorites, history, queue templates, recap data, and lightweight user taste/reputation signals in MongoDB.
 - Built-in `/healthz`, `/readyz`, and Prometheus `/metrics` endpoints.
-- Optional Sentry reporting and opt-in runtime playback diagnostics.
+- Optional Sentry reporting, opt-in runtime playback diagnostics, and memory telemetry / heap snapshot controls.
 
 ## Self-Hosting On Fluxer
 
@@ -208,6 +209,7 @@ With `DEEZER_ARL` configured, plain text `play` resolution prefers Deezer before
 - if YouTube returns bot checks, set `YTDLP_COOKIES_FILE` or `YTDLP_COOKIES_FROM_BROWSER`
 - if a specific YouTube extractor profile is unstable, try `YTDLP_YOUTUBE_CLIENT=ios,android,web`
 - the runtime now retries multiple `yt-dlp` client strategies and can fall back to `play-dl`, so outright startup failures usually point to host binaries or provider-side blocking
+- `ENABLE_YOUTUBE_PREFETCHED_PLAYBACK=1` can improve startup latency for direct YouTube playback, but trades some robustness for speed
 
 ### Bot connects to gateway but commands fail
 
@@ -225,10 +227,11 @@ With `DEEZER_ARL` configured, plain text `play` resolution prefers Deezer before
 
 ## Configuration
 
-`src/config.ts` is the source of truth for parsing and validation.
+`src/config.ts` is the main source of truth for runtime env parsing and validation. A few direct-read env vars also exist outside it, such as `BOT_OWNER_USER_ID` for owner-only maintenance commands and the script-only Spotify helper vars.
 
 - Full env reference: [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
 - Architecture notes: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- Env template: [.env.example](.env.example)
 
 ## Commands
 
@@ -238,6 +241,7 @@ Default prefix: `!`
 
 - `help`, `support`, `ping`
 - `join`, `leave`
+- `radio <station|random|url>`, `stations [filter] [page]`
 - `play <query|url>`, `playnext <query|url>`, `search <query>`, `pick <index>`
 - `skip`, `voteskip`, `pause`, `resume`, `seek <time>`
 - `now`, `queue [page]`, `history [page]`, `previous`, `replay`
@@ -247,6 +251,7 @@ Default prefix: `!`
 ### Library
 
 - `playlist <create|add|remove|show|list|delete|play> ...`
+- `station <list|show|save|delete> ...`
 - `fav`, `favs`, `ufav`, `favplay`
 
 ### Guild Config
@@ -254,6 +259,7 @@ Default prefix: `!`
 - `prefix`
 - `settings`
 - `minimalmode [on|off]` / `minimal [on|off]`
+- `volumedefault [0-200]`
 - `djrole`
 - `musiclog`
 - `voteskipcfg`
@@ -275,11 +281,12 @@ Default prefix: `!`
 - `party`
 - `import`
 - `diag [now|last|track|cancel]` (owner-only)
+- `eval <code>` (owner-only, hidden)
 
 Notes:
 
 - `247` is voice-channel-scoped, not guild-wide.
-- The old session panel feature is disabled and no longer part of the active runtime path.
+- Owner-only commands use `BOT_OWNER_USER_ID`.
 
 ## Architecture
 

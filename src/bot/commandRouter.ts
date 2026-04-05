@@ -223,7 +223,6 @@ export class CommandRouter {
   guildOpLocks: Map<string, number>;
   helpPaginations: Map<string, HelpPaginationState>;
   searchReactionSelections: Map<string, SearchReactionState>;
-  sessionPanelLiveHandle: NodeJS.Timeout | null;
   weeklySweepHandle: NodeJS.Timeout | null;
   ephemeralCleanupHandle: NodeJS.Timeout | null;
   commandRateLimiter: CommandRateLimiter;
@@ -248,7 +247,6 @@ export class CommandRouter {
     this.guildOpLocks = new Map();
     this.helpPaginations = new Map();
     this.searchReactionSelections = new Map();
-    this.sessionPanelLiveHandle = null;
     this.weeklySweepHandle = null;
     this.ephemeralCleanupHandle = null;
     const rateLimiterOptions = {
@@ -468,9 +466,6 @@ export class CommandRouter {
       registry: this.registry,
       startedAt: this.startedAt,
       withGuildOpLock: (key: string, fn: () => Promise<unknown>) => this._withGuildOpLock(message.guild_id ?? null, key, fn),
-      refreshSessionPanel: async () => {
-        return null;
-      },
       registerHelpPagination: async (channelId: string, messageId: string, pages: MessagePayload[]) => {
         await this._registerHelpPagination(channelId, messageId, pages);
       },
@@ -707,23 +702,6 @@ export class CommandRouter {
     return Math.max(minVotes, Math.ceil(listeners * ratio));
   }
 
-  async _sendSessionPanelUpdate(session: SessionLookup | null | undefined, reason = 'update') {
-    void session;
-    void reason;
-    return null;
-  }
-
-  async _withSessionPanelUpdateLock(guildId: string | null, fn: () => Promise<unknown>) {
-    void guildId;
-    return fn();
-  }
-
-  async _ensureSessionPanelReactions(channelId: string, messageId: string) {
-    void channelId;
-    void messageId;
-    return null;
-  }
-
   async _emitWebhookEvent(session: SessionLookup | null | undefined, type: string, text: string) {
     const guildId = String(session?.guildId ?? '').trim();
     if (!this.library || !guildId) return;
@@ -777,14 +755,6 @@ export class CommandRouter {
     this.weeklySweepHandle = setInterval(run, 60 * 60 * 1000);
     this.weeklySweepHandle.unref?.();
     run();
-  }
-
-  _startSessionPanelLiveTicker() {
-    return;
-  }
-
-  async _tickSessionPanels() {
-    return;
   }
 
   async _registerHelpPagination(channelId: string, messageId: string, pages: MessagePayload[]) {

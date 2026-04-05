@@ -74,7 +74,6 @@ export function parseSearchPickIndex(emoji: string | null | undefined): number |
   return SEARCH_PICK_WORDS[String(emoji).toLowerCase()] ?? null;
 }
 
-export const SESSION_PANEL_REACTIONS = ['\u2705', '\u23ED\uFE0F', '\u2764\uFE0F', '\u23F8\uFE0F', '\u25B6\uFE0F'];
 export const SEND_PERMISSION_PREFLIGHT_BYPASS = new Set(['ping', 'help']);
 
 export function parseMentionCommand(content: string, botUserId: string | null | undefined) {

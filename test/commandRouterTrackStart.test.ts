@@ -69,7 +69,6 @@ test('trackStart popup includes the active voice channel mention', async () => {
 
     await new Promise((resolve) => setImmediate(resolve));
   } finally {
-    if (router.sessionPanelLiveHandle) clearInterval(router.sessionPanelLiveHandle);
     if (router.weeklySweepHandle) clearInterval(router.weeklySweepHandle);
     if (router.ephemeralCleanupHandle) clearInterval(router.ephemeralCleanupHandle);
   }
@@ -115,7 +114,6 @@ test('trackStart popup waits briefly for deferred metadata before sending', asyn
 
     await new Promise((resolve) => setTimeout(resolve, 1250));
   } finally {
-    if (router.sessionPanelLiveHandle) clearInterval(router.sessionPanelLiveHandle);
     if (router.weeklySweepHandle) clearInterval(router.weeklySweepHandle);
     if (router.ephemeralCleanupHandle) clearInterval(router.ephemeralCleanupHandle);
   }
@@ -154,7 +152,6 @@ test('trackStart popup is suppressed for persistent session restore playback', a
 
     await new Promise((resolve) => setImmediate(resolve));
   } finally {
-    if (router.sessionPanelLiveHandle) clearInterval(router.sessionPanelLiveHandle);
     if (router.weeklySweepHandle) clearInterval(router.weeklySweepHandle);
     if (router.ephemeralCleanupHandle) clearInterval(router.ephemeralCleanupHandle);
   }

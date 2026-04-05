@@ -68,8 +68,6 @@ interface FeatureConfigDoc {
   guildId: string;
   recapChannelId: string | null;
   webhookUrl: string | null;
-  sessionPanelChannelId: string | null;
-  sessionPanelMessageId: string | null;
   persistentVoiceConnections: Array<{ voiceChannelId?: string | null; textChannelId?: string | null }>;
   restartRecoveryConnections: Array<{ voiceChannelId?: string | null; textChannelId?: string | null }>;
   persistentVoiceChannelId: string | null;

@@ -177,22 +177,6 @@ export function registerAdvancedCommands(registry: RegistryLike, h: AdvancedComm
   }));
 
   registry.register(createCommand({
-    name: 'panel',
-    description: 'Configure/update the live session panel message.',
-    usage: 'panel <setup|refresh|off> [#channel]',
-    async execute(ctx: CommandContextLike) {
-      ensureGuild(ctx);
-      const library = requireLibrary(ctx);
-      await ensureManageGuildAccess(ctx, 'disable session panel');
-      await library.patchGuildFeatureConfig(ctx.guildId, {
-        sessionPanelChannelId: null,
-        sessionPanelMessageId: null,
-      });
-      await ctx.reply.info('Session panel is disabled and no longer used.');
-    },
-  }));
-
-  registry.register(createCommand({
     name: 'musicwebhook',
     aliases: ['whmusic'],
     description: 'Configure webhook feed for music events.',

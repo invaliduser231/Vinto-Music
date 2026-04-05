@@ -1,6 +1,6 @@
 # Configuration Reference
 
-All environment variables are parsed in `src/config.ts`. `.env.example` is the template to copy from.
+Most runtime environment variables are parsed in `src/config.ts`. `.env.example` is the template to copy from. A small number of values are read directly outside `src/config.ts`, mainly owner-only or script-only helpers.
 
 ## Required
 
@@ -34,6 +34,13 @@ All environment variables are parsed in `src/config.ts`. `.env.example` is the t
 | `ENABLE_EMBEDS` | `1` | Use embeds for replies where supported. |
 | `ALLOW_DEFAULT_PREFIX_FALLBACK` | `0` | Allow fallback to global default prefix if guild prefix is unknown. |
 
+## Direct-Read / Helper Environment Variables
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `BOT_OWNER_USER_ID` | empty | Directly read by the owner-only `diag` and hidden `eval` commands. Leave empty to disable those commands for everyone. |
+| `DEEZER_TRACK_FORMATS` | `MP3_128,MP3_64` | Read directly by `MusicPlayer` as an optional Deezer format preference override rather than through `loadConfig()`. |
+
 ## Startup and API Health
 
 | Variable | Default | Notes |
@@ -55,7 +62,7 @@ All environment variables are parsed in `src/config.ts`. `.env.example` is the t
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `MONGODB_DB` | `fluxer_music_bot` | Database name. |
-| `MONGODB_MAX_POOL_SIZE` | `120` | Max Mongo connection pool size. |
+| `MONGODB_MAX_POOL_SIZE` | `20` | Max Mongo connection pool size. |
 | `MONGODB_MIN_POOL_SIZE` | `5` | Min Mongo connection pool size. |
 | `MONGODB_CONNECT_TIMEOUT_MS` | `10000` | Mongo connect timeout. |
 | `MONGODB_SERVER_SELECTION_TIMEOUT_MS` | `10000` | Mongo server selection timeout. |
@@ -87,7 +94,11 @@ All environment variables are parsed in `src/config.ts`. `.env.example` is the t
 | `DEFAULT_VOLUME_PERCENT` | `100` | Initial playback volume. |
 | `MIN_VOLUME_PERCENT` | `0` | Lower volume bound. |
 | `MAX_VOLUME_PERCENT` | `200` | Upper volume bound. |
-| `VOICE_MAX_BITRATE` | `128000` | Max outbound voice track bitrate in bps. Lower this on multi-stream hosts to cut CPU and network pressure. |
+| `VOICE_MAX_BITRATE` | `192000` | Max outbound voice track bitrate in bps. Lower this on multi-stream hosts to cut CPU and network pressure. |
+| `MEMORY_TELEMETRY_INTERVAL_MS` | `15000` | Sampling interval for runtime memory telemetry collection. |
+| `MEMORY_TELEMETRY_LOG_INTERVAL_MS` | `300000` | Log interval for aggregated runtime memory telemetry. Set `0` to disable periodic memory log emission. |
+| `HEAP_SNAPSHOT_SIGNAL_ENABLED` | `1` | Allow runtime heap snapshot signal handling. |
+| `HEAP_SNAPSHOT_DIR` | `.heap-snapshots` | Directory used for heap snapshot output. |
 
 ## Guild Defaults
 
@@ -107,6 +118,7 @@ All environment variables are parsed in `src/config.ts`. `.env.example` is the t
 | `ENABLE_SPOTIFY_IMPORT` | `1` | Enable Spotify URL metadata resolution and mirroring. |
 | `ENABLE_DEEZER_IMPORT` | `1` | Enable Deezer URL ingestion. |
 | `ENABLE_TIDAL_IMPORT` | `1` | Enable Tidal URL metadata resolution and Deezer-first/YouTube fallback mirroring. |
+| `ENABLE_YOUTUBE_PREFETCHED_PLAYBACK` | `0` | Opportunistically prefetch direct YouTube stream URLs for faster startup. Usually lowers startup latency, but can be less robust than the default path. |
 
 ## Provider Credentials
 
@@ -121,6 +133,7 @@ All environment variables are parsed in `src/config.ts`. `.env.example` is the t
 | `SOUNDCLOUD_CLIENT_ID` | empty | Optional fixed SoundCloud client id. |
 | `SOUNDCLOUD_AUTO_CLIENT_ID` | `1` | Auto-resolve a SoundCloud client id via `play-dl` on startup. |
 | `DEEZER_ARL` | empty | Optional Deezer ARL cookie for direct Deezer playback and search preference. |
+| `DEEZER_TRACK_FORMATS` | `MP3_128,MP3_64` | Optional comma-separated Deezer format preference order. Allowed values are `FLAC`, `MP3_320`, `MP3_256`, `MP3_128`, `MP3_64`, `AAC_64`. Invalid entries are ignored. This override is read directly by `MusicPlayer`. |
 | `STRICT_MEDIA_AUTH` | `0` | Treat provider auth/bootstrap failures as fatal. |
 
 ## Spotify Token Helper
@@ -144,6 +157,11 @@ These are used only by `pnpm spotify:token`.
 | `YTDLP_YOUTUBE_CLIENT` | empty | Optional YouTube extractor profile(s). Comma-separated values are tried as a strategy list before fallback. |
 | `YTDLP_EXTRA_ARGS` | empty | Comma-separated extra yt-dlp args. |
 | `YOUTUBE_PLAYLIST_RESOLVER` | `ytdlp` | Playlist resolver order. Single-track YouTube metadata and startup also prefer hardened `yt-dlp`, with `play-dl` fallback when needed. |
+
+Notes:
+
+- `.env.example` intentionally keeps some example values conservative for self-hosting. The table above reflects the actual fallback defaults from [`src/config.ts`](../src/config.ts).
+- `.env.example` also includes helper-only variables such as `BOT_OWNER_USER_ID` that are intentionally not parsed through `loadConfig()`.
 
 ## Command Rate Limits
 
@@ -186,7 +204,7 @@ This still allows direct YouTube/SoundCloud/Audius/radio playback and URL import
 - 24/7 is voice-channel-scoped. The `247` command writes to the active voice channel profile, not to a guild-wide switch.
 - Active non-24/7 sessions still write restart-recovery snapshots so playback can come back after a bot restart.
 - Empty non-24/7 sessions are not persisted across restarts.
-- The legacy session panel fields may still exist in stored docs, but the panel feature is disabled in the active runtime path.
+- Direct YouTube startup can optionally use `ENABLE_YOUTUBE_PREFETCHED_PLAYBACK=1` to resolve a direct stream URL before the normal playback path begins.
 
 ### Spotify URL support
 

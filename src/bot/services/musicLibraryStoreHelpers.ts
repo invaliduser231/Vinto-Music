@@ -190,8 +190,6 @@ export function defaultGuildFeatureConfig(guildId: string) {
     guildId,
     recapChannelId: null,
     webhookUrl: null,
-    sessionPanelChannelId: null,
-    sessionPanelMessageId: null,
     persistentVoiceConnections: [],
     restartRecoveryConnections: [],
     persistentVoiceChannelId: null,

@@ -52,7 +52,6 @@ function createRouter() {
 }
 
 function cleanupRouter(router: CommandRouter) {
-  if (router.sessionPanelLiveHandle) clearInterval(router.sessionPanelLiveHandle);
   if (router.weeklySweepHandle) clearInterval(router.weeklySweepHandle);
   if (router.ephemeralCleanupHandle) clearInterval(router.ephemeralCleanupHandle);
 }

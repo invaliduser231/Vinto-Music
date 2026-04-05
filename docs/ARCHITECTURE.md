@@ -74,6 +74,7 @@ Resolution is intentionally layered:
 Playback path notes:
 
 - YouTube uses ffmpeg plus hardened `yt-dlp` resolution with multiple client strategies, then `play-dl` fallback when needed.
+- Direct YouTube startup can optionally prefetch the next direct media URL before the normal playback call path when `ENABLE_YOUTUBE_PREFETCHED_PLAYBACK=1`.
 - SoundCloud and Audius use direct API-backed playback paths.
 - Deezer can use direct media URL resolution when `DEEZER_ARL` is available.
 - Spotify, Apple Music, Amazon Music, Tidal, Bandcamp, Audiomack, Mixcloud, and JioSaavn act as metadata resolvers only. They are mirrored to Deezer first when possible, otherwise YouTube.
@@ -95,6 +96,7 @@ Important behavior:
 - idle sessions are destroyed after `SESSION_IDLE_MS` unless that voice-channel session has 24/7 enabled
 - vote-skip state resets per track
 - playback diagnostics can log periodic player and transport snapshots
+- runtime memory telemetry and optional heap snapshot signal handling are configured from env
 - queue-end behavior can still disconnect after idle timeout even if listeners remain, unless that voice-channel session has 24/7 enabled
 - 24/7 is voice-channel-scoped and comes from `guild_features.voiceProfiles[channelId].stayInVoiceEnabled`
 - active non-24/7 sessions still persist restart-recovery state so playback can be restored after a bot restart
@@ -115,7 +117,6 @@ MongoDB collections used by the current code:
 
 Notes:
 
-- The old session panel fields may still exist in `guild_features` for compatibility, but the panel feature is disabled in the active runtime path.
 - Restart recovery is intentionally separate from 24/7. Non-24/7 sessions are restored only when they were active at shutdown.
 
 The guild config store keeps a TTL cache in memory to reduce repeated reads for hot guilds.
