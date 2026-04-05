@@ -43,6 +43,12 @@ function triggerImmediateTrackTransition(player: QueueLifecycleRuntime) {
   });
 }
 
+function getTrackRecoveryAttempt(track: Track | null | undefined) {
+  const rawValue = (track as (Track & { recoveryAttemptCount?: unknown }) | null | undefined)?.recoveryAttemptCount;
+  const parsed = Number.parseInt(String(rawValue ?? 0), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
 export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecycleRuntime> = {
   clearQueue(this: QueueLifecycleRuntime) {
     const removed = this.queue.pendingSize;
@@ -265,6 +271,42 @@ export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecy
       : null;
     const expectedDurationSeconds = this._parseDurationSeconds(track?.duration);
     const sourceCloseInfo = this.activeSourceProcessCloseInfo;
+    const endedEarly = (
+      !wasSkip
+      && !pendingSeekTrack
+      && expectedDurationSeconds != null
+      && elapsedSeconds != null
+      && expectedDurationSeconds >= 45
+      && elapsedSeconds >= 5
+      && elapsedSeconds < Math.max(10, expectedDurationSeconds * 0.7)
+    );
+    const sourceEndedUnexpectedly = (
+      !wasSkip
+      && !pendingSeekTrack
+      && sourceCloseInfo
+      && String(track?.source ?? '').startsWith('youtube')
+      && expectedDurationSeconds != null
+      && elapsedSeconds != null
+      && elapsedSeconds >= 5
+      && elapsedSeconds < Math.max(10, expectedDurationSeconds - 120)
+    );
+    const recoveryAttempt = getTrackRecoveryAttempt(track);
+    let continuationTrack = pendingSeekTrack;
+    let recoverySeekSec: number | null = null;
+    if (
+      !continuationTrack
+      && endedEarly
+      && sourceCloseInfo
+      && String(track?.source ?? '').startsWith('youtube')
+      && elapsedSeconds != null
+      && recoveryAttempt < 1
+    ) {
+      recoverySeekSec = Math.max(0, elapsedSeconds - 2);
+      const recoveryTrack = this._cloneTrack(track, { seekStartSec: recoverySeekSec });
+      (recoveryTrack as Track & { recoveryAttemptCount?: number }).recoveryAttemptCount = recoveryAttempt + 1;
+      continuationTrack = recoveryTrack;
+    }
+    const autoRecoveryScheduled = continuationTrack != null && continuationTrack !== pendingSeekTrack;
     this.pendingSeekTrack = null;
 
     this._cleanupProcesses();
@@ -278,18 +320,9 @@ export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecy
       code,
       signal,
       skipped: wasSkip,
-      seekRestart: Boolean(pendingSeekTrack),
+      seekRestart: Boolean(continuationTrack),
     });
 
-    const endedEarly = (
-      !wasSkip
-      && !pendingSeekTrack
-      && expectedDurationSeconds != null
-      && elapsedSeconds != null
-      && expectedDurationSeconds >= 45
-      && elapsedSeconds >= 5
-      && elapsedSeconds < Math.max(10, expectedDurationSeconds * 0.7)
-    );
     if (endedEarly) {
       this.logger?.warn?.('Track pipeline closed earlier than expected', {
         title: track?.title ?? null,
@@ -299,19 +332,15 @@ export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecy
         expectedDurationSeconds,
         source: track?.source ?? null,
         url: track?.url ?? null,
+        sourceCode: sourceCloseInfo?.code ?? null,
+        sourceSignal: sourceCloseInfo?.signal ?? null,
+        sourceStderrTail: sourceCloseInfo?.stderrTail ?? null,
+        autoRecoveryScheduled,
+        recoveryAttempt,
+        recoverySeekSec,
       });
     }
 
-    const sourceEndedUnexpectedly = (
-      !wasSkip
-      && !pendingSeekTrack
-      && sourceCloseInfo
-      && String(track?.source ?? '').startsWith('youtube')
-      && expectedDurationSeconds != null
-      && elapsedSeconds != null
-      && elapsedSeconds >= 5
-      && elapsedSeconds < Math.max(10, expectedDurationSeconds - 120)
-    );
     if (sourceEndedUnexpectedly) {
       this.logger?.warn?.('Source process ended before expected track duration', {
         title: track?.title ?? null,
@@ -325,12 +354,26 @@ export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecy
       });
     }
 
-    if (!pendingSeekTrack) {
+    if (autoRecoveryScheduled) {
+      this.logger?.warn?.('Scheduling automatic YouTube playback recovery after early source close', {
+        title: track?.title ?? null,
+        url: track?.url ?? null,
+        elapsedSeconds,
+        expectedDurationSeconds,
+        recoveryAttempt: recoveryAttempt + 1,
+        recoverySeekSec,
+        sourceCode: sourceCloseInfo?.code ?? null,
+        sourceSignal: sourceCloseInfo?.signal ?? null,
+        sourceStderrTail: sourceCloseInfo?.stderrTail ?? null,
+      });
+    }
+
+    if (!continuationTrack) {
       this._rememberTrack(track);
     }
 
-    if (pendingSeekTrack) {
-      this.queue.addFront(pendingSeekTrack);
+    if (continuationTrack) {
+      this.queue.addFront(continuationTrack);
       await this.play();
       return;
     }
