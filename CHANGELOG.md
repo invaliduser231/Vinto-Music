@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.4] - 2026-04-06
+
+- Security and resolver hardening:
+  - tightened URL host validation for YouTube, SoundCloud, Deezer, Spotify, short-link expansion, and direct command parsing so hostile lookalike hosts no longer pass substring checks
+  - clamped gateway heartbeat intervals before scheduling timers so malformed remote values cannot keep long-lived timers around indefinitely
+  - reordered HTML entity decoding in metadata resolvers and URL normalization so encoded ampersands are decoded last
+- Tests:
+  - added regression coverage for strict host matching and bounded gateway heartbeat scheduling
+
 ## [0.5.3] - 2026-04-06
 
 - Runtime and platform updates:

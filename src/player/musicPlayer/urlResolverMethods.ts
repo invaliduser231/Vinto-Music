@@ -48,6 +48,10 @@ const SHORT_URL_CACHE_TTL_MS = 10 * 60 * 1000;
 const SHORT_URL_HEAD_TIMEOUT_MS = 2_500;
 const SHORT_URL_GET_TIMEOUT_MS = 4_000;
 
+function normalizeHost(value: unknown) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
 function isRadioPlaylistContentType(contentType: unknown) {
   const normalized = String(contentType ?? '').toLowerCase();
   return (
@@ -494,7 +498,7 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
     let trimmed = String(url ?? '').trim();
     if (!isHttpUrl(trimmed)) return trimmed;
 
-    const htmlDecoded = trimmed.replace(/&amp;/gi, '&').replace(/&#38;/gi, '&');
+    const htmlDecoded = trimmed.replace(/&#38;/gi, '&').replace(/&amp;/gi, '&');
     if (htmlDecoded !== trimmed && isHttpUrl(htmlDecoded)) {
       trimmed = htmlDecoded;
     }
@@ -505,12 +509,15 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
         parsed.hostname = 'www.youtube.com';
         return parsed.toString();
       }
+      const host = normalizeHost(parsed.hostname);
       const shouldExpand = (
-        parsed.hostname.includes('link.deezer.com')
-        || parsed.hostname.includes('on.soundcloud.com')
-        || parsed.hostname === 'spoti.fi'
-        || parsed.hostname.includes('spotify.link')
-        || parsed.hostname.includes('tidal.link')
+        host === 'link.deezer.com'
+        || host === 'on.soundcloud.com'
+        || host === 'spoti.fi'
+        || host === 'spotify.link'
+        || host.endsWith('.spotify.link')
+        || host === 'tidal.link'
+        || host.endsWith('.tidal.link')
       );
       if (shouldExpand) {
         const cached = this.normalizedInputUrlCache.get(trimmed) as NormalizedInputUrlCacheEntry | undefined;

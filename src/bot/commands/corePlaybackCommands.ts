@@ -95,9 +95,10 @@ function toCanonicalYouTubeWatchUrlFromValue(value: string | null | undefined) {
   try {
     const parsed = new URL(String(value ?? ''));
     const host = parsed.hostname.toLowerCase();
-    if (!host.includes('youtube.com') && !host.includes('youtu.be')) return null;
+    const isYouTubeHost = host === 'youtube.com' || host.endsWith('.youtube.com');
+    if (!isYouTubeHost && host !== 'youtu.be') return null;
 
-    if (host.includes('youtu.be')) {
+    if (host === 'youtu.be') {
       const segment = String(parsed.pathname ?? '').split('/').filter(Boolean)[0];
       return segment ? `https://www.youtube.com/watch?v=${encodeURIComponent(segment.trim())}` : null;
     }

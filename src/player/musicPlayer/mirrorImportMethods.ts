@@ -44,10 +44,10 @@ type MirrorRuntime = {
 function decodeHtml(value: unknown) {
   return String(value ?? '')
     .replace(/&quot;/gi, '"')
-    .replace(/&amp;/gi, '&')
     .replace(/&#39;|&apos;/gi, "'")
     .replace(/&lt;/gi, '<')
     .replace(/&gt;/gi, '>')
+    .replace(/&amp;/gi, '&')
     .trim();
 }
 

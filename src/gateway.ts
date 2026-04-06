@@ -1,4 +1,4 @@
-import { EventEmitter } from 'events';
+import { EventEmitter } from 'node:events';
 import WebSocket from 'ws';
 
 const Op = {
@@ -23,6 +23,8 @@ const NON_RECOVERABLE_CLOSE_CODES = new Set([
   4013, // invalid intents
   4014, // disallowed intents
 ]);
+const MIN_HEARTBEAT_INTERVAL_MS = 100;
+const MAX_HEARTBEAT_INTERVAL_MS = 60_000;
 
 type GatewayOptions = {
   url: string;
@@ -99,6 +101,12 @@ function withGatewayQuery(url: string) {
 
 function randomBetween(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function normalizeHeartbeatIntervalMs(value: unknown) {
+  const intervalMs = Number(value);
+  if (!Number.isFinite(intervalMs) || intervalMs <= 0) return null;
+  return Math.max(MIN_HEARTBEAT_INTERVAL_MS, Math.min(MAX_HEARTBEAT_INTERVAL_MS, Math.floor(intervalMs)));
 }
 
 export class Gateway extends EventEmitter {
@@ -320,7 +328,7 @@ export class Gateway extends EventEmitter {
           this.helloTimeoutHandle = null;
         }
 
-        this.heartbeatIntervalMs = Number((d as HelloPayload | null | undefined)?.heartbeat_interval ?? 0) || null;
+        this.heartbeatIntervalMs = normalizeHeartbeatIntervalMs((d as HelloPayload | null | undefined)?.heartbeat_interval);
         this._startHeartbeat();
 
         if (this.sessionId && this.sequence != null) {
@@ -442,7 +450,11 @@ export class Gateway extends EventEmitter {
       this.heartbeatIntervalHandle = null;
     }
 
-    const initialDelay = randomBetween(0, Math.max(100, this.heartbeatIntervalMs));
+    // Clamp the gateway-provided heartbeat so malformed remote values cannot pin local timers indefinitely.
+    const heartbeatIntervalMs = normalizeHeartbeatIntervalMs(this.heartbeatIntervalMs);
+    if (!heartbeatIntervalMs) return;
+
+    const initialDelay = randomBetween(0, heartbeatIntervalMs);
     this.heartbeatStartTimeoutHandle = setTimeout(() => {
       this.heartbeatStartTimeoutHandle = null;
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
@@ -456,7 +468,7 @@ export class Gateway extends EventEmitter {
         }
 
         this._sendHeartbeat();
-      }, this.heartbeatIntervalMs ?? 0);
+      }, heartbeatIntervalMs);
     }, initialDelay);
   }
 

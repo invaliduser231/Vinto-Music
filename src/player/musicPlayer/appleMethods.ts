@@ -74,12 +74,12 @@ function toAppleDurationSeconds(value: unknown) {
 
 function decodeHtmlEntities(value: unknown) {
   return String(value ?? '')
-    .replace(/&amp;/gi, '&')
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/gi, "'")
     .replace(/&apos;/gi, "'")
     .replace(/&lt;/gi, '<')
     .replace(/&gt;/gi, '>')
+    .replace(/&amp;/gi, '&')
     .trim();
 }
 

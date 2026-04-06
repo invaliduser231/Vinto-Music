@@ -14,6 +14,15 @@ function readNested(value: unknown, path: string[]): unknown {
   return current;
 }
 
+function normalizeHost(value: unknown) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function matchesHost(value: unknown, host: string) {
+  const normalized = normalizeHost(value);
+  return normalized === host || normalized.endsWith(`.${host}`);
+}
+
 export function isHttpUrl(value: unknown) {
   try {
     const parsed = new URL(String(value ?? ''));
@@ -45,7 +54,7 @@ export function isLikelyDirectAudioFileUrl(value: unknown) {
 export function isYouTubeUrl(value: unknown) {
   try {
     const parsed = new URL(String(value ?? ''));
-    return parsed.hostname.includes('youtube.com') || parsed.hostname.includes('youtu.be');
+    return matchesHost(parsed.hostname, 'youtube.com') || normalizeHost(parsed.hostname) === 'youtu.be';
   } catch {
     return false;
   }
@@ -54,14 +63,14 @@ export function isYouTubeUrl(value: unknown) {
 export function extractYouTubeVideoId(value: unknown) {
   try {
     const parsed = new URL(String(value ?? ''));
-    const host = parsed.hostname.toLowerCase();
+    const host = normalizeHost(parsed.hostname);
 
-    if (host.includes('youtu.be')) {
+    if (host === 'youtu.be') {
       const segment = String(parsed.pathname ?? '').split('/').filter(Boolean)[0];
       return segment ? segment.trim() : null;
     }
 
-    if (host.includes('youtube.com')) {
+    if (matchesHost(host, 'youtube.com')) {
       const v = String(parsed.searchParams.get('v') ?? '').trim();
       return v || null;
     }
@@ -81,8 +90,8 @@ export function toCanonicalYouTubeWatchUrl(value: unknown) {
 export function inferYouTubeWatchUrlFromPlaylist(value: unknown) {
   try {
     const parsed = new URL(String(value ?? ''));
-    const host = parsed.hostname.toLowerCase();
-    if (!host.includes('youtube.com') && !host.includes('youtu.be')) return null;
+    const host = normalizeHost(parsed.hostname);
+    if (!matchesHost(host, 'youtube.com') && host !== 'youtu.be') return null;
 
     const explicit = toCanonicalYouTubeWatchUrl(value);
     if (explicit) return explicit;
@@ -131,8 +140,8 @@ export function normalizeYouTubeVideoUrlFromEntry(entry: unknown) {
 export function getYouTubePlaylistId(value: unknown) {
   try {
     const parsed = new URL(String(value ?? ''));
-    const host = parsed.hostname.toLowerCase();
-    if (!host.includes('youtube.com') && !host.includes('youtu.be')) return null;
+    const host = normalizeHost(parsed.hostname);
+    if (!matchesHost(host, 'youtube.com') && host !== 'youtu.be') return null;
     const list = String(parsed.searchParams.get('list') ?? '').trim();
     return list || null;
   } catch {
@@ -143,8 +152,8 @@ export function getYouTubePlaylistId(value: unknown) {
 export function toCanonicalYouTubePlaylistUrl(value: unknown) {
   try {
     const parsed = new URL(String(value ?? ''));
-    const host = parsed.hostname.toLowerCase();
-    if (!host.includes('youtube.com') && !host.includes('youtu.be')) return null;
+    const host = normalizeHost(parsed.hostname);
+    if (!matchesHost(host, 'youtube.com') && host !== 'youtu.be') return null;
 
     const listId = String(parsed.searchParams.get('list') ?? '').trim();
     if (!listId) return null;
@@ -166,7 +175,8 @@ export function toCanonicalYouTubePlaylistUrl(value: unknown) {
 export function isSoundCloudUrl(value: unknown) {
   try {
     const parsed = new URL(String(value ?? ''));
-    return parsed.hostname.includes('soundcloud.com') || parsed.hostname.includes('snd.sc') || parsed.hostname.includes('on.soundcloud.com');
+    const host = normalizeHost(parsed.hostname);
+    return matchesHost(host, 'soundcloud.com') || host === 'snd.sc' || host === 'on.soundcloud.com';
   } catch {
     return false;
   }
@@ -175,7 +185,8 @@ export function isSoundCloudUrl(value: unknown) {
 export function isDeezerUrl(value: unknown) {
   try {
     const parsed = new URL(String(value ?? ''));
-    return parsed.hostname.includes('deezer.com') || parsed.hostname.includes('dzr.page.link');
+    const host = normalizeHost(parsed.hostname);
+    return matchesHost(host, 'deezer.com') || host === 'dzr.page.link';
   } catch {
     return false;
   }
@@ -184,7 +195,8 @@ export function isDeezerUrl(value: unknown) {
 export function isSpotifyUrl(value: unknown) {
   try {
     const parsed = new URL(String(value ?? ''));
-    return parsed.hostname.includes('spotify.com') || parsed.hostname === 'spoti.fi';
+    const host = normalizeHost(parsed.hostname);
+    return matchesHost(host, 'spotify.com') || host === 'spoti.fi';
   } catch {
     return false;
   }
@@ -482,9 +494,12 @@ export function extractJioSaavnEntity(value: unknown) {
 export function extractSpotifyEntity(value: unknown) {
   try {
     const parsed = new URL(String(value ?? ''));
-    const host = parsed.hostname.toLowerCase();
+    const host = normalizeHost(parsed.hostname);
 
-    if (host === 'spoti.fi' || host.includes('spotify.link')) {
+    if (host === 'spoti.fi' || host === 'spotify.link' || host.endsWith('.spotify.link')) {
+      return null;
+    }
+    if (!matchesHost(host, 'spotify.com')) {
       return null;
     }
 
@@ -513,7 +528,7 @@ export function extractDeezerTrackId(value: unknown) {
     const match = parsed.pathname.match(/\/track\/(\d+)/i);
     if (match?.[1]) return match[1];
 
-    const isPageLink = parsed.hostname.includes('dzr.page.link');
+    const isPageLink = normalizeHost(parsed.hostname) === 'dzr.page.link';
     if (!isPageLink) return null;
 
     const deezerUrl = parsed.searchParams.get('link');
@@ -527,7 +542,7 @@ export function extractDeezerTrackId(value: unknown) {
 export function isAudiusUrl(value: unknown) {
   try {
     const parsed = new URL(String(value ?? ''));
-    return parsed.hostname.includes('audius.co');
+    return matchesHost(parsed.hostname, 'audius.co');
   } catch {
     return false;
   }
