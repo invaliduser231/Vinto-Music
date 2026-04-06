@@ -82,7 +82,7 @@ jobs:
         uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
-          build-mode: manual
+          build-mode: none
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v5
@@ -98,9 +98,6 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
-      - name: Build
-        run: pnpm run build
 
       - name: Analyze
         uses: github/codeql-action/analyze@v3
