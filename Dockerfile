@@ -1,4 +1,4 @@
-FROM node:20-bookworm-slim AS build
+FROM node:24-bookworm-slim AS build
 
 ENV NODE_OPTIONS="--max-old-space-size=1024 --openssl-legacy-provider"
 
@@ -14,7 +14,7 @@ COPY scripts ./scripts
 
 RUN pnpm run build
 
-FROM node:20-bookworm-slim AS runtime
+FROM node:24-bookworm-slim AS runtime
 
 ENV NODE_ENV=production \
     NODE_OPTIONS="--max-old-space-size=1024 --openssl-legacy-provider" \

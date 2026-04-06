@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.3] - 2026-04-06
+
+- Runtime and platform updates:
+  - raised the supported Node.js baseline from 20 to 24 for local runtime, CI, and container builds
+  - switched Docker build and runtime images to `node:24-bookworm-slim`
+  - refreshed README requirements and setup guidance to reflect the Node 24 baseline
+- CI and security hardening:
+  - expanded CI to run typecheck, build, tests, Docker image validation, and Node runtime compatibility checks
+  - added a dedicated security workflow for dependency review, production `pnpm audit`, and CodeQL analysis
+  - upgraded the CodeQL workflow to the v4 action series and aligned its JavaScript/TypeScript configuration with supported build modes
+- Tests:
+  - verified the Node 24 migration with local typecheck, build, and full test-suite passes
+
 ## [0.5.2] - 2026-04-06
 
 - Playback and session resilience:

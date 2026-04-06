@@ -6,7 +6,7 @@
 
 Resilient, self-hosted music bot for Fluxer with persistent music data, queue safety, and operational monitoring.
 
-[![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?style=for-the-badge&logo=node.js&logoColor=white)](#requirements)
+[![Node.js](https://img.shields.io/badge/Node.js-24%2B-339933?style=for-the-badge&logo=node.js&logoColor=white)](#requirements)
 [![MongoDB](https://img.shields.io/badge/MongoDB-Required-47A248?style=for-the-badge&logo=mongodb&logoColor=white)](#requirements)
 [![yt-dlp](https://img.shields.io/badge/yt--dlp-Recommended-ffcc00?style=for-the-badge)](#requirements)
 [![Monitoring](https://img.shields.io/badge/Monitoring-healthz%20%7C%20readyz%20%7C%20metrics-0A66C2?style=for-the-badge)](#what-it-does)
@@ -75,7 +75,7 @@ For most operators, the practical requirements are:
 
 | Requirement | Notes |
 | --- | --- |
-| Node.js | `>= 20` |
+| Node.js | `>= 24` |
 | MongoDB | local or managed |
 | `ffmpeg` | on `PATH` or via `FFMPEG_BIN` |
 | `yt-dlp` | strongly recommended for YouTube playback |
