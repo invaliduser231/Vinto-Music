@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.7] - 2026-04-07
+
+- Fixes:
+  - applied live volume changes without restarting the active track when the stream started at 100% volume
+  - avoided unnecessary YouTube seek/restart attempts after `volume` changes, which reduced follow-on yt-dlp startup failures
+- Tests:
+  - added regression coverage for enabling live volume processing without refreshing the current track
+
 ## [0.5.6] - 2026-04-07
 
 - Fixes:

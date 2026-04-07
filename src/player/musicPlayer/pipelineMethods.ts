@@ -1,4 +1,5 @@
 import { spawn } from 'child_process';
+import { PassThrough } from 'node:stream';
 import playdl from 'play-dl';
 import { LiveAudioProcessor, isLiveFilterPresetSupported } from '../LiveAudioProcessor.ts';
 import { ValidationError } from '../../core/errors.ts';
@@ -370,6 +371,13 @@ export const pipelineMethods: LooseMethodMap = {
     return new LiveAudioProcessor(this._getLiveAudioProcessorState());
   },
 
+  _createPlaybackOutputStream() {
+    const output = new PassThrough();
+    this._bindPipelineErrorHandler(output, 'playbackOutputStream');
+    this.playbackOutputStream = output;
+    return output;
+  },
+
   _shouldUseLiveAudioProcessor() {
     const state = this._getLiveAudioProcessorState();
     return (
@@ -386,6 +394,44 @@ export const pipelineMethods: LooseMethodMap = {
       return true;
     } catch (err) {
       this.logger?.warn?.('Failed to sync live audio processor state', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return false;
+    }
+  },
+
+  _enableLiveAudioProcessorDuringPlayback() {
+    if (this.liveAudioProcessor) {
+      return this._syncLiveAudioProcessor();
+    }
+
+    const ffmpegOutput = this.ffmpeg?.stdout;
+    const playbackOutput = this.playbackOutputStream;
+    if (!ffmpegOutput?.pipe || !ffmpegOutput?.unpipe || !playbackOutput?.pipe) {
+      return false;
+    }
+
+    const processor = this._createLiveAudioProcessor();
+    this._bindPipelineErrorHandler(processor, 'liveAudioProcessor');
+
+    try {
+      ffmpegOutput.unpipe(playbackOutput);
+      ffmpegOutput.pipe(processor);
+      processor.pipe(playbackOutput);
+      this.liveAudioProcessor = processor;
+      return true;
+    } catch (err) {
+      try {
+        ffmpegOutput.unpipe?.(processor);
+      } catch {}
+      try {
+        processor.unpipe?.(playbackOutput);
+      } catch {}
+      try {
+        processor.destroy?.();
+      } catch {}
+      this.liveAudioProcessor = null;
+      this.logger?.warn?.('Failed to enable live audio processor during playback', {
         error: err instanceof Error ? err.message : String(err),
       });
       return false;

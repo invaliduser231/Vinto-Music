@@ -298,6 +298,7 @@ export class MusicPlayer extends EventEmitter {
   declare _parseDurationSeconds: (value: unknown) => number | null;
   declare _setPipelinePaused: (paused: boolean) => boolean;
   declare _createLiveAudioProcessor: () => LiveAudioProcessor;
+  declare _createPlaybackOutputStream: () => PassThrough;
   declare _shouldUseLiveAudioProcessor: () => boolean;
   declare _awaitInitialPlaybackChunk: BivariantCallback<[NonNullable<PipelineProcess['stdout']>, PipelineProcess, number], Promise<void>>;
   declare _getInitialPlaybackChunkTimeoutMs: (track: Track, options?: { hint?: string | null }) => number;
@@ -352,6 +353,7 @@ export class MusicPlayer extends EventEmitter {
   sourceStream: PipelineStreamLike | null;
   deezerDecryptStream: PipelineStreamLike | null;
   liveAudioProcessor: LiveAudioProcessor | null;
+  playbackOutputStream: PassThrough | null;
   _deezerStreamMetaByTrackId: Map<unknown, unknown>;
   pipelineErrorHandlers: Array<unknown>;
   sources: Readonly<{
@@ -451,6 +453,7 @@ export class MusicPlayer extends EventEmitter {
     this.sourceStream = null;
     this.deezerDecryptStream = null;
     this.liveAudioProcessor = null;
+    this.playbackOutputStream = null;
     this._deezerStreamMetaByTrackId = new Map();
     this.pipelineErrorHandlers = [];
     this.sources = Object.freeze({
@@ -791,14 +794,15 @@ export class MusicPlayer extends EventEmitter {
         await this._handleTrackClose(track, code, signal, playbackToken);
       });
 
-      const playbackOutput = this._shouldUseLiveAudioProcessor()
-        ? (() => {
-            this.liveAudioProcessor = this._createLiveAudioProcessor();
-            this._bindPipelineErrorHandler(this.liveAudioProcessor, 'liveAudioProcessor');
-            ffmpegProc.stdout?.pipe?.(this.liveAudioProcessor);
-            return this.liveAudioProcessor as NonNullable<PipelineProcess['stdout']>;
-          })()
-        : ffmpegProc.stdout;
+      const playbackOutput = this._createPlaybackOutputStream();
+      if (this._shouldUseLiveAudioProcessor()) {
+        this.liveAudioProcessor = this._createLiveAudioProcessor();
+        this._bindPipelineErrorHandler(this.liveAudioProcessor, 'liveAudioProcessor');
+        ffmpegProc.stdout?.pipe?.(this.liveAudioProcessor);
+        this.liveAudioProcessor.pipe(playbackOutput);
+      } else {
+        ffmpegProc.stdout?.pipe?.(playbackOutput);
+      }
 
       await this.voice.sendAudio?.(playbackOutput);
       this._ensurePlaybackStartupActive(startupToken);

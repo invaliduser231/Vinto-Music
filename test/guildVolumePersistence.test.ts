@@ -90,8 +90,7 @@ test('volume command only changes the active session volume', async () => {
   assert.deepEqual(dirty, [['voice-1', true]]);
 });
 
-test('volume change restarts current processing when playback started without a live processor', () => {
-  const refreshCalls: number[] = [];
+test('volume change enables live processing without restarting the current track', () => {
   const manager = new SessionManager({
     gateway: {
       joinVoice() {},
@@ -124,14 +123,21 @@ test('volume change restarts current processing when playback started without a 
 
   return manager.ensure('guild-1').then(async (session) => {
     const player = session.player as typeof session.player & {
+      _enableLiveAudioProcessorDuringPlayback: () => boolean;
       refreshCurrentTrackProcessing: () => boolean;
       liveAudioProcessor?: unknown;
       setVolumePercent: (value: number) => number;
     };
     manager._clearIdleTimer(session);
     player.playing = true;
+    let enableCalls = 0;
+    let refreshCalls = 0;
+    player._enableLiveAudioProcessorDuringPlayback = () => {
+      enableCalls += 1;
+      return true;
+    };
     player.refreshCurrentTrackProcessing = () => {
-      refreshCalls.push(1);
+      refreshCalls += 1;
       return true;
     };
 
@@ -141,7 +147,8 @@ test('volume change restarts current processing when playback started without a 
     player.setVolumePercent(5);
 
     assert.equal(player.volumePercent, 5);
-    assert.equal(refreshCalls.length, 1);
+    assert.equal(enableCalls, 1);
+    assert.equal(refreshCalls, 0);
 
     await manager.destroy('guild-1', 'test');
   });

@@ -37,6 +37,7 @@ type PlaybackStateMethods = {
 type PlaybackStateRuntime = MusicPlayer & PlaybackStateMethods & {
   _syncLiveAudioProcessor: () => void;
   _shouldUseLiveAudioProcessor: () => boolean;
+  _enableLiveAudioProcessorDuringPlayback: () => boolean;
   refreshCurrentTrackProcessing: () => boolean;
   liveAudioProcessor?: unknown;
 };
@@ -93,7 +94,10 @@ export const playbackStateMethods: PlaybackStateMethods & ThisType<PlaybackState
     this.volumePercent = next;
     this._syncLiveAudioProcessor();
     if (this.playing && !hadLiveProcessor && this._shouldUseLiveAudioProcessor()) {
-      this.refreshCurrentTrackProcessing();
+      const enabledLive = this._enableLiveAudioProcessorDuringPlayback();
+      if (!enabledLive) {
+        this.refreshCurrentTrackProcessing();
+      }
     }
     return this.volumePercent;
   },
