@@ -490,7 +490,8 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       }
     },
   }));
-registry.register(createCommand({
+
+  registry.register(createCommand({
     name: 'support',
     aliases: ['discord', 'server'],
     description: 'Get the support server invite link.',
