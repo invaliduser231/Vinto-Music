@@ -300,7 +300,7 @@ type CommandUsageContext = {
 export function buildCommandUsage(ctx: CommandUsageContext) {
   const { command: cmd, prefix } = ctx;
 
-  const aliases = cmd.aliases?.length ? ` (aliases: ${cmd.aliases.join(', ')})` : '';
+  const aliases = cmd.aliases?.length ? ` (aliases: \`${cmd.aliases.join('`, `')}\`)` : '';
   return `\`${prefix}${cmd.usage}\` - ${cmd.description}${aliases}`;
 }
 
