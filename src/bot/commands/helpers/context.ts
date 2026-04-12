@@ -16,6 +16,8 @@ type MemberLike = {
     voiceState?: VoiceStateLike;
     voice?: VoiceStateLike;
   };
+  deaf?: boolean;
+  mute?: boolean;
 };
 
 export function ensureGuild(ctx: Pick<CommandContextLike, 'guildId'>): void {
@@ -98,8 +100,8 @@ async function isBotCurrentlyDeafened(ctx: CommandContextLike): Promise<boolean>
   }
 
   try {
-    const botMember = await ctx.rest.getGuildMember(ctx.guildId, ctx.botUserId);
-    return isVoiceStateDeafened(extractVoiceStateFromMemberPayload(botMember as MemberLike | null | undefined));
+    const botMember = await ctx.rest.getGuildMember(ctx.guildId, ctx.botUserId) as MemberLike | null | undefined;
+    return botMember?.deaf ?? isVoiceStateDeafened(extractVoiceStateFromMemberPayload(botMember));
   } catch {
     return false;
   }
