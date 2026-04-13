@@ -81,5 +81,5 @@ test('help command sends paginated embed payload', async () => {
   const combinedDescriptions = pagination.pages
     .map((page: HelpPayload) => page?.embeds?.[0]?.description ?? '')
     .join('\n');
-  assert.match(combinedDescriptions, /`!help`/);
+  assert.match(combinedDescriptions, /`!help \[command\]`/);
 });

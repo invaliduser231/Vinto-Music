@@ -51,6 +51,7 @@ import { detectRadioNowPlaying } from './helpers/radioNowPlaying.ts';
 import type { CommandRegistry } from '../commandRegistry.ts';
 import type { EmbedField, MessagePayload } from '../../types/core.ts';
 import type { CommandContextLike, SessionLike, TrackDataLike } from './helpers/types.ts';
+import { buildCommandUsage, buildHelpPayload } from './helpers/formatting.ts';
 
 const RADIO_RECOGNITION_SUPPORT_FOOTER = 'Radio recognition costs money to run. Support: https://ko-fi.com/Q5Q31VDH1Z';
 const DIRECT_YOUTUBE_METADATA_GRACE_MS = 150;
@@ -476,18 +477,45 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
   registry.register(createCommand({
     name: 'help',
     aliases: ['h'],
-    description: 'Show all available commands.',
-    usage: 'help',
+    description: 'Show usage for a command or for all available commands.',
+    usage: 'help [command]',
     async execute(ctx: PlaybackCommandContext) {
       if (!ctx.rest?.sendMessage) {
         throw new ValidationError('REST adapter is not available.');
       }
-      const pages = buildHelpPages({ prefix: ctx.prefix, registry });
-      const first = await ctx.rest.sendMessage(ctx.channelId, withCommandReplyReference(ctx, pages[0]!)) as SentMessageLike | null;
-      const messageId = first?.id ?? first?.message?.id ?? null;
-      if (messageId && ctx.registerHelpPagination) {
-        await ctx.registerHelpPagination(ctx.channelId, messageId, pages);
+
+      const { args } = ctx;
+      if (args.length === 0) {
+        // if no arguments specified, print all pages
+        const pages = buildHelpPages({ prefix: ctx.prefix, registry });
+        const first = await ctx.rest.sendMessage(ctx.channelId, withCommandReplyReference(ctx, pages[0]!)) as SentMessageLike | null;
+        const messageId = first?.id ?? first?.message?.id ?? null;
+        if (messageId && ctx.registerHelpPagination) {
+          await ctx.registerHelpPagination(ctx.channelId, messageId, pages);
+        }
+        return;
       }
+
+      // if argument is specified, print single entry
+      const arg = args[0]!.toLowerCase();
+
+      // will only acknowledge the first argument
+      const command = registry.list().find(cmd => [cmd.name, ...(cmd.aliases ?? Array<string>())].includes(arg));
+      if (!command) {
+        await ctx.reply.error(`Unknown command \`${arg}\`.`);
+        return;
+      }
+
+      await ctx.rest.sendMessage(
+        ctx.channelId,
+        withCommandReplyReference(
+          ctx,
+          buildHelpPayload({
+            title: 'Help',
+            description: buildCommandUsage({ prefix: ctx.prefix, command }),
+          })
+        )
+      );
     },
   }));
 
