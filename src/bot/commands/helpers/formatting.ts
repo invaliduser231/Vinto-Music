@@ -304,6 +304,29 @@ export function buildCommandUsage(ctx: CommandUsageContext) {
   return `\`${prefix}${cmd.usage}\` - ${cmd.description}${aliases}`;
 }
 
+type HelpPayloadContext = {
+  title: string;
+  description: string;
+};
+
+export function buildHelpPayload(ctx: HelpPayloadContext): MessagePayload {
+  return {
+    embeds: [
+      buildEmbed({
+        title: ctx.title,
+        description: ctx.description,
+        footer: `Support: ${SUPPORT_SERVER_URL}`,
+      }),
+    ],
+    allowed_mentions: {
+      parse: [],
+      users: [],
+      roles: [],
+      replied_user: false,
+    },
+  };
+}
+
 type HelpPageContext = {
   prefix: string;
   registry: {
@@ -320,21 +343,12 @@ export function buildHelpPages(ctx: HelpPageContext): MessagePayload[] {
 
   for (let i = 0; i < totalPages; i += 1) {
     const slice = lines.slice(i * pageSize, (i + 1) * pageSize);
-    pages.push({
-      embeds: [
-        buildEmbed({
-          title: `Help ${i + 1}/${totalPages}`,
-          description: slice.join('\n').slice(0, 3900),
-          footer: `Support: ${SUPPORT_SERVER_URL}`,
-        }),
-      ],
-      allowed_mentions: {
-        parse: [],
-        users: [],
-        roles: [],
-        replied_user: false,
-      },
-    });
+    pages.push(
+      buildHelpPayload({
+        title: `Help ${i + 1}/${totalPages}`,
+        description: slice.join('\n').slice(0, 3900),
+      })
+    );
   }
 
   return pages;
