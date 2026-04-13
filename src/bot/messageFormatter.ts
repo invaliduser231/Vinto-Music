@@ -58,35 +58,19 @@ export function renderMinimalEmbedContent(
   return lines.join('\n').slice(0, 1900);
 }
 
+type ResponderMethod = (
+  channelId: string,
+  text: string,
+  details?: EmbedField[] | null,
+  replyOptions?: ReplyOptions | null,
+  embedOptions?: ResponderEmbedOptions | null,
+) => Promise<unknown>;
+
 interface Responder {
-  info: (
-    channelId: string,
-    text: string,
-    details?: EmbedField[] | null,
-    replyOptions?: ReplyOptions | null,
-    embedOptions?: ResponderEmbedOptions | null,
-  ) => Promise<unknown>;
-  success: (
-    channelId: string,
-    text: string,
-    details?: EmbedField[] | null,
-    replyOptions?: ReplyOptions | null,
-    embedOptions?: ResponderEmbedOptions | null,
-  ) => Promise<unknown>;
-  warning: (
-    channelId: string,
-    text: string,
-    details?: EmbedField[] | null,
-    replyOptions?: ReplyOptions | null,
-    embedOptions?: ResponderEmbedOptions | null,
-  ) => Promise<unknown>;
-  error: (
-    channelId: string,
-    text: string,
-    details?: EmbedField[] | null,
-    replyOptions?: ReplyOptions | null,
-    embedOptions?: ResponderEmbedOptions | null,
-  ) => Promise<unknown>;
+  info: ResponderMethod;
+  success: ResponderMethod;
+  warning: ResponderMethod;
+  error: ResponderMethod;
   plain: (channelId: string, text: string, replyOptions?: ReplyOptions | null) => Promise<unknown>;
 }
 
@@ -199,83 +183,32 @@ function createMessagePayload(
 export function makeResponder(rest: RestLike, options: ResponderOptions = {}): Responder {
   const useEmbeds = options.enableEmbeds !== false;
 
+  function buildResponderMethod(title: string, color: number): ResponderMethod {
+    return async (channelId, text, details = null, replyOptions = null, embedOptions = null) => {
+      const minimalMode = embedOptions?.minimalMode === true;
+      const payload = createMessagePayload(
+        useEmbeds ? null : text,
+        buildEmbed({
+          title,
+          description: text,
+          color,
+          fields: details,
+          thumbnailUrl: embedOptions?.thumbnailUrl ?? null,
+          imageUrl: embedOptions?.imageUrl ?? null,
+        }),
+        useEmbeds,
+        minimalMode,
+        replyOptions
+      );
+      return rest.sendMessage(channelId, payload);
+    };
+  }
+
   return {
-    async info(channelId, text, details = null, replyOptions = null, embedOptions = null) {
-      const minimalMode = embedOptions?.minimalMode === true;
-      const payload = createMessagePayload(
-        useEmbeds ? null : text,
-        buildEmbed({
-          title: 'Info',
-          description: text,
-          color: COLORS.info,
-          fields: details,
-          thumbnailUrl: embedOptions?.thumbnailUrl ?? null,
-          imageUrl: embedOptions?.imageUrl ?? null,
-        }),
-        useEmbeds,
-        minimalMode,
-        replyOptions
-      );
-      return rest.sendMessage(channelId, payload);
-    },
-
-    async success(channelId, text, details = null, replyOptions = null, embedOptions = null) {
-      const minimalMode = embedOptions?.minimalMode === true;
-      const payload = createMessagePayload(
-        useEmbeds ? null : text,
-        buildEmbed({
-          title: 'Success',
-          description: text,
-          color: COLORS.success,
-          fields: details,
-          thumbnailUrl: embedOptions?.thumbnailUrl ?? null,
-          imageUrl: embedOptions?.imageUrl ?? null,
-        }),
-        useEmbeds,
-        minimalMode,
-        replyOptions
-      );
-      return rest.sendMessage(channelId, payload);
-    },
-
-    async warning(channelId, text, details = null, replyOptions = null, embedOptions = null) {
-      const minimalMode = embedOptions?.minimalMode === true;
-      const payload = createMessagePayload(
-        useEmbeds ? null : text,
-        buildEmbed({
-          title: 'Warning',
-          description: text,
-          color: COLORS.warning,
-          fields: details,
-          thumbnailUrl: embedOptions?.thumbnailUrl ?? null,
-          imageUrl: embedOptions?.imageUrl ?? null,
-        }),
-        useEmbeds,
-        minimalMode,
-        replyOptions
-      );
-      return rest.sendMessage(channelId, payload);
-    },
-
-    async error(channelId, text, details = null, replyOptions = null, embedOptions = null) {
-      const minimalMode = embedOptions?.minimalMode === true;
-      const payload = createMessagePayload(
-        useEmbeds ? null : text,
-        buildEmbed({
-          title: 'Error',
-          description: text,
-          color: COLORS.error,
-          fields: details,
-          thumbnailUrl: embedOptions?.thumbnailUrl ?? null,
-          imageUrl: embedOptions?.imageUrl ?? null,
-        }),
-        useEmbeds,
-        minimalMode,
-        replyOptions
-      );
-      return rest.sendMessage(channelId, payload);
-    },
-
+    info: buildResponderMethod('Info', COLORS.info),
+    success: buildResponderMethod('Success', COLORS.success),
+    warning: buildResponderMethod('Warning', COLORS.warning),
+    error: buildResponderMethod('Error', COLORS.error),
     async plain(channelId, text, replyOptions = null) {
       const payload = createMessagePayload(text, null, false, false, replyOptions);
       return rest.sendMessage(channelId, payload);
