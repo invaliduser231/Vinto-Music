@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.1] - 2026-04-14
+
+- Fixes:
+  - normalized `play` and `playnext` help usage alternatives without spaced pipes
+- Tests:
+  - added regression coverage for command help alternative formatting
+
 ## [0.6.0] - 2026-04-14
 
 - Features:
@@ -11,6 +18,7 @@ All notable changes to this project are documented in this file.
   - updated the README command list with the new help usage
 - Tests:
   - added coverage for targeted command help and direct help page selection
+
 ## [0.5.8] - 2026-04-13
 
 - Fixes:
