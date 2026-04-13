@@ -816,7 +816,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
     name: 'play',
     aliases: ['p'],
     description: 'Queue a song or URL.',
-    usage: 'play <query | url>',
+    usage: 'play <query|url>',
     async execute(ctx: PlaybackCommandContext) {
       ensureGuild(ctx);
 
@@ -1030,7 +1030,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
     name: 'playnext',
     aliases: ['pn', 'next'],
     description: 'Queue a song to play right after the current one.',
-    usage: 'playnext <query | url>',
+    usage: 'playnext <query|url>',
     async execute(ctx: PlaybackCommandContext) {
       ensureGuild(ctx);
 

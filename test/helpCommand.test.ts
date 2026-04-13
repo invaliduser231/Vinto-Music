@@ -125,6 +125,33 @@ test('help command sends single command description embed payload', async () => 
   assert.ok(!registeredPagination);
 });
 
+test('help command formats command alternatives without spaced pipes', async () => {
+  const { prefix, channelId, messageId } = dummyConstants();
+  const { registry, help } = setup();
+  const execute = help?.execute as HelpExecute | undefined;
+  assert.ok(execute);
+  let sentPayload: HelpPayload | null = null;
+
+  await execute({
+    prefix,
+    registry,
+    channelId,
+    rest: {
+      async sendMessage(_channelId: string, payload: HelpPayload) {
+        sentPayload = payload;
+        return { id: messageId };
+      },
+    },
+    args: ['play'],
+  });
+
+  assert.ok(sentPayload);
+  const payload: HelpPayload = sentPayload as HelpPayload;
+  const description = payload.embeds[0]?.description ?? '';
+  assert.match(description, /`!play <query\|url>`/);
+  assert.doesNotMatch(description, /\b \| \b/);
+});
+
 test('help command sends arbitrary page for paginated embed payload', async () => {
   const pageNum = '1';
   const { prefix, channelId, messageId, } = dummyConstants();
