@@ -75,15 +75,20 @@ export const pipelineMethods: LooseMethodMap = {
     return ['--proxy', proxy, ...args];
   },
 
-  _ffmpegHttpArgs(inputUrl: string, seekSec = 0, options: { isLive?: boolean } = {}) {
+  _ffmpegHttpArgs(inputUrl: string, seekSec = 0, options: { isLive?: boolean; proxyUrl?: string | null } = {}) {
     const filterChain = this._buildTranscodeFilterChain();
     const seek = Math.max(0, Number.parseInt(String(seekSec), 10) || 0);
     const isLive = options?.isLive === true;
+    const proxyUrl = String(options?.proxyUrl ?? '').trim();
     const args = [
       ...(isLive ? ['-re'] : []),
       '-nostdin',
       '-user_agent', 'Mozilla/5.0 (compatible; FluxerBot/1.0)',
     ];
+
+    if (proxyUrl) {
+      args.push('-http_proxy', proxyUrl);
+    }
 
     if (isLive) {
       args.push('-headers', 'Icy-MetaData:1\r\n');
@@ -134,7 +139,7 @@ export const pipelineMethods: LooseMethodMap = {
     this.sourceStream.pipe(this.ffmpeg.stdin);
   },
 
-  async _startHttpUrlPipeline(url: string, seekSec = 0, options: { isLive?: boolean } = {}) {
+  async _startHttpUrlPipeline(url: string, seekSec = 0, options: { isLive?: boolean; proxyUrl?: string | null } = {}) {
     this.ffmpeg = await this._spawnProcess(this.ffmpegBin, this._ffmpegHttpArgs(url, seekSec, options), {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -758,7 +763,8 @@ export const pipelineMethods: LooseMethodMap = {
   async _resolveYtDlpStreamUrl(
     url: string,
     formatSelector: string | null = 'bestaudio/best',
-    includeClientArg: boolean | string | null = true
+    includeClientArg: boolean | string | null = true,
+    options: { proxyUrl?: string | null } = {}
   ) {
     const args = [
       '--ignore-config',
@@ -785,9 +791,10 @@ export const pipelineMethods: LooseMethodMap = {
       args.push(...(this.ytdlpExtraArgs as string[]));
     }
 
-    args.push('--get-url', url);
+    const effectiveArgs = this._withYtDlpProxyArgs(args, options.proxyUrl);
+    effectiveArgs.push('--get-url', url);
 
-    const { stdout } = await this._runYtDlpCommand(args, 20_000);
+    const { stdout } = await this._runYtDlpCommand(effectiveArgs, 20_000);
     const lines = String(stdout ?? '')
       .split(/\r?\n/)
       .map((line) => line.trim())

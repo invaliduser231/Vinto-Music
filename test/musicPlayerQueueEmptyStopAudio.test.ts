@@ -229,9 +229,6 @@ test('play() retries a pre-audio YouTube pipeline exit with yt-dlp proxy pipe fa
   player.on('trackError', () => {
     trackErrorCount += 1;
   });
-  player.on('trackError', () => {
-    trackErrorCount += 1;
-  });
 
   player.enqueueResolvedTracks([
     player._buildTrack({
@@ -252,6 +249,64 @@ test('play() retries a pre-audio YouTube pipeline exit with yt-dlp proxy pipe fa
   assert.equal(initialChunkAttempts, 2);
   assert.equal(trackErrorCount, 0);
   assert.equal(player.currentTrack?.title, 'Proxy Fallback Track');
+});
+
+test('play() retries a skipped YouTube startup timeout with yt-dlp proxy pipe fallback', async () => {
+  const voice = createVoice();
+  const player = new MusicPlayer(voice, { ytdlpProxyUrl: 'http://proxy.example:8080' });
+  const startedPipelines: Array<{ name: string; proxyOnly?: boolean }> = [];
+  let initialChunkAttempts = 0;
+  let trackErrorCount = 0;
+
+  player.nextPlaybackStartupHint = 'skip';
+  player._scheduleNextTrackPrefetch = () => {};
+  const installFfmpeg = () => {
+    player.ffmpeg = {
+      stdout: {
+        pipe() {},
+      },
+      once() {},
+      stderr: new PassThrough(),
+    } as unknown as typeof player.ffmpeg;
+  };
+  player._startYouTubePipeline = async () => {
+    startedPipelines.push({ name: 'youtube' });
+    player._lastYtDlpDiagnostics = { proxyEnabled: false };
+    installFfmpeg();
+  };
+  player._startYtDlpPipeline = async (_url: string, _seekSec = 0, options = {}) => {
+    startedPipelines.push({ name: 'ytdlp-pipe', ...(options.proxyOnly != null ? { proxyOnly: options.proxyOnly } : {}) });
+    installFfmpeg();
+  };
+  player._awaitInitialPlaybackChunk = async () => {
+    initialChunkAttempts += 1;
+    if (initialChunkAttempts === 1) {
+      throw new Error('Playback pipeline did not produce audio output in time.');
+    }
+  };
+  player.on('trackError', () => {
+    trackErrorCount += 1;
+  });
+
+  player.enqueueResolvedTracks([
+    player._buildTrack({
+      title: 'Proxy Timeout Fallback Track',
+      url: 'https://www.youtube.com/watch?v=abcdefghijk',
+      duration: '03:00',
+      source: 'youtube',
+      requestedBy: 'user-1',
+    }),
+  ]);
+
+  await player.play();
+
+  assert.deepEqual(startedPipelines, [
+    { name: 'youtube' },
+    { name: 'ytdlp-pipe', proxyOnly: true },
+  ]);
+  assert.equal(initialChunkAttempts, 2);
+  assert.equal(trackErrorCount, 0);
+  assert.equal(player.currentTrack?.title, 'Proxy Timeout Fallback Track');
 });
 
 test('play() halts queue drain after repeated startup failures', async () => {
@@ -533,6 +588,7 @@ test('play() ignores a prefetched YouTube stream URL by default and uses yt-dlp 
   player.nextTrackPrefetchState = {
     key: String(prefetchKey),
     streamUrl: 'https://stream.example.com/audio',
+    proxyUrl: null,
     createdAtMs: Date.now(),
   };
 
@@ -588,6 +644,7 @@ test('play() uses a prefetched YouTube stream URL for skip transitions even when
   player.nextTrackPrefetchState = {
     key: String(prefetchKey),
     streamUrl: 'https://stream.example.com/skip-audio',
+    proxyUrl: null,
     createdAtMs: Date.now(),
   };
 
@@ -634,12 +691,62 @@ test('play() uses a prefetched YouTube stream URL when prefetched playback is en
   player.nextTrackPrefetchState = {
     key: String(prefetchKey),
     streamUrl: 'https://stream.example.com/audio',
+    proxyUrl: null,
     createdAtMs: Date.now(),
   };
 
   await player.play();
 
   assert.equal(startedUrl, 'https://stream.example.com/audio');
+});
+
+test('play() preserves the proxy for prefetched YouTube stream URLs', async () => {
+  const voice = createVoice();
+  const player = new MusicPlayer(voice, { enableYouTubePrefetchedPlayback: true });
+  let startedUrl: string | null = null;
+  let startedProxyUrl: string | null = null;
+
+  player._scheduleNextTrackPrefetch = () => {};
+  player._startHttpUrlPipeline = async (url: string, _seekSec = 0, options = {}) => {
+    startedUrl = url;
+    startedProxyUrl = String(options.proxyUrl ?? '').trim() || null;
+    player.ffmpeg = {
+      stdout: {
+        pipe() {},
+      },
+      once() {},
+      stderr: new PassThrough(),
+    } as unknown as typeof player.ffmpeg;
+  };
+  player._awaitInitialPlaybackChunk = async () => {};
+  player._startYouTubePipeline = async () => {
+    throw new Error('Expected prefetched stream URL to bypass yt-dlp startup.');
+  };
+
+  player.enqueueResolvedTracks([
+    player._buildTrack({
+      title: 'Prefetched Proxy Track',
+      url: 'https://www.youtube.com/watch?v=abcdefghijk',
+      duration: '03:00',
+      source: 'youtube',
+      requestedBy: 'user-1',
+    }),
+  ]);
+
+  const queuedTrack = player.pendingTracks[0] ?? null;
+  const prefetchKey = player._getTrackPrefetchKey(queuedTrack);
+  assert.ok(prefetchKey);
+  player.nextTrackPrefetchState = {
+    key: String(prefetchKey),
+    streamUrl: 'https://stream.example.com/proxy-audio',
+    proxyUrl: 'http://proxy.example:8080',
+    createdAtMs: Date.now(),
+  };
+
+  await player.play();
+
+  assert.equal(startedUrl, 'https://stream.example.com/proxy-audio');
+  assert.equal(startedProxyUrl, 'http://proxy.example:8080');
 });
 
 
