@@ -157,12 +157,14 @@ These are used only by `pnpm spotify:token`.
 | `YTDLP_COOKIES_FROM_BROWSER` | empty | Import cookies from a local browser profile. |
 | `YTDLP_YOUTUBE_CLIENT` | empty | Optional YouTube extractor profile(s). Comma-separated values are tried as a strategy list before fallback. |
 | `YTDLP_EXTRA_ARGS` | empty | Comma-separated extra yt-dlp args. |
+| `BGUTIL_POT_PROVIDER_IMAGE` | `brainicism/bgutil-ytdlp-pot-provider:1.3.1-node` | Docker image used by the Compose PO-token provider sidecar. |
 | `YOUTUBE_PLAYLIST_RESOLVER` | `ytdlp` | Playlist resolver order. Single-track YouTube metadata and startup also prefer hardened `yt-dlp`, with `play-dl` fallback when needed. |
 
 Notes:
 
 - `.env.example` intentionally keeps some example values conservative for self-hosting. The table above reflects the actual fallback defaults from [`src/config.ts`](../src/config.ts).
 - `.env.example` also includes helper-only variables such as `BOT_OWNER_USER_ID` that are intentionally not parsed through `loadConfig()`.
+- The bundled Docker setup installs the `bgutil-ytdlp-pot-provider` yt-dlp plugin and runs the matching HTTP provider sidecar. Keep `YTDLP_YOUTUBE_CLIENT=mweb` and the default `YTDLP_EXTRA_ARGS` when YouTube requires PO tokens on your host.
 
 ## Command Rate Limits
 
