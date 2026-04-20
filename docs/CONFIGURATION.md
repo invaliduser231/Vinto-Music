@@ -17,6 +17,7 @@ Most runtime environment variables are parsed in `src/config.ts`. `.env.example`
 - Spotify credentials are optional as a group. If you set one of `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, or `SPOTIFY_REFRESH_TOKEN`, you must set all three.
 - `DEEZER_ARL` is optional, but it enables Deezer-first text resolution and the best direct Deezer playback path.
 - `TIDAL_TOKEN` is optional. If it is unset, the bot will best-effort bootstrap a public client token from Tidal's web app for metadata lookups.
+- `APPLE_MUSIC_MEDIA_API_TOKEN` is optional. If it is unset, the bot will best-effort bootstrap a public Apple Music web token for Catalog metadata; playback still mirrors to Deezer or YouTube.
 - Bandcamp, Audiomack, Mixcloud, and JioSaavn URL imports do not need separate API keys in the current codebase. They resolve metadata and then mirror to Deezer or YouTube.
 
 ## Core Runtime
@@ -132,6 +133,9 @@ Most runtime environment variables are parsed in `src/config.ts`. `.env.example`
 | `SPOTIFY_MARKET` | `US` | Two-letter market code. |
 | `TIDAL_TOKEN` | empty | Optional Tidal client token. If empty, the bot tries to bootstrap one from Tidal web assets. |
 | `TIDAL_COUNTRY_CODE` | `US` | Two-letter Tidal market code used for metadata requests. |
+| `APPLE_MUSIC_MEDIA_API_TOKEN` | empty | Optional Apple Music Catalog token. If empty and auto-token is enabled, the bot tries to bootstrap a public web token from Apple Music. |
+| `APPLE_MUSIC_AUTO_TOKEN` | `1` | Auto-resolve a public Apple Music Catalog token from Apple Music web assets when no fixed token is configured. |
+| `APPLE_MUSIC_MARKET` | `US` | Two-letter Apple Music market used when a URL does not include a country segment. |
 | `SOUNDCLOUD_CLIENT_ID` | empty | Optional fixed SoundCloud client id. |
 | `SOUNDCLOUD_AUTO_CLIENT_ID` | `1` | Auto-resolve a SoundCloud client id via `play-dl` on startup. |
 | `DEEZER_ARL` | empty | Optional Deezer ARL cookie for direct Deezer playback and search preference. |

@@ -148,6 +148,9 @@ interface MusicPlayerOptions {
   spotifyMarket?: string | null;
   tidalToken?: string | null;
   tidalCountryCode?: string | null;
+  appleMusicMediaApiToken?: string | null;
+  appleMusicAutoToken?: boolean;
+  appleMusicMarket?: string | null;
   deezerArl?: string | null;
   deezerTrackFormats?: string[] | string | null;
   soundcloudClientId?: string | null;
@@ -252,11 +255,11 @@ export class MusicPlayer extends EventEmitter {
   declare _resolveAmazonTrack: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
   declare _resolveAmazonCollection: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
   declare _resolveAppleTrack: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
-  declare _resolveAppleCollection: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
+  declare _resolveAppleCollection: BivariantCallback<[string, (string | null | undefined)?, (number | null | undefined)?], Promise<Track[]>>;
   declare _resolveAudiusByUrl: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
   declare _resolveDeezerTrack: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
   declare _resolveDeezerCollection: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
-  declare _resolveDeezerByGuess: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
+  declare _resolveDeezerByGuess: BivariantCallback<[string, (string | null | undefined)?, (number | null | undefined)?], Promise<Track[]>>;
   declare _resolveDeezerMediaVariantFromResponse: (body: unknown) => {
     url?: string | null;
     cipherType?: string | null;
@@ -271,7 +274,7 @@ export class MusicPlayer extends EventEmitter {
   declare _resolveSpotifyTrack: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
   declare _resolveSpotifyCollection: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
   declare _resolveSpotifyArtist: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
-  declare _resolveSpotifyByGuess: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
+  declare _resolveSpotifyByGuess: BivariantCallback<[string, (string | null | undefined)?, (number | null | undefined)?], Promise<Track[]>>;
   declare _spotifyApiRequest: (pathname: string, query?: Record<string, unknown>) => Promise<unknown>;
   declare _resolveTidalTrack: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
   declare _resolveTidalCollection: BivariantCallback<[string, (string | null | undefined)?, (number | null | undefined)?], Promise<Track[]>>;
@@ -289,8 +292,9 @@ export class MusicPlayer extends EventEmitter {
   declare _resolveYouTubePlaylistTracksViaPlayDl: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
   declare _resolveSingleUrlTrack: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
   declare _resolveSoundCloudTrack: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
-  declare _resolveSoundCloudPlaylist: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
-  declare _resolveSoundCloudByGuess: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
+  declare _resolveSoundCloudPlaylist: BivariantCallback<[string, (string | null | undefined)?, (number | null | undefined)?], Promise<Track[]>>;
+  declare _resolveSoundCloudPlaylistDirect: BivariantCallback<[string, (string | null | undefined)?, (number | null | undefined)?], Promise<Track[]>>;
+  declare _resolveSoundCloudByGuess: BivariantCallback<[string, (string | null | undefined)?, (number | null | undefined)?], Promise<Track[]>>;
   declare _resolveCrossSourceToYouTube: BivariantCallback<[unknown[], string | null, string], Promise<Track[]>>;
   declare _resolveDirectHttpAudioTrack: (url: string, requestedBy: string | null) => Promise<Track | null>;
   declare _resolveRadioStreamTrack: (url: string, requestedBy: string | null, seen?: Set<string> | null) => Promise<Track | null>;
@@ -362,6 +366,12 @@ export class MusicPlayer extends EventEmitter {
   spotifyMarket: string;
   tidalToken: string | null;
   tidalCountryCode: string;
+  appleMusicMediaApiToken: string | null;
+  appleMusicAutoToken: boolean;
+  appleMusicMarket: string;
+  appleMusicTokenOrigin: string | null;
+  _appleMusicMediaApiTokenExpiresAtMs: number;
+  _appleMusicMediaApiTokenFetchedAtMs: number;
   deezerArl: string | null;
   _deezerCookieHeader: string | null;
   _deezerSessionTokens: unknown;
@@ -454,6 +464,12 @@ export class MusicPlayer extends EventEmitter {
     this.spotifyMarket = String(options.spotifyMarket ?? process.env.SPOTIFY_MARKET ?? 'US').trim().toUpperCase() || 'US';
     this.tidalToken = String(options.tidalToken ?? process.env.TIDAL_TOKEN ?? '').trim() || null;
     this.tidalCountryCode = String(options.tidalCountryCode ?? process.env.TIDAL_COUNTRY_CODE ?? 'US').trim().toUpperCase() || 'US';
+    this.appleMusicMediaApiToken = String(options.appleMusicMediaApiToken ?? process.env.APPLE_MUSIC_MEDIA_API_TOKEN ?? '').trim() || null;
+    this.appleMusicAutoToken = options.appleMusicAutoToken ?? parseEnabledFlag(process.env.APPLE_MUSIC_AUTO_TOKEN, true);
+    this.appleMusicMarket = String(options.appleMusicMarket ?? process.env.APPLE_MUSIC_MARKET ?? 'US').trim().toUpperCase() || 'US';
+    this.appleMusicTokenOrigin = null;
+    this._appleMusicMediaApiTokenExpiresAtMs = this.appleMusicMediaApiToken ? Number.MAX_SAFE_INTEGER : 0;
+    this._appleMusicMediaApiTokenFetchedAtMs = this.appleMusicMediaApiToken ? Date.now() : 0;
     this.deezerArl = String(options.deezerArl ?? process.env.DEEZER_ARL ?? '').trim() || null;
     this.deezerTrackFormats = normalizeDeezerTrackFormats(
       options.deezerTrackFormats ?? process.env.DEEZER_TRACK_FORMATS ?? null

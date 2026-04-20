@@ -173,6 +173,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     spotifyMarket: (env.SPOTIFY_MARKET?.trim() || 'US').toUpperCase(),
     tidalToken: env.TIDAL_TOKEN?.trim() || null,
     tidalCountryCode: (env.TIDAL_COUNTRY_CODE?.trim() || 'US').toUpperCase(),
+    appleMusicMediaApiToken: env.APPLE_MUSIC_MEDIA_API_TOKEN?.trim() || null,
+    appleMusicAutoToken: parseBool(env.APPLE_MUSIC_AUTO_TOKEN, true),
+    appleMusicMarket: (env.APPLE_MUSIC_MARKET?.trim() || 'US').toUpperCase(),
     soundcloudClientId: env.SOUNDCLOUD_CLIENT_ID?.trim() || null,
     soundcloudAutoClientId: parseBool(env.SOUNDCLOUD_AUTO_CLIENT_ID, true),
     deezerArl: env.DEEZER_ARL?.trim() || null,
@@ -265,6 +268,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
 
   if (!/^[A-Z]{2}$/.test(config.tidalCountryCode)) {
     throw new ConfigurationError('TIDAL_COUNTRY_CODE must be a 2-letter country code, e.g. US');
+  }
+
+  if (!/^[A-Z]{2}$/.test(config.appleMusicMarket)) {
+    throw new ConfigurationError('APPLE_MUSIC_MARKET must be a 2-letter country code, e.g. US');
   }
 
   return Object.freeze(config);

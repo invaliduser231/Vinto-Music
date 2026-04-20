@@ -1,6 +1,6 @@
 {
   "name": "fluxer-music-bot",
-  "version": "0.6.2",
+  "version": "0.6.4",
   "description": "Production-minded music bot for Fluxer with resilient playback, persistence, and monitoring.",
   "license": "SEE LICENSE IN LICENSE",
   "type": "module",

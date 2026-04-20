@@ -18,7 +18,13 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       API_BASE: ${API_BASE:-https://api.fluxer.app/v1}
       GATEWAY_URL: ${GATEWAY_URL:-wss://gateway.fluxer.app}
+      GATEWAY_INTENTS: ${GATEWAY_INTENTS:-0}
+      GATEWAY_PRESENCE_ENABLED: ${GATEWAY_PRESENCE_ENABLED:-0}
       PREFIX: ${PREFIX:-!}
+      MAX_PLAYLIST_TRACKS: ${MAX_PLAYLIST_TRACKS:-25}
+      APPLE_MUSIC_MEDIA_API_TOKEN: ${APPLE_MUSIC_MEDIA_API_TOKEN:-}
+      APPLE_MUSIC_AUTO_TOKEN: ${APPLE_MUSIC_AUTO_TOKEN:-1}
+      APPLE_MUSIC_MARKET: ${APPLE_MUSIC_MARKET:-US}
       FFMPEG_BIN: /usr/bin/ffmpeg
       YTDLP_BIN: /usr/local/bin/yt-dlp
       YTDLP_COOKIES_FILE: ${YTDLP_COOKIES_FILE:-}
@@ -30,6 +36,7 @@ services:
       MONITORING_PORT: ${MONITORING_PORT:-9091}
       VOICE_MAX_BITRATE: ${VOICE_MAX_BITRATE:-128000}
       MEMORY_RSS_EXIT_MB: ${MEMORY_RSS_EXIT_MB:-1536}
+      BOT_OWNER_USER_ID: ${BOT_OWNER_USER_ID:-}
     volumes:
       - /vinto/cookies.txt:/app/cookies.txt:ro
     ports:

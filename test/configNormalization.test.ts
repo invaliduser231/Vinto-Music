@@ -75,6 +75,21 @@ test('loadConfig disables gateway presence updates by default', () => {
   assert.equal(enabledConfig.gatewayPresenceEnabled, true);
 });
 
+test('loadConfig enables apple music catalog token bootstrap by default', () => {
+  const defaultConfig = loadConfig(buildEnv());
+  const configuredConfig = loadConfig(buildEnv({
+    APPLE_MUSIC_MEDIA_API_TOKEN: 'catalog-token',
+    APPLE_MUSIC_AUTO_TOKEN: '0',
+    APPLE_MUSIC_MARKET: 'de',
+  }));
+
+  assert.equal(defaultConfig.appleMusicAutoToken, true);
+  assert.equal(defaultConfig.appleMusicMarket, 'US');
+  assert.equal(configuredConfig.appleMusicMediaApiToken, 'catalog-token');
+  assert.equal(configuredConfig.appleMusicAutoToken, false);
+  assert.equal(configuredConfig.appleMusicMarket, 'DE');
+});
+
 test('loadConfig enables memory telemetry defaults and heap snapshot signal', () => {
   const config = loadConfig(buildEnv());
 

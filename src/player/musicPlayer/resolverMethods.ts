@@ -92,8 +92,8 @@ export const resolverMethods: LooseMethodMap = {
         return this.sources.deezer.resolveCollection(url, requestedBy, safeLimit);
       default:
         if (isAudiusUrl(url)) return this.sources.audius.resolveByUrl(url, requestedBy);
-        if (isSoundCloudUrl(url)) return this.sources.soundcloud.resolveByGuess(url, requestedBy);
-        if (isDeezerUrl(url)) return this.sources.deezer.resolveByGuess(url, requestedBy);
+        if (isSoundCloudUrl(url)) return this.sources.soundcloud.resolveByGuess(url, requestedBy, safeLimit);
+        if (isDeezerUrl(url)) return this.sources.deezer.resolveByGuess(url, requestedBy, safeLimit);
         if (isSpotifyUrl(url)) return this.sources.resolver.resolveSpotifyByGuess(url, requestedBy, safeLimit);
         if (isTidalUrl(url)) return this.sources.resolver.resolveTidalByGuess(url, requestedBy, safeLimit);
         if (isBandcampUrl(url)) return this._resolveBandcampByGuess(url, requestedBy, safeLimit);

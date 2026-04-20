@@ -31,14 +31,20 @@ type UrlResolverMethods = {
   _resolveSingleUrlTrack(url: string, requestedBy: string | null): Promise<Track[]>;
   _resolveDirectHttpAudioTrack(url: string, requestedBy: string | null): Promise<Track | null>;
   _resolveRadioStreamTrack(url: string, requestedBy: string | null, seen?: Set<string> | null): Promise<Track | null>;
-  _resolveSoundCloudByGuess(url: string, requestedBy: string | null): Promise<Track[]>;
-  _resolveDeezerByGuess(url: string, requestedBy: string | null): Promise<Track[]>;
-  _resolveSpotifyByGuess(url: string, requestedBy: string | null): Promise<Track[]>;
+  _resolveSoundCloudByGuess(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
+  _resolveDeezerByGuess(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
+  _resolveSpotifyByGuess(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
   _resolveTidalByGuess(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
   _resolveFromUrlFallbackSearch(url: string, requestedBy: string | null, source: string): Promise<Track[]>;
   _normalizeInputUrl(url: unknown): Promise<string>;
 };
 type UrlResolverRuntime = MusicPlayer & UrlResolverMethods & {
+  _resolveSpotifyArtist(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
+  _resolveSpotifyCollection(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
+  _resolveSoundCloudPlaylist(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
+  _resolveSoundCloudTrack(url: string, requestedBy: string | null): Promise<Track[]>;
+  _resolveDeezerCollection(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
+  _resolveDeezerTrack(url: string, requestedBy: string | null): Promise<Track[]>;
   _searchYouTubeTracks(query: string, limit: number, requestedBy: string | null): Promise<Track[]>;
   _cloneTrack(track: Track, overrides?: Partial<Track>): Track;
 };
@@ -433,10 +439,10 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
     });
   },
 
-  async _resolveSoundCloudByGuess(url: string, requestedBy: string | null) {
+  async _resolveSoundCloudByGuess(url: string, requestedBy: string | null, limit?: number | null) {
     try {
       if (url.includes('/sets/')) {
-        return await this._resolveSoundCloudPlaylist(url, requestedBy);
+        return await this._resolveSoundCloudPlaylist(url, requestedBy, limit);
       }
       return await this._resolveSoundCloudTrack(url, requestedBy);
     } catch {
@@ -444,10 +450,10 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
     }
   },
 
-  async _resolveDeezerByGuess(url: string, requestedBy: string | null) {
+  async _resolveDeezerByGuess(url: string, requestedBy: string | null, limit?: number | null) {
     try {
       if (url.includes('/playlist/') || url.includes('/album/')) {
-        return await this._resolveDeezerCollection(url, requestedBy);
+        return await this._resolveDeezerCollection(url, requestedBy, limit);
       }
       return await this._resolveDeezerTrack(url, requestedBy);
     } catch {
@@ -455,12 +461,12 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
     }
   },
 
-  async _resolveSpotifyByGuess(url: string, requestedBy: string | null) {
+  async _resolveSpotifyByGuess(url: string, requestedBy: string | null, limit?: number | null) {
     if (url.includes('/artist/')) {
-      return this._resolveSpotifyArtist(url, requestedBy);
+      return this._resolveSpotifyArtist(url, requestedBy, limit);
     }
     if (url.includes('/playlist/') || url.includes('/album/')) {
-      return this._resolveSpotifyCollection(url, requestedBy);
+      return this._resolveSpotifyCollection(url, requestedBy, limit);
     }
     return this._resolveSpotifyTrack(url, requestedBy);
   },

@@ -20,11 +20,11 @@ const NON_RECOVERABLE_CLOSE_CODES = new Set([
   4010, // invalid shard
   4011, // sharding required
   4012, // invalid API version
-  4013, // invalid intents
   4014, // disallowed intents
 ]);
 const MIN_HEARTBEAT_INTERVAL_MS = 100;
 const MAX_HEARTBEAT_INTERVAL_MS = 60_000;
+const SEQUENCE_ACK_HEARTBEAT_INTERVAL_MS = 750;
 
 type GatewayOptions = {
   url: string;
@@ -123,6 +123,7 @@ export class Gateway extends EventEmitter {
   heartbeatIntervalMs: number | null;
   heartbeatIntervalHandle: IntervalHandle;
   heartbeatStartTimeoutHandle: TimerHandle;
+  sequenceAckHeartbeatTimeoutHandle: TimerHandle;
   reconnectTimeoutHandle: TimerHandle;
   connectOpenTimeoutHandle: TimerHandle;
   helloTimeoutHandle: TimerHandle;
@@ -132,6 +133,8 @@ export class Gateway extends EventEmitter {
   awaitingHeartbeatAck;
   lastHeartbeatSentAt: number | null;
   heartbeatLatencyMs: number | null;
+  lastSequenceAckSentAt: number;
+  lastSequenceAckSent: number;
   reconnectAttempts: number;
   manualDisconnect;
   initialPresence: GatewayPresence | null;
@@ -152,6 +155,7 @@ export class Gateway extends EventEmitter {
     this.heartbeatIntervalMs = null;
     this.heartbeatIntervalHandle = null;
     this.heartbeatStartTimeoutHandle = null;
+    this.sequenceAckHeartbeatTimeoutHandle = null;
     this.reconnectTimeoutHandle = null;
     this.connectOpenTimeoutHandle = null;
     this.helloTimeoutHandle = null;
@@ -163,6 +167,8 @@ export class Gateway extends EventEmitter {
     this.awaitingHeartbeatAck = false;
     this.lastHeartbeatSentAt = null;
     this.heartbeatLatencyMs = null;
+    this.lastSequenceAckSentAt = 0;
+    this.lastSequenceAckSent = 0;
     this.reconnectAttempts = 0;
     this.manualDisconnect = false;
     this.initialPresence = options.initialPresence ?? null;
@@ -351,6 +357,7 @@ export class Gateway extends EventEmitter {
         }
         this.emit('heartbeat_ack', { latencyMs: this.heartbeatLatencyMs });
         this.awaitingHeartbeatAck = false;
+        this._scheduleSequenceAckHeartbeat();
         break;
 
       case Op.RECONNECT:
@@ -405,6 +412,8 @@ export class Gateway extends EventEmitter {
         if (eventName) {
           this.emit(eventName, d);
         }
+
+        this._scheduleSequenceAckHeartbeat();
         break;
 
       case Op.GATEWAY_ERROR:
@@ -478,13 +487,48 @@ export class Gateway extends EventEmitter {
   _sendHeartbeat() {
     this.lastHeartbeatSentAt = Date.now();
     this.awaitingHeartbeatAck = true;
-    this._send(Op.HEARTBEAT, this.sequence);
+    const sent = this._send(Op.HEARTBEAT, this.sequence);
+    if (sent && this.sequence != null) {
+      this.lastSequenceAckSentAt = this.lastHeartbeatSentAt;
+      this.lastSequenceAckSent = this.sequence;
+    }
+    return sent;
+  }
+
+  _scheduleSequenceAckHeartbeat() {
+    if (this.sequence == null || this.sequence <= this.lastSequenceAckSent) return false;
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
+
+    if (this.awaitingHeartbeatAck) {
+      return false;
+    }
+
+    const now = Date.now();
+    const elapsedMs = now - this.lastSequenceAckSentAt;
+    const delayMs = Math.max(0, SEQUENCE_ACK_HEARTBEAT_INTERVAL_MS - elapsedMs);
+
+    if (delayMs === 0) {
+      return this._sendHeartbeat();
+    }
+
+    if (this.sequenceAckHeartbeatTimeoutHandle) {
+      return false;
+    }
+
+    // Fluxer uses heartbeat sequence numbers as delivery acknowledgements, so
+    // busy startup dispatch bursts need acks before the normal heartbeat tick.
+    this.sequenceAckHeartbeatTimeoutHandle = setTimeout(() => {
+      this.sequenceAckHeartbeatTimeoutHandle = null;
+      this._scheduleSequenceAckHeartbeat();
+    }, delayMs);
+    return false;
   }
 
   _send(op: number, d: unknown) {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
 
     this.ws.send(JSON.stringify({ op, d }));
+    return true;
   }
 
   _handleClose(code: number, reason = '') {
@@ -561,6 +605,11 @@ export class Gateway extends EventEmitter {
     if (this.heartbeatIntervalHandle) {
       clearInterval(this.heartbeatIntervalHandle);
       this.heartbeatIntervalHandle = null;
+    }
+
+    if (this.sequenceAckHeartbeatTimeoutHandle) {
+      clearTimeout(this.sequenceAckHeartbeatTimeoutHandle);
+      this.sequenceAckHeartbeatTimeoutHandle = null;
     }
 
     if (this.reconnectTimeoutHandle) {

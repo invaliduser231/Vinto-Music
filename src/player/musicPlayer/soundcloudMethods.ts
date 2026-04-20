@@ -22,6 +22,8 @@ type SoundCloudMetadata = Record<string, unknown> & {
   durationInSec?: unknown;
   permalink_url?: unknown;
   url?: unknown;
+  track_count?: unknown;
+  tracks_count?: unknown;
   artwork_url?: unknown;
   user?: { username?: unknown } | null;
   publisher_metadata?: { artist?: unknown } | null;
@@ -242,6 +244,13 @@ export const soundcloudMethods: LooseMethodMap = {
       if (resolved.length >= safeLimit) break;
       const track = this._buildSoundCloudTrackFromMetadata(entry, requestedBy, 'soundcloud-playlist-direct');
       if (track) resolved.push(track);
+    }
+
+    // SoundCloud's resolve endpoint can return only a small preview of large sets.
+    // Let the play-dl fallback enumerate all tracks when the payload is visibly truncated.
+    const totalTracks = Number.parseInt(String(payload?.track_count ?? payload?.tracks_count ?? ''), 10);
+    if (Number.isFinite(totalTracks) && totalTracks > resolved.length && resolved.length < safeLimit) {
+      throw new Error(`direct playlist payload was truncated (${resolved.length}/${totalTracks})`);
     }
 
     return resolved;

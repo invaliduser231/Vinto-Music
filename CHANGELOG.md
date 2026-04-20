@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.4] - 2026-04-20
+
+- Features:
+  - resolved Apple Music tracks, albums, playlists, and artist top songs through Catalog metadata before mirroring playback
+  - used Apple Music ISRC metadata to improve YouTube mirror matching before falling back to text search
+- Operations:
+  - added Apple Music Catalog token, auto-token, and market configuration passthrough
+- Tests:
+  - covered Apple Music Catalog track ISRC matching, playlist resolution, and config parsing
+
+## [0.6.3] - 2026-04-20
+
+- Fixes:
+  - loaded full SoundCloud playlists when the direct API returns only a small preview
+  - preserved configured playlist limits through SoundCloud, Deezer, and Spotify guess resolvers
+  - acknowledged Fluxer gateway dispatch sequences during startup bursts to prevent ack-backpressure disconnects
+  - reconnected after Fluxer gateway ack-backpressure close code 4013 instead of treating it as fatal
+- Operations:
+  - passed gateway intent, gateway presence, and playlist limit env vars through Docker Compose
+- Tests:
+  - added regression coverage for truncated SoundCloud set payloads and forwarded playlist limits
+  - covered gateway sequence acknowledgements and recoverable ack-backpressure closes
+
 ## [0.6.2] - 2026-04-20
 
 - Fixes:

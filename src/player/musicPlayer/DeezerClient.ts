@@ -15,9 +15,9 @@ export class DeezerClient {
     return api._resolveDeezerCollection(url, requestedBy, limit);
   }
 
-  resolveByGuess(url: string, requestedBy?: string | null) {
-    const api = this.host as { _resolveDeezerByGuess: (url: string, requestedBy?: string | null) => unknown };
-    return api._resolveDeezerByGuess(url, requestedBy);
+  resolveByGuess(url: string, requestedBy?: string | null, limit?: number | null) {
+    const api = this.host as { _resolveDeezerByGuess: (url: string, requestedBy?: string | null, limit?: number | null) => unknown };
+    return api._resolveDeezerByGuess(url, requestedBy, limit);
   }
 
   searchTracks(query: string, limit?: number, requestedBy?: string | null) {

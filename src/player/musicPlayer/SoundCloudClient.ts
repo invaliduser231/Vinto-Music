@@ -15,9 +15,9 @@ export class SoundCloudClient {
     return api._resolveSoundCloudPlaylist(url, requestedBy, limit);
   }
 
-  resolveByGuess(url: string, requestedBy?: string | null) {
-    const api = this.host as { _resolveSoundCloudByGuess: (url: string, requestedBy?: string | null) => unknown };
-    return api._resolveSoundCloudByGuess(url, requestedBy);
+  resolveByGuess(url: string, requestedBy?: string | null, limit?: number | null) {
+    const api = this.host as { _resolveSoundCloudByGuess: (url: string, requestedBy?: string | null, limit?: number | null) => unknown };
+    return api._resolveSoundCloudByGuess(url, requestedBy, limit);
   }
 
   startPipeline(track: unknown, seekSec = 0) {
