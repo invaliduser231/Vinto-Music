@@ -28,6 +28,7 @@ Most runtime environment variables are parsed in `src/config.ts`. `.env.example`
 | `API_BASE` | `https://api.fluxer.app/v1` | REST API base URL. |
 | `GATEWAY_URL` | `wss://gateway.fluxer.app` | Gateway websocket URL. |
 | `GATEWAY_INTENTS` | `0` | Gateway identify intents bitset. |
+| `GATEWAY_PRESENCE_ENABLED` | `0` | Send initial and rotating gateway presence updates. Keep disabled if Fluxer closes the socket after `READY` with close code `4013`. |
 | `DNS_RESULT_ORDER` | `ipv4first` | `ipv4first` or `verbatim`. |
 | `AUTO_GATEWAY_URL` | `1` | Resolve gateway URL from REST `/gateway` or `/gateway/bot` when possible. |
 | `GATEWAY_ONLY_MODE` | `0` | Skip startup REST connectivity check and use configured gateway directly. |

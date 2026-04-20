@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.2] - 2026-04-20
+
+- Fixes:
+  - disabled gateway presence updates by default to avoid post-ready Fluxer gateway closes
+  - logged websocket close reasons for non-recoverable gateway shutdowns
+- Docs:
+  - documented the `GATEWAY_PRESENCE_ENABLED` runtime flag
+- Tests:
+  - added coverage for presence flag parsing and gateway close reason logging
+
 ## [0.6.1] - 2026-04-14
 
 - Fixes:

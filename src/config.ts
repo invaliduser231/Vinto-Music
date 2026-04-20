@@ -126,6 +126,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     apiBase: normalizeApiBase(env.API_BASE),
     gatewayUrl: normalizeGatewayUrl(env.GATEWAY_URL),
     gatewayIntents: parseNonNegativeInt(env.GATEWAY_INTENTS, 0),
+    gatewayPresenceEnabled: parseBool(env.GATEWAY_PRESENCE_ENABLED, false),
     dnsResultOrder: normalizeDnsResultOrder(env.DNS_RESULT_ORDER),
     autoGatewayUrl: parseBool(env.AUTO_GATEWAY_URL, true),
     gatewayOnlyMode: parseBool(env.GATEWAY_ONLY_MODE, false),

@@ -41,3 +41,23 @@ test('gateway clamps oversized heartbeat intervals before scheduling timers', ()
 
   gateway._clearTimers();
 });
+
+test('gateway logs non-recoverable close reasons', () => {
+  const errors: Array<{ message: string; meta?: Record<string, unknown> }> = [];
+  const gateway = new Gateway({
+    url: 'wss://gateway.example.test',
+    token: 'test-token',
+    logger: {
+      error(message, meta) {
+        errors.push(meta ? { message, meta } : { message });
+      },
+    },
+  });
+
+  gateway._handleClose(4013, 'invalid presence update');
+
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0]?.message, 'Gateway closed with non-recoverable code, reconnect aborted');
+  assert.equal(errors[0]?.meta?.code, 4013);
+  assert.equal(errors[0]?.meta?.reason, 'invalid presence update');
+});

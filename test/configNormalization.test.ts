@@ -65,6 +65,16 @@ test('loadConfig enables unhealthy-exit watchdog by default', () => {
   assert.equal(config.unhealthyCheckIntervalMs, 5000);
 });
 
+test('loadConfig disables gateway presence updates by default', () => {
+  const defaultConfig = loadConfig(buildEnv());
+  const enabledConfig = loadConfig(buildEnv({
+    GATEWAY_PRESENCE_ENABLED: '1',
+  }));
+
+  assert.equal(defaultConfig.gatewayPresenceEnabled, false);
+  assert.equal(enabledConfig.gatewayPresenceEnabled, true);
+});
+
 test('loadConfig enables memory telemetry defaults and heap snapshot signal', () => {
   const config = loadConfig(buildEnv());
 

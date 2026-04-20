@@ -212,6 +212,7 @@ export async function startApp() {
   const initialGuildCount = await fetchCurrentGuildCount(rest).catch(() => null);
   let presenceRotationIndex = 0;
   let presenceUpdateHandle: NodeJS.Timeout | null = null;
+  const gatewayPresenceEnabled = Boolean(config.gatewayPresenceEnabled);
   let lastPresenceText = Number.isFinite(initialGuildCount)
     ? createPresenceText(initialGuildCount, presenceRotationIndex)
     : 'always on beat';
@@ -219,6 +220,8 @@ export async function startApp() {
     presenceRotationIndex = (presenceRotationIndex + 1) % PRESENCE_SLOGANS.length;
   }
   const applyRotatingPresence = async (reason: string, guildCountOverride: number | null = null): Promise<boolean> => {
+    if (!gatewayPresenceEnabled) return false;
+
     const guildCount = Number.isFinite(guildCountOverride)
       ? guildCountOverride
       : await fetchCurrentGuildCount(rest).catch(() => null);
@@ -236,7 +239,7 @@ export async function startApp() {
     logger.info('Gateway presence updated', { reason, guildCount, text: nextText });
     return true;
   };
-  const initialPresence = buildGatewayPresence(lastPresenceText);
+  const initialPresence = gatewayPresenceEnabled ? buildGatewayPresence(lastPresenceText) : null;
   const gateway = new Gateway({
     url: gatewayUrl,
     token: config.token,
@@ -530,14 +533,16 @@ export async function startApp() {
   });
 
   gateway.connect();
-  presenceUpdateHandle = setInterval(() => {
-    applyRotatingPresence('interval').catch((err) => {
-      logger.debug('Gateway presence refresh failed', {
-        error: err instanceof Error ? err.message : String(err),
+  if (gatewayPresenceEnabled) {
+    presenceUpdateHandle = setInterval(() => {
+      applyRotatingPresence('interval').catch((err) => {
+        logger.debug('Gateway presence refresh failed', {
+          error: err instanceof Error ? err.message : String(err),
+        });
       });
-    });
-  }, PRESENCE_ROTATION_INTERVAL_MS);
-  presenceUpdateHandle.unref?.();
+    }, PRESENCE_ROTATION_INTERVAL_MS);
+    presenceUpdateHandle.unref?.();
+  }
 
   const shutdown = async (signal: string) => {
     if (shuttingDown) return;

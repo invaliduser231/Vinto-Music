@@ -297,10 +297,13 @@ export class Gateway extends EventEmitter {
       }
     });
 
-    this.ws?.on('close', (code: unknown) => {
+    this.ws?.on('close', (code: unknown, reason: unknown) => {
       const closeCode = Number(code);
+      const closeReason = Buffer.isBuffer(reason)
+        ? reason.toString()
+        : String(reason ?? '');
       this.emit('close', closeCode);
-      this._handleClose(Number.isFinite(closeCode) ? closeCode : 1006);
+      this._handleClose(Number.isFinite(closeCode) ? closeCode : 1006, closeReason);
     });
 
     this.ws?.on('error', (err: unknown) => {
@@ -484,16 +487,19 @@ export class Gateway extends EventEmitter {
     this.ws.send(JSON.stringify({ op, d }));
   }
 
-  _handleClose(code: number) {
+  _handleClose(code: number, reason = '') {
     this._clearTimers();
 
     if (this.manualDisconnect) {
-      this.logger?.info?.('Gateway disconnected manually');
+      this.logger?.info?.('Gateway disconnected manually', { code, reason: reason || null });
       return;
     }
 
     if (NON_RECOVERABLE_CLOSE_CODES.has(code)) {
-      this.logger?.error?.('Gateway closed with non-recoverable code, reconnect aborted', { code });
+      this.logger?.error?.('Gateway closed with non-recoverable code, reconnect aborted', {
+        code,
+        reason: reason || null,
+      });
       return;
     }
 
