@@ -85,6 +85,10 @@ export function cloneTrackForSnapshot(track: Partial<Track> | null | undefined, 
     spotifyTrackId: track.spotifyTrackId ?? null,
     spotifyPreviewUrl: track.spotifyPreviewUrl ?? null,
     isrc: track.isrc ?? null,
+    nodelinkEncodedTrack: track.nodelinkEncodedTrack ?? null,
+    nodelinkInfo: track.nodelinkInfo && typeof track.nodelinkInfo === 'object'
+      ? { ...track.nodelinkInfo }
+      : null,
     isPreview: track.isPreview === true,
     isLive: track.isLive === true,
     queuedAt,
@@ -108,6 +112,7 @@ export function isSnapshotTrackDirectlyPlayable(track: Partial<Track> | null | u
   const source = String(track.source ?? '').trim().toLowerCase();
   const url = String(track.url ?? '').trim();
 
+  if (track.nodelinkEncodedTrack) return true;
   if (isYouTubeUrl(url)) return true;
   if (track.deezerTrackId || source.startsWith('deezer')) return true;
   if (source.startsWith('audius')) return true;

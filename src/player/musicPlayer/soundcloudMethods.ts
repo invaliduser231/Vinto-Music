@@ -242,7 +242,21 @@ export const soundcloudMethods: LooseMethodMap = {
     const resolved = [];
     for (const entry of tracks) {
       if (resolved.length >= safeLimit) break;
-      const track = this._buildSoundCloudTrackFromMetadata(entry, requestedBy, 'soundcloud-playlist-direct');
+      const metadata = entry && typeof entry === 'object' ? entry as SoundCloudMetadata : null;
+      const rawTitle = String(metadata?.title ?? '').trim();
+      const trackId = metadata?.id ?? null;
+      let track = this._buildSoundCloudTrackFromMetadata(metadata, requestedBy, 'soundcloud-playlist-direct');
+
+      // SoundCloud playlist payloads can contain partial track stubs for non-first entries.
+      // Rehydrate by id so queue entries keep the real title/url instead of placeholders.
+      const shouldHydrateTrack = trackId != null && (!track || !rawTitle || track.title === 'SoundCloud track');
+      if (shouldHydrateTrack) {
+        const hydrated = await this._fetchSoundCloudTrackById(trackId).catch(() => null);
+        if (hydrated) {
+          track = this._buildSoundCloudTrackFromMetadata(hydrated, requestedBy, 'soundcloud-playlist-direct');
+        }
+      }
+
       if (track) resolved.push(track);
     }
 

@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.5] - 2026-04-20
+
+- Features:
+  - routed source resolution and PCM playback through NodeLink when the backend is enabled
+  - kept Fluxer voice output in the bot while using NodeLink as the source and stream resolver
+- Operations:
+  - added NodeLink runtime configuration and a Docker Compose sidecar with `loadStream` enabled
+- Tests:
+  - covered NodeLink config parsing, track mapping, hard-cutover resolution, and playback startup
+
 ## [0.6.4] - 2026-04-20
 
 - Features:

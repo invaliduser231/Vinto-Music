@@ -123,6 +123,9 @@ export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecy
   canSeekCurrentTrack(this: QueueLifecycleRuntime) {
     if (!this.currentTrack) return false;
     if (this.currentTrack.isLive) return false;
+    if (this.currentTrack.nodelinkEncodedTrack) {
+      return this.currentTrack.nodelinkInfo?.isSeekable !== false;
+    }
     if (isYouTubeUrl(this.currentTrack.url)) return true;
     return isHttpUrl(this.currentTrack.url) && (
       String(this.currentTrack.source ?? '') === 'http-audio'
@@ -136,7 +139,7 @@ export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecy
     }
 
     if (!this.canSeekCurrentTrack()) {
-      throw new ValidationError('Seek is currently supported for YouTube tracks only.');
+      throw new ValidationError('Seek is currently supported for seekable tracks only.');
     }
 
     const target = Number.parseInt(String(seconds), 10);
@@ -272,6 +275,7 @@ export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecy
     const expectedDurationSeconds = this._parseDurationSeconds(track?.duration);
     const sourceCloseInfo = this.activeSourceProcessCloseInfo;
     const isYouTubeTrack = String(track?.source ?? '').startsWith('youtube');
+    const isNodeLinkTrack = Boolean(track?.nodelinkEncodedTrack);
     const endedEarly = (
       !wasSkip
       && !pendingSeekTrack
@@ -292,18 +296,24 @@ export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecy
       && elapsedSeconds < Math.max(10, expectedDurationSeconds - 120)
     );
     const recoveryAttempt = getTrackRecoveryAttempt(track);
+    const maxRecoveryAttempts = isNodeLinkTrack ? 2 : 1;
     let continuationTrack = pendingSeekTrack;
     let recoverySeekSec: number | null = null;
     if (
       !continuationTrack
       && endedEarly
-      && isYouTubeTrack
+      && (isYouTubeTrack || isNodeLinkTrack)
       && elapsedSeconds != null
-      && recoveryAttempt < 1
+      && recoveryAttempt < maxRecoveryAttempts
     ) {
       recoverySeekSec = Math.max(0, elapsedSeconds - 2);
       const recoveryTrack = this._cloneTrack(track, { seekStartSec: recoverySeekSec });
       (recoveryTrack as Track & { recoveryAttemptCount?: number }).recoveryAttemptCount = recoveryAttempt + 1;
+      // First early-close retry keeps the NodeLink encoded track; second retry falls back local.
+      if (isNodeLinkTrack && recoveryAttempt >= 1) {
+        recoveryTrack.nodelinkEncodedTrack = null;
+        recoveryTrack.nodelinkInfo = null;
+      }
       continuationTrack = recoveryTrack;
     }
     const autoRecoveryScheduled = continuationTrack != null && continuationTrack !== pendingSeekTrack;
@@ -355,7 +365,10 @@ export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecy
     }
 
     if (autoRecoveryScheduled) {
-      this.logger?.warn?.('Scheduling automatic YouTube playback recovery after early track close', {
+      const recoveryBackend = isNodeLinkTrack
+        ? (recoveryAttempt >= 1 ? 'nodelink-local-fallback' : 'nodelink-retry')
+        : 'local';
+      this.logger?.warn?.('Scheduling automatic playback recovery after early track close', {
         title: track?.title ?? null,
         url: track?.url ?? null,
         elapsedSeconds,
@@ -363,6 +376,7 @@ export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecy
         recoveryAttempt: recoveryAttempt + 1,
         recoverySeekSec,
         recoveryTrigger: sourceCloseInfo ? 'source_close' : 'pipeline_close',
+        backend: recoveryBackend,
         sourceCode: sourceCloseInfo?.code ?? null,
         sourceSignal: sourceCloseInfo?.signal ?? null,
         sourceStderrTail: sourceCloseInfo?.stderrTail ?? null,

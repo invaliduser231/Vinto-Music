@@ -19,6 +19,7 @@ Most runtime environment variables are parsed in `src/config.ts`. `.env.example`
 - `TIDAL_TOKEN` is optional. If it is unset, the bot will best-effort bootstrap a public client token from Tidal's web app for metadata lookups.
 - `APPLE_MUSIC_MEDIA_API_TOKEN` is optional. If it is unset, the bot will best-effort bootstrap a public Apple Music web token for Catalog metadata; playback still mirrors to Deezer or YouTube.
 - Bandcamp, Audiomack, Mixcloud, and JioSaavn URL imports do not need separate API keys in the current codebase. They resolve metadata and then mirror to Deezer or YouTube.
+- `NODELINK_ENABLED=1` switches source resolution and playback to NodeLink while keeping Fluxer/LiveKit voice output in the bot.
 
 ## Core Runtime
 
@@ -123,6 +124,24 @@ Most runtime environment variables are parsed in `src/config.ts`. `.env.example`
 | `ENABLE_TIDAL_IMPORT` | `1` | Enable Tidal URL metadata resolution and Deezer-first/YouTube fallback mirroring. |
 | `ENABLE_YOUTUBE_PREFETCHED_PLAYBACK` | `0` | Opportunistically prefetch direct YouTube stream URLs for faster startup. Usually lowers startup latency, but can be less robust than the default path. |
 
+## NodeLink Backend
+
+When NodeLink is enabled, the bot can use NodeLink's Lavalink-compatible `loadtracks` API for search and URL resolution, then consumes NodeLink's `/v4/loadstream` PCM endpoint and forwards the audio through the existing Fluxer voice connection. This does not use NodeLink's Discord voice player, so it remains compatible with Fluxer.
+
+The NodeLink server must run with `NODELINK_ENABLELOADSTREAMENDPOINT=true`; otherwise resolution may work but playback cannot start.
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `NODELINK_ENABLED` | `0` | Enable NodeLink backend integration. Exact resolution routing depends on `NODELINK_ROUTING_MODE`. Docker Compose defaults this to `1` for the bundled sidecar. |
+| `NODELINK_IMAGE` | `performanc/nodelink:latest` | Docker image used by the bundled NodeLink sidecar. Use `latest` for automatic updates via `docker compose pull`, or pin a tag such as `performanc/nodelink:3.7.0`. |
+| `NODELINK_BASE_URL` | empty | HTTP base URL of NodeLink, for example `http://nodelink:3000` in Docker Compose. Required when `NODELINK_ENABLED=1`. |
+| `NODELINK_PASSWORD` | empty | Authorization password sent to NodeLink. Must match `NODELINK_SERVER_PASSWORD` on the NodeLink service. |
+| `NODELINK_DEFAULT_SEARCH` | `search` | Prefix for plain text queries sent to NodeLink, for example `search` or another NodeLink-supported search identifier. |
+| `NODELINK_ROUTING_MODE` | `smart` | NodeLink routing policy: `smart` uses NodeLink for text search + YouTube URLs, `all` tries NodeLink first for all URLs/queries, `youtube-only` limits NodeLink to direct YouTube URLs. |
+| `NODELINK_REQUEST_TIMEOUT_MS` | `15000` | Timeout for NodeLink `loadtracks` requests. |
+| `NODELINK_STREAM_START_TIMEOUT_MS` | `10000` | Timeout for the initial NodeLink `loadStream` response. |
+| `NODELINK_SOURCES_YOUTUBE_PROXIES` | empty | Optional NodeLink sidecar YouTube proxy pool. Set in Docker/NodeLink env as JSON array or comma-separated URLs. |
+
 ## Provider Credentials
 
 | Variable | Default | Notes |
@@ -171,7 +190,9 @@ Notes:
 - `.env.example` intentionally keeps some example values conservative for self-hosting. The table above reflects the actual fallback defaults from [`src/config.ts`](../src/config.ts).
 - `.env.example` also includes helper-only variables such as `BOT_OWNER_USER_ID` that are intentionally not parsed through `loadConfig()`.
 - The bundled Docker setup installs the `bgutil-ytdlp-pot-provider` yt-dlp plugin and runs the matching HTTP provider sidecar. Keep `YTDLP_YOUTUBE_CLIENT=mweb` and the default `YTDLP_EXTRA_ARGS` when YouTube requires PO tokens on your host.
+- With the bundled NodeLink sidecar, Docker Compose uses `performanc/nodelink:latest` by default and enables `NODELINK_ENABLELOADSTREAMENDPOINT=true` so the bot can receive raw PCM from NodeLink and still send voice through Fluxer.
 - `YTDLP_PROXY_URL` is not appended to every yt-dlp call. The player first tries direct YouTube access and retries with the proxy only for block-like failures such as `UNPLAYABLE`, bot checks, or HTTP 403.
+- `proxyEnabled` in the bot's YouTube prefetch logs refers to yt-dlp proxy fallback usage only, not NodeLink source-side proxying.
 
 ## Command Rate Limits
 

@@ -96,6 +96,18 @@ function normalizeGatewayUrl(value: unknown): string {
   return parsed.toString().replace(/\/$/, '');
 }
 
+function normalizeNodeLinkBaseUrl(value: unknown): string | null {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+
+  const candidate = ensureUrlScheme(raw, 'http');
+  try {
+    return new URL(candidate).toString().replace(/\/$/, '');
+  } catch {
+    throw new ConfigurationError('NODELINK_BASE_URL must be a valid http(s) URL');
+  }
+}
+
 function normalizeDnsResultOrder(value: unknown): 'ipv4first' | 'verbatim' {
   const normalized = String(value ?? '').trim().toLowerCase();
   if (!normalized) return 'ipv4first';
@@ -108,6 +120,16 @@ function normalizeYouTubePlaylistResolver(value: unknown): 'ytdlp' | 'playdl' {
   if (!normalized || normalized === 'auto') return 'ytdlp';
   if (normalized === 'ytdlp' || normalized === 'playdl') return normalized;
   throw new ConfigurationError('YOUTUBE_PLAYLIST_RESOLVER must be one of: ytdlp, playdl, auto');
+}
+
+function normalizeNodeLinkRoutingMode(value: unknown): 'smart' | 'all' | 'youtube-only' {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (!normalized || normalized === 'auto') return 'smart';
+  if (normalized === 'smart' || normalized === 'all' || normalized === 'youtube-only') {
+    return normalized;
+  }
+  if (normalized === 'youtube') return 'youtube-only';
+  throw new ConfigurationError('NODELINK_ROUTING_MODE must be one of: smart, all, youtube-only, auto');
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
@@ -200,6 +222,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     enableSpotifyImport: parseBool(env.ENABLE_SPOTIFY_IMPORT, true),
     enableDeezerImport: parseBool(env.ENABLE_DEEZER_IMPORT, true),
     enableTidalImport: parseBool(env.ENABLE_TIDAL_IMPORT, true),
+    nodeLinkEnabled: parseBool(env.NODELINK_ENABLED, false),
+    nodeLinkBaseUrl: normalizeNodeLinkBaseUrl(env.NODELINK_BASE_URL),
+    nodeLinkPassword: env.NODELINK_PASSWORD?.trim() || null,
+    nodeLinkDefaultSearch: env.NODELINK_DEFAULT_SEARCH?.trim() || 'search',
+    nodeLinkRoutingMode: normalizeNodeLinkRoutingMode(env.NODELINK_ROUTING_MODE),
+    nodeLinkRequestTimeoutMs: parsePositiveInt(env.NODELINK_REQUEST_TIMEOUT_MS, 15_000),
+    nodeLinkStreamStartTimeoutMs: parsePositiveInt(env.NODELINK_STREAM_START_TIMEOUT_MS, 10_000),
     playCommandCooldownMs: parseNonNegativeInt(env.PLAY_COMMAND_COOLDOWN_MS, 2_000),
     searchResultLimit: parsePositiveInt(env.SEARCH_RESULT_LIMIT, 5),
     searchPickTimeoutMs: parsePositiveInt(env.SEARCH_PICK_TIMEOUT_MS, 45_000),
@@ -247,6 +276,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
 
   if (config.searchResultLimit > 10) {
     throw new ConfigurationError('SEARCH_RESULT_LIMIT must be <= 10');
+  }
+
+  if (config.nodeLinkEnabled && !config.nodeLinkBaseUrl) {
+    throw new ConfigurationError('NODELINK_BASE_URL is required when NODELINK_ENABLED=1');
   }
 
   const spotifyFields = [

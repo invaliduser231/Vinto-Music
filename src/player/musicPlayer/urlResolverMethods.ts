@@ -47,6 +47,7 @@ type UrlResolverRuntime = MusicPlayer & UrlResolverMethods & {
   _resolveDeezerTrack(url: string, requestedBy: string | null): Promise<Track[]>;
   _searchYouTubeTracks(query: string, limit: number, requestedBy: string | null): Promise<Track[]>;
   _cloneTrack(track: Track, overrides?: Partial<Track>): Track;
+  logger?: { debug?: (message: string, payload?: Record<string, unknown>) => void };
 };
 type NormalizedInputUrlCacheEntry = { url: string; expiresAtMs: number };
 
@@ -214,6 +215,45 @@ function normalizeIsrc(value: unknown) {
   return normalized.length === 12 ? normalized : null;
 }
 
+function getNodeLinkRoutingMode(value: unknown): 'smart' | 'all' | 'youtube-only' {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (normalized === 'all') return 'all';
+  if (normalized === 'youtube-only' || normalized === 'youtube') return 'youtube-only';
+  return 'smart';
+}
+
+function shouldUseStrictNodeLinkAllRouting(runtime: UrlResolverRuntime) {
+  const mode = getNodeLinkRoutingMode(runtime.nodeLinkRoutingMode);
+  return Boolean(runtime.nodeLinkEnabled && runtime.nodeLinkClient?.enabled && mode === 'all');
+}
+
+async function searchMirrorCandidatesWithRouting(
+  runtime: UrlResolverRuntime,
+  query: string,
+  requestedBy: string | null,
+) {
+  const nodeLinkRoutingMode = getNodeLinkRoutingMode(runtime.nodeLinkRoutingMode);
+  const strictNodeLinkAllRouting = shouldUseStrictNodeLinkAllRouting(runtime);
+  if (runtime.nodeLinkEnabled && runtime.nodeLinkClient?.enabled && nodeLinkRoutingMode !== 'youtube-only') {
+    const nodeLinkMatches = await runtime._resolveNodeLinkTracks(query, requestedBy, 1).catch((err: unknown) => {
+      runtime.logger?.debug?.('NodeLink mirror search failed, falling back to local YouTube search', {
+        query,
+        routingMode: nodeLinkRoutingMode,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return [];
+    });
+    if (Array.isArray(nodeLinkMatches) && nodeLinkMatches.length) {
+      return nodeLinkMatches;
+    }
+    if (strictNodeLinkAllRouting) {
+      return [];
+    }
+  }
+
+  return runtime._searchYouTubeTracks(query, 1, requestedBy).catch(() => []);
+}
+
 export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntime> = {
   async _resolveSpotifyTrack(_url: string, _requestedBy: string | null) {
     if (!this.enableSpotifyImport) {
@@ -246,12 +286,12 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
       let matchedTrack = null;
 
       if (isrc) {
-        const isrcResults = await this._searchYouTubeTracks(`"${isrc}"`, 1, requestedBy).catch(() => []);
+        const isrcResults = await searchMirrorCandidatesWithRouting(this, `"${isrc}"`, requestedBy);
         matchedTrack = isrcResults[0] ?? null;
       }
 
       if (!matchedTrack) {
-        const queryResults = await this._searchYouTubeTracks(query, 1, requestedBy).catch(() => []);
+        const queryResults = await searchMirrorCandidatesWithRouting(this, query, requestedBy);
         matchedTrack = queryResults[0] ?? null;
       }
 
@@ -260,6 +300,10 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
           requestedBy,
           source,
         }));
+        continue;
+      }
+
+      if (shouldUseStrictNodeLinkAllRouting(this)) {
         continue;
       }
 
@@ -482,6 +526,18 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
     const query = sanitizeUrlToSearchQuery(url);
     if (!query) {
       throw new ValidationError(`Could not resolve ${source} URL to a playable track.`);
+    }
+
+    const mirrored = await searchMirrorCandidatesWithRouting(this, query, requestedBy);
+    if (mirrored.length) {
+      return [this._cloneTrack(mirrored[0]!, {
+        requestedBy,
+        source,
+      })];
+    }
+
+    if (shouldUseStrictNodeLinkAllRouting(this)) {
+      throw new ValidationError(`Could not resolve ${source} URL to a playable track via NodeLink.`);
     }
 
     const result = await playdl.search(query, { source: { youtube: 'video' }, limit: 1 }).catch(() => []);

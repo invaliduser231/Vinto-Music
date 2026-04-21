@@ -28,6 +28,17 @@ export interface Track {
   spotifyTrackId?: string | null;
   spotifyPreviewUrl?: string | null;
   isrc?: string | null;
+  nodelinkEncodedTrack?: string | null;
+  nodelinkInfo?: {
+    identifier?: string | null;
+    sourceName?: string | null;
+    uri?: string | null;
+    isSeekable?: boolean | null;
+    isStream?: boolean | null;
+    length?: number | null;
+    artworkUrl?: string | null;
+    isrc?: string | null;
+  } | null;
   isPreview?: boolean;
   isLive?: boolean;
   queuedAt?: number;

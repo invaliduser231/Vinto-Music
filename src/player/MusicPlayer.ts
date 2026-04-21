@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import type { Readable, Writable } from 'node:stream';
+import type { Writable } from 'node:stream';
 import { copyFileSync, existsSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -10,9 +10,11 @@ import { DeezerClient } from './musicPlayer/DeezerClient.ts';
 import { ResolverClient } from './musicPlayer/ResolverClient.ts';
 import { SoundCloudClient } from './musicPlayer/SoundCloudClient.ts';
 import { SpotifyClient } from './musicPlayer/SpotifyClient.ts';
+import { NodeLinkClient } from './musicPlayer/NodeLinkClient.ts';
 import { playbackStateMethods } from './musicPlayer/playbackStateMethods.ts';
 import { queueLifecycleMethods } from './musicPlayer/queueLifecycleMethods.ts';
 import { resolverMethods } from './musicPlayer/resolverMethods.ts';
+import { nodeLinkMethods } from './musicPlayer/nodeLinkMethods.ts';
 import { pipelineMethods } from './musicPlayer/pipelineMethods.ts';
 import { trackRuntimeMethods } from './musicPlayer/trackRuntimeMethods.ts';
 import ffmpegPath from 'ffmpeg-static';
@@ -87,11 +89,21 @@ type YouTubePrefetchedStream = {
   proxyUrl: string | null;
 };
 
+type NodeLinkRoutingMode = 'smart' | 'all' | 'youtube-only';
+
 function parseEnabledFlag(value: unknown, fallback = false): boolean {
   if (value == null) return fallback;
   const normalized = String(value).trim().toLowerCase();
   if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
   if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return fallback;
+}
+
+function normalizeNodeLinkRoutingMode(value: unknown, fallback: NodeLinkRoutingMode = 'smart'): NodeLinkRoutingMode {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (!normalized || normalized === 'auto') return fallback;
+  if (normalized === 'smart' || normalized === 'all' || normalized === 'youtube-only') return normalized;
+  if (normalized === 'youtube') return 'youtube-only';
   return fallback;
 }
 
@@ -142,6 +154,13 @@ interface MusicPlayerOptions {
   enableSpotifyImport?: boolean;
   enableDeezerImport?: boolean;
   enableTidalImport?: boolean;
+  nodeLinkEnabled?: boolean;
+  nodeLinkBaseUrl?: string | null;
+  nodeLinkPassword?: string | null;
+  nodeLinkDefaultSearch?: string | null;
+  nodeLinkRoutingMode?: NodeLinkRoutingMode | string | null;
+  nodeLinkRequestTimeoutMs?: number | null;
+  nodeLinkStreamStartTimeoutMs?: number | null;
   spotifyClientId?: string | null;
   spotifyClientSecret?: string | null;
   spotifyRefreshToken?: string | null;
@@ -207,6 +226,8 @@ type BuiltTrackInput = {
   spotifyTrackId?: string | null;
   spotifyPreviewUrl?: string | null;
   isrc?: string | null;
+  nodelinkEncodedTrack?: string | null;
+  nodelinkInfo?: Record<string, unknown> | null;
   isPreview?: boolean;
   isLive?: boolean;
   seekStartSec?: number;
@@ -251,6 +272,9 @@ export class MusicPlayer extends EventEmitter {
   declare _buildTrack: (input: BuiltTrackInput) => Track;
   declare _handleTrackClose: (track: Track, code: unknown, signal: unknown, playbackToken?: number | null) => Promise<void>;
   declare _resolveTracks: (query: string, requestedBy: string | null, limit?: number | null) => Promise<Track[]>;
+  declare _resolveNodeLinkTracks: (query: string, requestedBy: string | null, limit?: number | null) => Promise<Track[]>;
+  declare _nodeLinkLoadResultToTracks: (result: unknown, requestedBy: string | null, limit?: number | null) => Track[];
+  declare _nodeLinkTrackDataToTrack: (data: unknown, requestedBy: string | null) => Track | null;
   declare _resolveSearchTrack: (query: string, requestedBy: string | null) => Promise<Track[]>;
   declare _resolveAmazonTrack: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
   declare _resolveAmazonCollection: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
@@ -360,6 +384,9 @@ export class MusicPlayer extends EventEmitter {
   enableSpotifyImport: boolean;
   enableDeezerImport: boolean;
   enableTidalImport: boolean;
+  nodeLinkEnabled: boolean;
+  nodeLinkRoutingMode: NodeLinkRoutingMode;
+  nodeLinkClient: NodeLinkClient | null;
   spotifyClientId: string | null;
   spotifyClientSecret: string | null;
   spotifyRefreshToken: string | null;
@@ -458,6 +485,20 @@ export class MusicPlayer extends EventEmitter {
     this.enableSpotifyImport = options.enableSpotifyImport !== false;
     this.enableDeezerImport = options.enableDeezerImport !== false;
     this.enableTidalImport = options.enableTidalImport !== false;
+    this.nodeLinkRoutingMode = normalizeNodeLinkRoutingMode(
+      options.nodeLinkRoutingMode ?? process.env.NODELINK_ROUTING_MODE,
+      'smart'
+    );
+    this.nodeLinkEnabled = options.nodeLinkEnabled ?? parseEnabledFlag(process.env.NODELINK_ENABLED, false);
+    this.nodeLinkClient = this.nodeLinkEnabled
+      ? new NodeLinkClient({
+          baseUrl: options.nodeLinkBaseUrl ?? process.env.NODELINK_BASE_URL ?? null,
+          password: options.nodeLinkPassword ?? process.env.NODELINK_PASSWORD ?? null,
+          defaultSearchIdentifier: options.nodeLinkDefaultSearch ?? process.env.NODELINK_DEFAULT_SEARCH ?? null,
+          requestTimeoutMs: options.nodeLinkRequestTimeoutMs ?? null,
+          streamStartTimeoutMs: options.nodeLinkStreamStartTimeoutMs ?? null,
+        })
+      : null;
     this.spotifyClientId = String(options.spotifyClientId ?? process.env.SPOTIFY_CLIENT_ID ?? '').trim() || null;
     this.spotifyClientSecret = String(options.spotifyClientSecret ?? process.env.SPOTIFY_CLIENT_SECRET ?? '').trim() || null;
     this.spotifyRefreshToken = String(options.spotifyRefreshToken ?? process.env.SPOTIFY_REFRESH_TOKEN ?? '').trim() || null;
@@ -785,6 +826,25 @@ export class MusicPlayer extends EventEmitter {
       const trackUrl = String(track.url ?? '').trim();
       if (!trackUrl) {
         throw new ValidationError('Track is missing a playable URL.');
+      }
+
+      if (track.nodelinkEncodedTrack) {
+        try {
+          await this._startNodeLinkStream(track, startupToken, playbackToken);
+          return;
+        } catch (nodeLinkErr) {
+          if (this._isPlaybackStartupAbortedError(nodeLinkErr)) {
+            throw nodeLinkErr;
+          }
+
+          this.logger?.warn?.('NodeLink stream startup failed, falling back to local playback pipeline', {
+            title: track.title,
+            source: track.source,
+            url: trackUrl,
+            error: nodeLinkErr instanceof Error ? nodeLinkErr.message : String(nodeLinkErr),
+          });
+          this._cleanupProcesses();
+        }
       }
 
       if (isYouTubeUrl(trackUrl)) {
@@ -1303,6 +1363,65 @@ export class MusicPlayer extends EventEmitter {
     return isExpectedPipeError(err);
   }
 
+  async _startNodeLinkStream(track: Track, startupToken: number, playbackToken: number): Promise<void> {
+    if (!this.nodeLinkClient?.enabled) {
+      throw new ValidationError('NodeLink is not configured.');
+    }
+
+    const positionMs = Math.max(0, Number.parseInt(String(track.seekStartSec ?? 0), 10) || 0) * 1000;
+    const guildId = String((this.voice as { guildId?: unknown } | null | undefined)?.guildId ?? '').trim() || null;
+    const nodeLinkStream = await this.nodeLinkClient.streamTrack(track, {
+      positionMs,
+      volume: 100,
+      ...(guildId ? { guildId } : {}),
+    });
+    this.sourceStream = nodeLinkStream as PipelineStreamLike;
+    this._bindPipelineErrorHandler(nodeLinkStream, 'nodelink.stream');
+
+    let playbackStarted = false;
+    let closeHandled = false;
+    const onClose = async () => {
+      if (!playbackStarted || closeHandled) return;
+      closeHandled = true;
+      await this._handleTrackClose(track, 0, null, playbackToken);
+    };
+    nodeLinkStream.once('end', onClose);
+    nodeLinkStream.once('close', onClose);
+
+    const playbackOutput = this._createPlaybackOutputStream();
+    if (this._shouldUseLiveAudioProcessor()) {
+      this.liveAudioProcessor = this._createLiveAudioProcessor();
+      this._bindPipelineErrorHandler(this.liveAudioProcessor, 'liveAudioProcessor');
+      nodeLinkStream.pipe(this.liveAudioProcessor);
+      this.liveAudioProcessor.pipe(playbackOutput);
+    } else {
+      nodeLinkStream.pipe(playbackOutput);
+    }
+
+    await this.voice.sendAudio?.(playbackOutput);
+    this._ensurePlaybackStartupActive(startupToken);
+    const timeoutMs = this._getInitialPlaybackChunkTimeoutMs(track, { hint: 'nodelink' });
+    await this._awaitInitialPlaybackChunk(playbackOutput, nodeLinkStream as unknown as PipelineProcess, timeoutMs);
+    this._ensurePlaybackStartupActive(startupToken);
+    playbackStarted = true;
+    this.consecutiveStartupFailures = 0;
+    this.activeSourceProcessCloseInfo = null;
+    this._startPlaybackClock(track.seekStartSec ?? 0);
+    this.lastKnownTrack = track;
+    this.lastKnownTrackAtMs = Date.now();
+    this._scheduleNextTrackPrefetch();
+    this.emit('trackStart', track);
+    this.logger?.info?.('Playback started', {
+      title: track.title,
+      url: track.url,
+      source: track.source,
+      backend: 'nodelink',
+      seek: track.seekStartSec ?? 0,
+      guildId,
+      channelId: String((this.voice as { channelId?: unknown } | null | undefined)?.channelId ?? '').trim() || null,
+    });
+  }
+
   _startPlaybackClock(offsetSec: number) {
     startPlaybackClock(this, offsetSec);
   }
@@ -1321,6 +1440,7 @@ Object.assign(
   playbackStateMethods,
   queueLifecycleMethods,
   resolverMethods,
+  nodeLinkMethods,
   trackRuntimeMethods,
   pipelineMethods,
   sourceMethods

@@ -69,6 +69,45 @@ test('soundcloud playlist direct resolver accepts a preview-sized truncated set 
   assert.equal(tracks[0]?.title, 'Track 0');
 });
 
+test('soundcloud playlist direct resolver rehydrates partial track stubs by id', async () => {
+  const player = createPlayer();
+  player.maxPlaylistTracks = 10;
+  const fetchedIds: string[] = [];
+
+  player._soundCloudResolve = async () => ({
+    kind: 'playlist',
+    track_count: 2,
+    tracks: [
+      {
+        id: 'sc-full',
+        title: 'Track 0',
+        permalink_url: 'https://soundcloud.com/artist/track-0',
+        duration: 120_000,
+      },
+      {
+        id: 'sc-stub',
+        // no title/permalink in this entry, common with partial SoundCloud set payloads
+      },
+    ],
+  });
+  player._fetchSoundCloudTrackById = async (trackId: unknown) => {
+    fetchedIds.push(String(trackId));
+    return {
+      id: 'sc-stub',
+      title: 'Recovered Track 1',
+      permalink_url: 'https://soundcloud.com/artist/recovered-track-1',
+      duration: 121_000,
+    };
+  };
+
+  const tracks = await player._resolveSoundCloudPlaylistDirect('https://soundcloud.com/artist/sets/demo', 'user-1', 10);
+
+  assert.equal(tracks.length, 2);
+  assert.equal(tracks[0]?.title, 'Track 0');
+  assert.equal(tracks[1]?.title, 'Recovered Track 1');
+  assert.deepEqual(fetchedIds, ['sc-stub']);
+});
+
 test('soundcloud guess resolver forwards playlist limits', async () => {
   const player = createPlayer();
   let seenLimit: number | null | undefined = null;
