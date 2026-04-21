@@ -195,6 +195,8 @@ services:
       NODELINK_DEFAULTSEARCHSOURCE: ${NODELINK_DEFAULTSEARCHSOURCE:-deezer,soundcloud,tidal,jiosaavn}
       NODELINK_UNIFIEDSEARCHSOURCES: ${NODELINK_UNIFIEDSEARCHSOURCES:-deezer,soundcloud,tidal,jiosaavn}
       NODELINK_SOURCES_YOUTUBE_FALLBACKSOURCES: ${NODELINK_SOURCES_YOUTUBE_FALLBACKSOURCES:-soundcloud,deezer,jiosaavn,tidal}
+    volumes:
+      - /vinto/nodelink/config.js:/app/config.js:ro
     logging:
       driver: json-file
       options:
