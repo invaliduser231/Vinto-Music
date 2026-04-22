@@ -24,8 +24,8 @@ importers:
         specifier: ^5.3.0
         version: 5.3.0
       mongodb:
-        specifier: ^7.1.0
-        version: 7.1.1
+        specifier: ^7.2.0
+        version: 7.2.0
       play-dl:
         specifier: ^1.9.7
         version: 1.9.7
@@ -260,8 +260,8 @@ packages:
   '@livekit/typed-emitter@3.0.0':
     resolution: {integrity: sha512-9bl0k4MgBPZu3Qu3R3xy12rmbW17e3bE9yf4YY85gJIQ3ezLEj/uzpKHWBsLaDoL5Mozz8QCgggwIBudYQWeQg==}
 
-  '@mongodb-js/saslprep@1.4.6':
-    resolution: {integrity: sha512-y+x3H1xBZd38n10NZF/rEBlvDOOMQ6LKUTHqr8R9VkJ+mmQOYtJFxIlkkK8fZrtOiL6VixbOBWMbZGBdal3Z1g==}
+  '@mongodb-js/saslprep@1.4.8':
+    resolution: {integrity: sha512-kpjr2jy2w71w0oqAMI8oibBmiF9lXxWkEQs5gMkW4hVE48bsqINGLxnCSYW62ck/NHXJQpQEfA9WlJ1sY0eqBg==}
 
   '@opentelemetry/api-logs@0.207.0':
     resolution: {integrity: sha512-lAb0jQRVyleQQGiuuvCOTDVspc14nx6XJjP4FspJ1sNARo3Regq4ZZbrc3rN4b1TYSuUCvgH+UXUPug4SLOqEQ==}
@@ -689,8 +689,8 @@ packages:
     resolution: {integrity: sha512-h0AZ9A7IDVwwHyMxmdMXKy+9oNlF0zFoahHiX3vQ8e3KFcSP3VmsmfvtRSuLPxmyv2vjIDxqty8smTgie/SNRQ==}
     engines: {node: '>=20.19.0'}
 
-  mongodb@7.1.1:
-    resolution: {integrity: sha512-067DXiMjcpYQl6bGjWQoTUEE9UoRViTtKFcoqX7z08I+iDZv/emH1g8XEFiO3qiDfXAheT5ozl1VffDTKhIW/w==}
+  mongodb@7.2.0:
+    resolution: {integrity: sha512-F/2+BMZtLVhY30ioZp0dAmZ+IRZMBqI+nrv6t5+9/1AIwCa8sMRC3jBf81lpxMhnZgqq8CoUD503Z1oZWq1/sw==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
       '@aws-sdk/credential-providers': ^3.806.0
@@ -1031,7 +1031,7 @@ snapshots:
 
   '@livekit/typed-emitter@3.0.0': {}
 
-  '@mongodb-js/saslprep@1.4.6':
+  '@mongodb-js/saslprep@1.4.8':
     dependencies:
       sparse-bitfield: 3.0.3
 
@@ -1557,9 +1557,9 @@ snapshots:
       '@types/whatwg-url': 13.0.0
       whatwg-url: 14.2.0
 
-  mongodb@7.1.1:
+  mongodb@7.2.0:
     dependencies:
-      '@mongodb-js/saslprep': 1.4.6
+      '@mongodb-js/saslprep': 1.4.8
       bson: 7.2.0
       mongodb-connection-string-url: 7.0.1
 
