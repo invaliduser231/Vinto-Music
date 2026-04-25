@@ -165,7 +165,7 @@ services:
         max-file: ${BGUTIL_POT_LOG_MAX_FILE:-3}
 
   nodelink:
-    image: ${NODELINK_IMAGE:-performanc/nodelink:latest}
+    image: ${NODELINK_IMAGE:-performanc/nodelink:dev}
     restart: unless-stopped
     expose:
       - "3000"
