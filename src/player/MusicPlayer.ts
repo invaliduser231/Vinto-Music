@@ -1155,6 +1155,7 @@ export class MusicPlayer extends EventEmitter {
 
   _canPrefetchTrack(track: Track | null | undefined): boolean {
     if (!track || track.isLive) return false;
+    if (String(track.nodelinkEncodedTrack ?? '').trim()) return false;
     const url = String(track.url ?? '').trim();
     if (!url || !isYouTubeUrl(url) || !this.enableYtPlayback) return false;
     const seekStartSec = Math.max(0, Number.parseInt(String(track.seekStartSec ?? 0), 10) || 0);

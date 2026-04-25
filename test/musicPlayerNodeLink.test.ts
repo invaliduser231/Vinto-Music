@@ -488,3 +488,68 @@ test('NodeLink stream failure falls back to local YouTube pipeline', async () =>
 
   player.stop();
 });
+
+test('NodeLink diagnostics retain info probe details', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: Parameters<typeof fetch>[0]) => {
+    assert.equal(new URL(String(input)).pathname, '/v4/info');
+    return new Response(JSON.stringify({
+      isNodelink: true,
+      version: {
+        semver: '3.7.0',
+      },
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  try {
+    const player = createPlayer();
+    const info = await player.nodeLinkClient!.getInfo();
+
+    assert.equal(info.isNodelink, true);
+    assert.equal(info.version?.semver, '3.7.0');
+    assert.deepEqual(player.nodeLinkClient!.getDiagnostics(), {
+      enabled: true,
+      baseUrl: 'http://nodelink:3000',
+      defaultSearchIdentifier: 'search',
+      requestTimeoutMs: 15000,
+      streamStartTimeoutMs: 10000,
+      lastRequestAtMs: player.nodeLinkClient!.lastRequestAtMs,
+      lastRequestType: 'info',
+      lastError: null,
+      info: {
+        isNodelink: true,
+        version: '3.7.0',
+      },
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('NodeLink-resolved tracks skip local YouTube prefetch scheduling', () => {
+  const player = createPlayer({ enableYouTubePrefetchedPlayback: true });
+  let prefetchCalls = 0;
+  player._prefetchYouTubeStreamUrl = async () => {
+    prefetchCalls += 1;
+    return {
+      streamUrl: 'https://cdn.vinto.test/audio',
+      proxyUrl: null,
+    };
+  };
+
+  player.enqueueResolvedTracks([player.createTrackFromData({
+    title: 'NodeLink YouTube',
+    url: 'https://www.youtube.com/watch?v=1NiSbpN-LaI',
+    duration: '4:35',
+    source: 'youtube',
+    nodelinkEncodedTrack: 'encoded-node',
+    nodelinkInfo: { sourceName: 'youtube' },
+  })]);
+
+  assert.equal(prefetchCalls, 0);
+  assert.equal(player.nextTrackPrefetchPromise, null);
+  assert.equal(player.nextTrackPrefetchState, null);
+});

@@ -31,6 +31,13 @@ export type NodeLinkLoadResult = {
   } | null;
 };
 
+export type NodeLinkInfo = Record<string, unknown> & {
+  version?: {
+    semver?: unknown;
+  } | null;
+  isNodelink?: unknown;
+};
+
 type NodeLinkClientOptions = {
   baseUrl?: string | null;
   password?: string | null;
@@ -76,6 +83,10 @@ export class NodeLinkClient {
   requestTimeoutMs: number;
   streamStartTimeoutMs: number;
   defaultSearchIdentifier: string;
+  lastRequestAtMs: number;
+  lastRequestType: 'loadtracks' | 'loadstream' | 'info' | null;
+  lastError: string | null;
+  lastInfo: NodeLinkInfo | null;
 
   constructor(options: NodeLinkClientOptions = {}) {
     this.baseUrl = normalizeBaseUrl(options.baseUrl ?? process.env.NODELINK_BASE_URL ?? null);
@@ -91,6 +102,10 @@ export class NodeLinkClient {
     this.defaultSearchIdentifier = normalizeSearchIdentifier(
       options.defaultSearchIdentifier ?? process.env.NODELINK_DEFAULT_SEARCH
     );
+    this.lastRequestAtMs = 0;
+    this.lastRequestType = null;
+    this.lastError = null;
+    this.lastInfo = null;
   }
 
   get enabled(): boolean {
@@ -101,6 +116,25 @@ export class NodeLinkClient {
     return {
       ...(this.password ? { authorization: this.password } : {}),
       ...extra,
+    };
+  }
+
+  getDiagnostics(): Record<string, unknown> {
+    return {
+      enabled: this.enabled,
+      baseUrl: this.baseUrl,
+      defaultSearchIdentifier: this.defaultSearchIdentifier,
+      requestTimeoutMs: this.requestTimeoutMs,
+      streamStartTimeoutMs: this.streamStartTimeoutMs,
+      lastRequestAtMs: this.lastRequestAtMs || null,
+      lastRequestType: this.lastRequestType,
+      lastError: this.lastError,
+      info: this.lastInfo
+        ? {
+            isNodelink: Boolean(this.lastInfo.isNodelink),
+            version: String(this.lastInfo.version?.semver ?? '').trim() || null,
+          }
+        : null,
     };
   }
 
@@ -116,6 +150,8 @@ export class NodeLinkClient {
       throw new ValidationError('NodeLink is not configured.');
     }
 
+    this.lastRequestAtMs = Date.now();
+    this.lastRequestType = 'loadtracks';
     const endpoint = new URL('/v4/loadtracks', this.baseUrl);
     endpoint.searchParams.set('identifier', this.buildIdentifier(query));
 
@@ -124,17 +160,53 @@ export class NodeLinkClient {
       headers: this.headers({ accept: 'application/json' }),
       signal: AbortSignal.timeout(this.requestTimeoutMs),
     }).catch((err) => {
+      this.lastError = `NodeLink load failed: ${getErrorMessage(err)}`;
       throw new ValidationError(`NodeLink load failed: ${getErrorMessage(err)}`);
     });
 
     if (!response.ok) {
       const body = await response.text().catch(() => '');
+      this.lastError = `NodeLink load failed (${response.status}): ${body.slice(0, 300) || response.statusText}`;
       throw new ValidationError(`NodeLink load failed (${response.status}): ${body.slice(0, 300) || response.statusText}`);
     }
 
-    return await response.json().catch((err) => {
+    const payload = await response.json().catch((err) => {
+      this.lastError = `NodeLink load returned invalid JSON: ${getErrorMessage(err)}`;
       throw new ValidationError(`NodeLink load returned invalid JSON: ${getErrorMessage(err)}`);
     }) as NodeLinkLoadResult;
+    this.lastError = null;
+    return payload;
+  }
+
+  async getInfo(timeoutMs = Math.min(this.requestTimeoutMs, 5_000)): Promise<NodeLinkInfo> {
+    if (!this.baseUrl) {
+      throw new ValidationError('NodeLink is not configured.');
+    }
+
+    this.lastRequestAtMs = Date.now();
+    this.lastRequestType = 'info';
+    const response = await fetch(new URL('/v4/info', this.baseUrl), {
+      method: 'GET',
+      headers: this.headers({ accept: 'application/json' }),
+      signal: AbortSignal.timeout(timeoutMs),
+    }).catch((err) => {
+      this.lastError = `NodeLink info failed: ${getErrorMessage(err)}`;
+      throw new ValidationError(`NodeLink info failed: ${getErrorMessage(err)}`);
+    });
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      this.lastError = `NodeLink info failed (${response.status}): ${body.slice(0, 300) || response.statusText}`;
+      throw new ValidationError(`NodeLink info failed (${response.status}): ${body.slice(0, 300) || response.statusText}`);
+    }
+
+    const payload = await response.json().catch((err) => {
+      this.lastError = `NodeLink info returned invalid JSON: ${getErrorMessage(err)}`;
+      throw new ValidationError(`NodeLink info returned invalid JSON: ${getErrorMessage(err)}`);
+    }) as NodeLinkInfo;
+    this.lastInfo = payload;
+    this.lastError = null;
+    return payload;
   }
 
   async streamTrack(track: Track, options: StreamTrackOptions = {}): Promise<Readable> {
@@ -143,6 +215,8 @@ export class NodeLinkClient {
       throw new ValidationError('Track is missing a NodeLink encoded track.');
     }
 
+    this.lastRequestAtMs = Date.now();
+    this.lastRequestType = 'loadstream';
     const response = await fetch(new URL('/v4/loadstream', this.baseUrl), {
       method: 'POST',
       headers: this.headers({
@@ -157,14 +231,17 @@ export class NodeLinkClient {
         ...(options.guildId ? { guildId: options.guildId } : {}),
       }),
     }).catch((err) => {
+      this.lastError = `NodeLink stream failed: ${getErrorMessage(err)}`;
       throw new ValidationError(`NodeLink stream failed: ${getErrorMessage(err)}`);
     });
 
     if (!response.ok || !response.body) {
       const body = await response.text().catch(() => '');
+      this.lastError = `NodeLink stream failed (${response.status}): ${body.slice(0, 300) || response.statusText}`;
       throw new ValidationError(`NodeLink stream failed (${response.status}): ${body.slice(0, 300) || response.statusText}`);
     }
 
+    this.lastError = null;
     return Readable.fromWeb(response.body as unknown as import('node:stream/web').ReadableStream);
   }
 }

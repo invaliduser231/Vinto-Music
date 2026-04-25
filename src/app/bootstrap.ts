@@ -17,6 +17,7 @@ import { PermissionService } from '../bot/services/permissionService.ts';
 import { GuildStateCache } from '../bot/services/guildStateCache.ts';
 import { MonitoringServer } from '../monitoring/server.ts';
 import { initializeSentry } from '../monitoring/sentry.ts';
+import { NodeLinkClient } from '../player/musicPlayer/NodeLinkClient.ts';
 import { sanitizeBrokenLocalProxyEnv } from './proxy.ts';
 import { verifyApiConnectivity, resolveGatewayUrl } from './connectivity.ts';
 import { bindGatewayMetrics, bindSessionMetrics, createAppMetrics } from './metrics.ts';
@@ -448,29 +449,70 @@ export async function startApp() {
     applyRotatingPresence('resumed').catch(() => null);
   });
 
+  const monitoringNodeLinkClient = config.nodeLinkEnabled && config.nodeLinkBaseUrl
+    ? new NodeLinkClient({
+        baseUrl: config.nodeLinkBaseUrl,
+        password: config.nodeLinkPassword,
+        requestTimeoutMs: Math.min(config.nodeLinkRequestTimeoutMs, 5_000),
+      })
+    : null;
+
   const monitoringServer = new MonitoringServer({
     enabled: config.monitoringEnabled,
     host: config.monitoringHost,
     port: config.monitoringPort,
     logger: logger.child('monitoring'),
     metrics: metricSet.registry,
-    getHealth: () => ({
-      ok: !shuttingDown && (gatewayConnected || Date.now() - startedAt < 60_000),
-      gatewayConnected,
-      shuttingDown,
-      sessions: sessions.sessions.size,
-      uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
-      memory: (() => {
-        const telemetry = sessions.getMemoryTelemetry();
+    getHealth: async () => {
+      const baseHealth = {
+        ok: !shuttingDown && (gatewayConnected || Date.now() - startedAt < 60_000),
+        gatewayConnected,
+        shuttingDown,
+        sessions: sessions.sessions.size,
+        uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
+        memory: (() => {
+          const telemetry = sessions.getMemoryTelemetry();
+          return {
+            heapUsedMb: toMegabytes(telemetry.memory.heapUsedBytes),
+            heapTotalMb: toMegabytes(telemetry.memory.heapTotalBytes),
+            rssMb: toMegabytes(telemetry.memory.rssBytes),
+            externalMb: toMegabytes(telemetry.memory.externalBytes),
+            arrayBuffersMb: toMegabytes(telemetry.memory.arrayBuffersBytes),
+          };
+        })(),
+      };
+
+      if (!monitoringNodeLinkClient) {
         return {
-          heapUsedMb: toMegabytes(telemetry.memory.heapUsedBytes),
-          heapTotalMb: toMegabytes(telemetry.memory.heapTotalBytes),
-          rssMb: toMegabytes(telemetry.memory.rssBytes),
-          externalMb: toMegabytes(telemetry.memory.externalBytes),
-          arrayBuffersMb: toMegabytes(telemetry.memory.arrayBuffersBytes),
+          ...baseHealth,
+          nodelink: {
+            configured: false,
+          },
         };
-      })(),
-    }),
+      }
+
+      try {
+        const info = await monitoringNodeLinkClient.getInfo();
+        return {
+          ...baseHealth,
+          nodelink: {
+            configured: true,
+            reachable: true,
+            isNodelink: Boolean(info.isNodelink),
+            version: String(info.version?.semver ?? '').trim() || null,
+          },
+        };
+      } catch (err) {
+        return {
+          ...baseHealth,
+          nodelink: {
+            configured: true,
+            reachable: false,
+            error: err instanceof Error ? err.message : String(err),
+          },
+        };
+      }
+    },
   });
   await monitoringServer.start().catch((err) => {
     logger.warn('Monitoring server failed to start', {

@@ -142,6 +142,8 @@ The NodeLink server must run with `NODELINK_ENABLELOADSTREAMENDPOINT=true`; othe
 | `NODELINK_STREAM_START_TIMEOUT_MS` | `10000` | Timeout for the initial NodeLink `loadStream` response. |
 | `NODELINK_SOURCES_YOUTUBE_PROXIES` | empty | Optional NodeLink sidecar YouTube proxy pool. Set in Docker/NodeLink env as JSON array or comma-separated URLs. |
 
+Operational note: when NodeLink is enabled, `/healthz` and `/readyz` now include a `nodelink` object with reachability and version details. This is diagnostic only; gateway health still decides the top-level `ok` status by default.
+
 ## Provider Credentials
 
 | Variable | Default | Notes |

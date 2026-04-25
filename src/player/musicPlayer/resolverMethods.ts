@@ -187,6 +187,10 @@ export const resolverMethods: LooseMethodMap = {
       ffmpegPid: this.ffmpeg?.pid ?? null,
       ffmpegArgs: Array.isArray(this._lastFfmpegArgs) ? [...this._lastFfmpegArgs] : null,
       ytdlp: this._lastYtDlpDiagnostics ? { ...this._lastYtDlpDiagnostics } : null,
+      nodeLink: this.nodeLinkClient?.getDiagnostics?.() ?? {
+        enabled: Boolean(this.nodeLinkEnabled),
+        baseUrl: null,
+      },
     };
   },
 
