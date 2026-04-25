@@ -158,6 +158,8 @@ export interface MusicPlayerLike {
   pendingTracks?: unknown[];
   loopMode?: string;
   volumePercent?: number;
+  nodeLinkEnabled?: boolean;
+  nodeLinkClient?: { enabled?: boolean } | null;
   queue?: MusicPlayerQueueLike;
   on?: (event: string, listener: BivariantCallback<unknown[], void>) => unknown;
   off?: (event: string, listener: BivariantCallback<unknown[], void>) => unknown;

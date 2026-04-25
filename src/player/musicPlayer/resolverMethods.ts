@@ -60,6 +60,31 @@ function shouldBypassNodeLinkForDirectStreamUrl(url: string, routingMode: 'smart
 }
 
 export const resolverMethods: LooseMethodMap = {
+  async _resolveYouTubeTrackViaNodeLink(track: Partial<Track> | null | undefined) {
+    const url = String(track?.url ?? '').trim();
+    if (!url || !isYouTubeUrl(url)) return null;
+    if (!this.nodeLinkEnabled || !this.nodeLinkClient?.enabled) return null;
+
+    const nodeLinkRoutingMode = getNodeLinkRoutingMode(this.nodeLinkRoutingMode);
+    const shouldBypassNodeLink = shouldBypassNodeLinkForDirectStreamUrl(url, nodeLinkRoutingMode);
+    const shouldTryNodeLinkForUrl = !shouldBypassNodeLink && (nodeLinkRoutingMode === 'all' || isYouTubeUrl(url));
+    if (!shouldTryNodeLinkForUrl) return null;
+
+    const requestedBy = track?.requestedBy ?? null;
+    const nodeLinkResolved = await this._resolveNodeLinkTracks(url, requestedBy, 1).catch((err: unknown) => {
+      if (nodeLinkRoutingMode === 'all') {
+        throw err;
+      }
+      this.logger?.debug?.('NodeLink YouTube track resolution failed, keeping local fallback path available', {
+        url,
+        routingMode: nodeLinkRoutingMode,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    });
+    return Array.isArray(nodeLinkResolved) ? (nodeLinkResolved[0] ?? null) : null;
+  },
+
   async _resolveTracks(query: string, requestedBy: string | null, limit?: number | null) {
     const raw = String(query ?? '').trim();
     if (!raw) {

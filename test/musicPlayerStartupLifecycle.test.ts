@@ -302,6 +302,54 @@ test('_handleTrackClose second NodeLink early-close retry falls back to local pi
   )));
 });
 
+test('play() retries failed YouTube startup through NodeLink before local yt-dlp fallback', async () => {
+  const voice = createVoice();
+  const player = new MusicPlayer(voice, { logger: null, nodeLinkEnabled: true, nodeLinkBaseUrl: 'http://nodelink:3000' });
+  const ffmpeg = createFakeProcess();
+  const startupCalls: string[] = [];
+  let nodeLinkResolveCalls = 0;
+  let nodeLinkStartCalls = 0;
+
+  player._startYouTubePipeline = async () => {
+    startupCalls.push('local');
+    player.ffmpeg = ffmpeg;
+  };
+  player._awaitInitialPlaybackChunk = async () => {
+    throw new Error('Playback pipeline exited before audio output (code=1).');
+  };
+  player._resolveYouTubeTrackViaNodeLink = async (track) => {
+    nodeLinkResolveCalls += 1;
+    return player.createTrackFromData({
+      ...track,
+      nodelinkEncodedTrack: 'encoded-node-retry',
+      nodelinkInfo: { sourceName: 'youtube' },
+      source: 'youtube',
+    });
+  };
+  player._startNodeLinkStream = async (track) => {
+    nodeLinkStartCalls += 1;
+    player.queue.current = track;
+    player.playing = true;
+  };
+
+  player.enqueueResolvedTracks([
+    player.createTrackFromData({
+      title: 'Retry Through NodeLink',
+      url: 'https://www.youtube.com/watch?v=retry1234567',
+      duration: '03:00',
+      source: 'youtube',
+      requestedBy: 'user-1',
+    }),
+  ]);
+
+  await player.play();
+
+  assert.deepEqual(startupCalls, ['local']);
+  assert.equal(nodeLinkResolveCalls, 1);
+  assert.equal(nodeLinkStartCalls, 1);
+  assert.equal(player.currentTrack?.nodelinkEncodedTrack, 'encoded-node-retry');
+});
+
 
 
 

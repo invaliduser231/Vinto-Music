@@ -1133,6 +1133,88 @@ test('session snapshot restore re-resolves radio streams before playback', async
   ]);
 });
 
+test('session snapshot restore re-resolves YouTube tracks when NodeLink is enabled', async () => {
+  const calls: unknown[][] = [];
+  const manager = createManager({
+    library: {
+      async getSessionSnapshot() {
+        return {
+          state: {
+            playing: true,
+            paused: false,
+            loopMode: 'off',
+            volumePercent: 100,
+            progressSec: 12,
+          },
+          currentTrack: {
+            title: 'Stored YouTube Track',
+            url: 'https://www.youtube.com/watch?v=restore12345',
+            duration: '3:00',
+            source: 'youtube',
+            requestedBy: 'user-1',
+          },
+          pendingTracks: [],
+        };
+      },
+    },
+  });
+
+  const session = createSession({
+    guildId: '171717',
+    voiceChannelId: '393939',
+    textChannelId: '616161',
+    stayInVoiceEnabled: true,
+  });
+  session.player = {
+    nodeLinkEnabled: true,
+    nodeLinkClient: { enabled: true },
+    setVolumePercent(value) {
+      calls.push(['volume', value]);
+    },
+    setLoopMode(value) {
+      calls.push(['loop', value]);
+    },
+    async previewTracks(query: string, options: { requestedBy?: string | null }) {
+      calls.push(['preview', query, options.requestedBy]);
+      return [{
+        title: 'NodeLink Restored Track',
+        url: 'https://www.youtube.com/watch?v=restore12345',
+        duration: '3:00',
+        source: 'youtube',
+        requestedBy: options.requestedBy ?? null,
+        nodelinkEncodedTrack: 'encoded-restore-track',
+        nodelinkInfo: { sourceName: 'youtube' },
+      }];
+    },
+    createTrackFromData(track) {
+      calls.push(['create', track.title, track.nodelinkEncodedTrack ?? null, track.seekStartSec ?? 0]);
+      return { ...track };
+    },
+    clearQueue() {
+      calls.push(['clear']);
+    },
+    enqueueResolvedTracks(tracks) {
+      calls.push(['enqueue', tracks.map((track) => track.title)]);
+      return tracks;
+    },
+    async play() {
+      calls.push(['play']);
+    },
+  };
+
+  const restored = await manager.restoreSessionSnapshot(session);
+  assert.equal(restored, true);
+  assert.deepEqual(calls, [
+    ['volume', 100],
+    ['loop', 'off'],
+    ['preview', 'https://www.youtube.com/watch?v=restore12345', 'user-1'],
+    ['create', 'NodeLink Restored Track', 'encoded-restore-track', 12],
+    ['clear'],
+    ['enqueue', ['NodeLink Restored Track']],
+    ['play'],
+  ]);
+});
+
 test('session snapshot restore clears persisted Deezer full stream URLs so tracks are rehydrated from track id', async () => {
   const calls: unknown[][] = [];
   const manager = createManager({

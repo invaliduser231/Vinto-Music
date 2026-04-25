@@ -273,6 +273,7 @@ export class MusicPlayer extends EventEmitter {
   declare _handleTrackClose: (track: Track, code: unknown, signal: unknown, playbackToken?: number | null) => Promise<void>;
   declare _resolveTracks: (query: string, requestedBy: string | null, limit?: number | null) => Promise<Track[]>;
   declare _resolveNodeLinkTracks: (query: string, requestedBy: string | null, limit?: number | null) => Promise<Track[]>;
+  declare _resolveYouTubeTrackViaNodeLink: (track: Partial<Track> | null | undefined) => Promise<Track | null>;
   declare _nodeLinkLoadResultToTracks: (result: unknown, requestedBy: string | null, limit?: number | null) => Track[];
   declare _nodeLinkTrackDataToTrack: (data: unknown, requestedBy: string | null) => Track | null;
   declare _resolveSearchTrack: (query: string, requestedBy: string | null) => Promise<Track[]>;
@@ -967,14 +968,31 @@ export class MusicPlayer extends EventEmitter {
         if (shouldRetryYouTubeStartup) {
           retryStartupTrack = this._cloneTrack(track, { seekStartSec: track?.seekStartSec ?? 0 });
           (retryStartupTrack as Track & { startupRetryCount?: number }).startupRetryCount = startupRetryAttempt + 1;
+          if (!String(retryStartupTrack.nodelinkEncodedTrack ?? '').trim()) {
+            const nodeLinkRetryTrack = await this._resolveYouTubeTrackViaNodeLink(retryStartupTrack).catch((nodeLinkErr: unknown) => {
+              this.logger?.debug?.('NodeLink retry preparation failed, continuing with local YouTube startup fallback', {
+                title: track?.title ?? null,
+                url: track?.url ?? null,
+                error: nodeLinkErr instanceof Error ? nodeLinkErr.message : String(nodeLinkErr),
+              });
+              return null;
+            });
+            if (nodeLinkRetryTrack) {
+              retryStartupTrack = this._cloneTrack(nodeLinkRetryTrack, {
+                seekStartSec: track?.seekStartSec ?? 0,
+              });
+              (retryStartupTrack as Track & { startupRetryCount?: number }).startupRetryCount = startupRetryAttempt + 1;
+            }
+          }
           const currentYtDlpDiagnostics = this._lastYtDlpDiagnostics;
           const shouldRetryWithProxyPipe = (
-            Boolean(this.ytdlpProxyUrl)
+            !String(retryStartupTrack.nodelinkEncodedTrack ?? '').trim()
+            && Boolean(this.ytdlpProxyUrl)
             && !currentYtDlpDiagnostics?.proxyEnabled
           );
           if (shouldRetryWithProxyPipe) {
             (retryStartupTrack as Track & { startupFallbackPipeline?: 'ytdlp-proxy' }).startupFallbackPipeline = 'ytdlp-proxy';
-          } else if (shouldFallbackToYtDlpUrl) {
+          } else if (!String(retryStartupTrack.nodelinkEncodedTrack ?? '').trim() && shouldFallbackToYtDlpUrl) {
             (retryStartupTrack as Track & { startupFallbackPipeline?: 'ytdlp-url' }).startupFallbackPipeline = 'ytdlp-url';
           }
         }
