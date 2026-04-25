@@ -9,7 +9,12 @@ type NodeLinkRuntime = MusicPlayer & {
 };
 
 type NodeLinkMethods = {
-  _resolveNodeLinkTracks(query: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
+  _resolveNodeLinkTracks(
+    query: string,
+    requestedBy: string | null,
+    limit?: number | null,
+    options?: { searchIdentifier?: string | null }
+  ): Promise<Track[]>;
   _nodeLinkLoadResultToTracks(result: NodeLinkLoadResult, requestedBy: string | null, limit?: number | null): Track[];
   _nodeLinkTrackDataToTrack(data: NodeLinkTrackData, requestedBy: string | null): Track | null;
 };
@@ -104,12 +109,12 @@ function buildNodeLinkInfo(info: NodeLinkTrackInfo | null | undefined, isrc: str
 }
 
 export const nodeLinkMethods: NodeLinkMethods & ThisType<NodeLinkRuntime> = {
-  async _resolveNodeLinkTracks(query, requestedBy, limit = null) {
+  async _resolveNodeLinkTracks(query, requestedBy, limit = null, options = {}) {
     if (!this.nodeLinkClient?.enabled) {
       throw new ValidationError('NodeLink is not configured.');
     }
 
-    const result = await this.nodeLinkClient.loadTracks(query);
+    const result = await this.nodeLinkClient.loadTracks(query, options);
     return this._nodeLinkLoadResultToTracks(result, requestedBy, limit);
   },
 

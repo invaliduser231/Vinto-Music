@@ -226,6 +226,37 @@ test('NodeLink all routing mode bypasses NodeLink for generic radio playlist url
   assert.equal(tracks[0]!.source, 'radio-stream');
 });
 
+test('NodeLink searchCandidates uses unified search identifier for multi-result search UI', async () => {
+  const calls: string[] = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: Parameters<typeof fetch>[0]) => {
+    const url = String(input);
+    calls.push(url);
+    return new Response(JSON.stringify({
+      loadType: 'search',
+      data: [
+        nodeLinkTrack('First Hit', 'encoded-1', 'deezer'),
+        nodeLinkTrack('Second Hit', 'encoded-2', 'soundcloud'),
+      ],
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  try {
+    const player = createPlayer({ nodeLinkDefaultSearch: 'deezer' });
+    const tracks = await player.searchCandidates('alleine', 2, {
+      requestedBy: 'user-1',
+    });
+
+    assert.equal(tracks.length, 2);
+    assert.equal(new URL(calls[0]!).searchParams.get('identifier'), 'search:alleine');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('NodeLink all routing mode bypasses NodeLink for direct audio file urls', async () => {
   const player = createPlayer({ nodeLinkRoutingMode: 'all' });
   let nodeLinkCalled = false;

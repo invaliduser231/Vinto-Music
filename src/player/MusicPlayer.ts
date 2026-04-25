@@ -272,7 +272,12 @@ export class MusicPlayer extends EventEmitter {
   declare _buildTrack: (input: BuiltTrackInput) => Track;
   declare _handleTrackClose: (track: Track, code: unknown, signal: unknown, playbackToken?: number | null) => Promise<void>;
   declare _resolveTracks: (query: string, requestedBy: string | null, limit?: number | null) => Promise<Track[]>;
-  declare _resolveNodeLinkTracks: (query: string, requestedBy: string | null, limit?: number | null) => Promise<Track[]>;
+  declare _resolveNodeLinkTracks: (
+    query: string,
+    requestedBy: string | null,
+    limit?: number | null,
+    options?: { searchIdentifier?: string | null }
+  ) => Promise<Track[]>;
   declare _resolveYouTubeTrackViaNodeLink: (track: Partial<Track> | null | undefined) => Promise<Track | null>;
   declare _nodeLinkLoadResultToTracks: (result: unknown, requestedBy: string | null, limit?: number | null) => Track[];
   declare _nodeLinkTrackDataToTrack: (data: unknown, requestedBy: string | null) => Track | null;

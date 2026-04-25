@@ -229,7 +229,7 @@ export const resolverMethods: LooseMethodMap = {
 
     const nodeLinkRoutingMode = getNodeLinkRoutingMode(this.nodeLinkRoutingMode);
     if (this.nodeLinkEnabled && this.nodeLinkClient?.enabled && nodeLinkRoutingMode !== 'youtube-only') {
-      return this._resolveNodeLinkTracks(query, requestedBy, safeLimit);
+      return this._resolveNodeLinkTracks(query, requestedBy, safeLimit, { searchIdentifier: 'search' });
     }
 
     if (!this.enableYtSearch) {

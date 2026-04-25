@@ -46,6 +46,10 @@ type NodeLinkClientOptions = {
   defaultSearchIdentifier?: string | null;
 };
 
+type LoadTracksOptions = {
+  searchIdentifier?: string | null;
+};
+
 type StreamTrackOptions = {
   positionMs?: number;
   volume?: number;
@@ -138,14 +142,15 @@ export class NodeLinkClient {
     };
   }
 
-  buildIdentifier(query: string): string {
+  buildIdentifier(query: string, options: LoadTracksOptions = {}): string {
     const raw = String(query ?? '').trim();
     if (/^https?:\/\//i.test(raw)) return raw;
     if (/^[A-Za-z0-9]+:.+/.test(raw)) return raw;
-    return `${this.defaultSearchIdentifier}:${raw}`;
+    const searchIdentifier = normalizeSearchIdentifier(options.searchIdentifier ?? this.defaultSearchIdentifier);
+    return `${searchIdentifier}:${raw}`;
   }
 
-  async loadTracks(query: string): Promise<NodeLinkLoadResult> {
+  async loadTracks(query: string, options: LoadTracksOptions = {}): Promise<NodeLinkLoadResult> {
     if (!this.baseUrl) {
       throw new ValidationError('NodeLink is not configured.');
     }
@@ -153,7 +158,7 @@ export class NodeLinkClient {
     this.lastRequestAtMs = Date.now();
     this.lastRequestType = 'loadtracks';
     const endpoint = new URL('/v4/loadtracks', this.baseUrl);
-    endpoint.searchParams.set('identifier', this.buildIdentifier(query));
+    endpoint.searchParams.set('identifier', this.buildIdentifier(query, options));
 
     const response = await fetch(endpoint, {
       method: 'GET',
