@@ -130,6 +130,42 @@ test('NodeLink hard-cutover resolves text search through loadtracks', async () =
   }
 });
 
+test('NodeLink previewTracks reduces text play queries to the top result even when NodeLink returns a playlist', async () => {
+  const calls: string[] = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: Parameters<typeof fetch>[0]) => {
+    const url = String(input);
+    calls.push(url);
+    return new Response(JSON.stringify({
+      loadType: 'playlist',
+      data: {
+        tracks: [
+          nodeLinkTrack('Rote Flaggen', 'encoded-1', 'deezer'),
+          nodeLinkTrack('Heimweg', 'encoded-2', 'deezer'),
+          nodeLinkTrack('Schwarz', 'encoded-3', 'deezer'),
+        ],
+      },
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  try {
+    const player = createPlayer({ nodeLinkDefaultSearch: 'deezer' });
+    const tracks = await player.previewTracks('berq', {
+      requestedBy: 'user-1',
+      limit: 25,
+    });
+
+    assert.equal(tracks.length, 1);
+    assert.equal(tracks[0]!.title, 'Rote Flaggen');
+    assert.equal(new URL(calls[0]!).searchParams.get('identifier'), 'deezer:berq');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('NodeLink does not hard-cutover generic radio urls', async () => {
   const player = createPlayer();
   let nodeLinkCalled = false;

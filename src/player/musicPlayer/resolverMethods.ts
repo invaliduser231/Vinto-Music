@@ -94,9 +94,6 @@ export const resolverMethods: LooseMethodMap = {
     const safeLimit = normalizeResolveLimit(limit, this.maxPlaylistTracks);
     const nodeLinkRoutingMode = getNodeLinkRoutingMode(this.nodeLinkRoutingMode);
     if (!isHttpUrl(raw)) {
-      if (this.nodeLinkEnabled && this.nodeLinkClient?.enabled && nodeLinkRoutingMode !== 'youtube-only') {
-        return this._resolveNodeLinkTracks(raw, requestedBy, safeLimit);
-      }
       return this._resolveSearchTrack(raw, requestedBy);
     }
 
