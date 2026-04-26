@@ -154,6 +154,7 @@ export function defaultSettings(config: SessionManagerConfigLike): SessionSettin
   return {
     dedupeEnabled: Boolean(config.defaultDedupeEnabled),
     stayInVoiceEnabled: Boolean(config.defaultStayInVoiceEnabled),
+    earrapeProtectionEnabled: false,
     minimalMode: false,
     volumePercent: toVolumePercent(config.defaultVolumePercent, 100),
     voteSkipRatio: toRatio(config.voteSkipRatio, 0.5),
@@ -186,6 +187,7 @@ export function settingsFromGuildConfig(
   const defaults = defaultSettings(config);
   const fallbackDedupeEnabled = defaults.dedupeEnabled ?? false;
   const fallbackStayInVoiceEnabled = defaults.stayInVoiceEnabled ?? false;
+  const fallbackEarrapeProtectionEnabled = defaults.earrapeProtectionEnabled ?? false;
   const fallbackVolumePercent = defaults.volumePercent ?? 100;
   const fallbackVoteSkipRatio = defaults.voteSkipRatio ?? 0.5;
   const fallbackVoteSkipMinVotes = defaults.voteSkipMinVotes ?? 2;
@@ -197,6 +199,7 @@ export function settingsFromGuildConfig(
     stayInVoiceEnabled: typeof profile.stayInVoiceEnabled === 'boolean'
       ? profile.stayInVoiceEnabled
       : toBool(source.stayInVoiceEnabled, fallbackStayInVoiceEnabled),
+    earrapeProtectionEnabled: toBool(source.earrapeProtectionEnabled, fallbackEarrapeProtectionEnabled),
     minimalMode: toBool(source.minimalMode, defaults.minimalMode ?? false),
     volumePercent: toVolumePercent(source.volumePercent, fallbackVolumePercent),
     voteSkipRatio: toRatio(source.voteSkipRatio, fallbackVoteSkipRatio),

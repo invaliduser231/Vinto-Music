@@ -6,6 +6,7 @@ import { GuildConfigStore } from '../src/bot/services/guildConfigStore.ts';
 type GuildSettingsRecord = {
   dedupeEnabled?: boolean;
   stayInVoiceEnabled?: boolean;
+  earrapeProtectionEnabled?: boolean;
   minimalMode?: boolean;
   volumePercent?: number;
   voteSkipRatio?: number;
@@ -77,6 +78,7 @@ function buildStore() {
       settings: {
         dedupeEnabled: false,
         stayInVoiceEnabled: false,
+        earrapeProtectionEnabled: false,
         minimalMode: false,
         volumePercent: 100,
         voteSkipRatio: 0.5,
@@ -110,6 +112,7 @@ test('guild config store persists and normalizes settings updates', async () => 
     settings: {
       dedupeEnabled: true,
       stayInVoiceEnabled: true,
+      earrapeProtectionEnabled: true,
       minimalMode: true,
       volumePercent: 35,
       voteSkipRatio: 0.75,
@@ -121,6 +124,7 @@ test('guild config store persists and normalizes settings updates', async () => 
   assert.equal(updated.prefix, '>>');
   assert.equal(updated.settings.dedupeEnabled, true);
   assert.equal(updated.settings.stayInVoiceEnabled, true);
+  assert.equal(updated.settings.earrapeProtectionEnabled, true);
   assert.equal(updated.settings.minimalMode, true);
   assert.equal(updated.settings.volumePercent, 35);
   assert.equal(updated.settings.voteSkipRatio, 0.75);
@@ -130,6 +134,7 @@ test('guild config store persists and normalizes settings updates', async () => 
   const loaded = await store.get('guild-1');
   assert.equal(loaded.prefix, '>>');
   assert.equal(loaded.settings.minimalMode, true);
+  assert.equal(loaded.settings.earrapeProtectionEnabled, true);
   assert.equal(loaded.settings.volumePercent, 35);
   assert.deepEqual(loaded.settings.djRoleIds, ['1000000']);
 });

@@ -6,6 +6,7 @@ export type GuildConfigLike = {
   settings: {
     dedupeEnabled: boolean;
     stayInVoiceEnabled: boolean;
+    earrapeProtectionEnabled?: boolean;
     minimalMode?: boolean;
     volumePercent: number;
     voteSkipRatio: number;
@@ -55,6 +56,7 @@ export type SessionLike = {
   settings: {
     dedupeEnabled: boolean;
     stayInVoiceEnabled: boolean;
+    earrapeProtectionEnabled?: boolean;
     minimalMode?: boolean;
     voteSkipRatio: number;
     voteSkipMinVotes: number;
@@ -224,6 +226,7 @@ export type CommandContextLike = {
   };
   permissionService?: {
     canBotJoinAndSpeak?: (guildId: string, voiceChannelId: string) => Promise<boolean | null>;
+    canBotMoveMembers?: (guildId: string, voiceChannelId: string) => Promise<boolean | null>;
   } | null;
   guildStateCache?: {
     resolveOwnerId?: (guildId: string) => string | null;

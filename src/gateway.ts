@@ -231,12 +231,13 @@ export class Gateway extends EventEmitter {
     this.ws = null;
   }
 
-  joinVoice(guildId: string, channelId: string) {
+  joinVoice(guildId: string, channelId: string, options: { selfDeaf?: boolean } = {}) {
+    const selfDeaf = options.selfDeaf !== false;
     this._send(Op.VOICE_STATE_UPDATE, {
       guild_id: guildId,
       channel_id: channelId,
       self_mute: false,
-      self_deaf: true,
+      self_deaf: selfDeaf,
     });
   }
 

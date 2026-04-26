@@ -146,6 +146,35 @@ test('getGuild does not retry known disabled_operations validation 500 responses
   }
 });
 
+test('disconnectMemberFromVoice patches the member voice channel to null', async () => {
+  const originalFetch = global.fetch;
+  let method = '';
+  let url = '';
+  let body: Record<string, unknown> | null = null;
+
+  global.fetch = async (requestUrl, init) => {
+    method = String(init?.method ?? '');
+    url = String(requestUrl);
+    body = init?.body ? JSON.parse(String(init.body)) : null;
+    return jsonResponse({ ok: true }, { status: 200 });
+  };
+
+  try {
+    const rest = new RestClient({
+      token: 'test-token',
+      base: 'https://api.fluxer.app/v1',
+      maxRetries: 1,
+    });
+
+    await rest.disconnectMemberFromVoice('guild-7', 'user-9');
+    assert.equal(method, 'PATCH');
+    assert.equal(url, 'https://api.fluxer.app/v1/guilds/guild-7/members/user-9');
+    assert.deepEqual(body, { channel_id: null });
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 
 
 

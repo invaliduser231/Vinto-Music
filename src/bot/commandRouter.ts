@@ -68,6 +68,7 @@ type SessionLookup = {
   settings?: {
     musicLogChannelId?: string | null;
     stayInVoiceEnabled?: boolean;
+    earrapeProtectionEnabled?: boolean;
     minimalMode?: boolean;
     dedupeEnabled?: boolean;
     voteSkipRatio?: number;
@@ -146,6 +147,8 @@ type LibraryLike = {
 
 type PermissionServiceLike = {
   canBotSendMessages: (guildId: string, channelId: string) => Promise<boolean | null>;
+  canBotJoinAndSpeak?: (guildId: string, channelId: string) => Promise<boolean | null>;
+  canBotMoveMembers?: (guildId: string, channelId: string) => Promise<boolean | null>;
 };
 
 type MetricsLike = {

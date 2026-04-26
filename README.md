@@ -269,6 +269,7 @@ Default prefix: `!`
 - `voteskipcfg`
 - `247`
 - `dedupe`
+- `earrape [on|off]`
 
 ### Extended Features
 
@@ -290,6 +291,7 @@ Default prefix: `!`
 Notes:
 
 - `247` is voice-channel-scoped, not guild-wide.
+- `earrape` is guild-scoped and switches bot voice join behavior: enabled means `self_deaf=false` so remote audio can be analyzed.
 - Owner-only commands use `BOT_OWNER_USER_ID`.
 
 ## Architecture

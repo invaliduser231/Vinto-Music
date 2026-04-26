@@ -1,4 +1,4 @@
-import type { BivariantCallback, LoggerLike } from './core.ts';
+import type { BivariantCallback, LoggerLike, MessagePayload } from './core.ts';
 import type { AppConfig } from '../config.ts';
 
 export type ChannelId = string | null;
@@ -54,6 +54,7 @@ export interface VoiceProfileSettings {
 export interface SessionSettings {
   dedupeEnabled?: boolean;
   stayInVoiceEnabled?: boolean;
+  earrapeProtectionEnabled?: boolean;
   minimalMode?: boolean;
   volumePercent?: number;
   voteSkipRatio?: number;
@@ -68,6 +69,7 @@ export interface GuildConfig {
   settings: {
     dedupeEnabled?: boolean;
     stayInVoiceEnabled?: boolean;
+    earrapeProtectionEnabled?: boolean;
     minimalMode?: boolean;
     volumePercent?: number;
     voteSkipRatio?: number;
@@ -143,6 +145,9 @@ export interface VoiceConnectionLike {
   stopAudio?: () => unknown;
   pauseAudio?: () => unknown;
   resumeAudio?: () => unknown;
+  setEarrapeProtectionEnabled?: (enabled: unknown) => void;
+  setBotUserId?: (botUserId: unknown) => void;
+  setEarrapeDetectionHandler?: (handler: ((event: unknown) => Promise<unknown> | unknown) | null | undefined) => void;
   getDiagnostics?: () => Promise<unknown>;
 }
 
@@ -216,7 +221,7 @@ export interface SessionManagerConfigLike extends Partial<AppConfig> {
 
 export interface SessionManagerOptions {
   gateway: {
-    joinVoice: (guildId: string, channelId: string) => void;
+    joinVoice: (guildId: string, channelId: string, options?: { selfDeaf?: boolean }) => void;
     leaveVoice: (guildId: string) => void;
     on: (event: string, listener: BivariantCallback<[VoiceServerUpdate], void>) => void;
     off: (event: string, listener: BivariantCallback<[VoiceServerUpdate], void>) => void;
@@ -257,6 +262,8 @@ export interface LibraryStoreLike {
 
 export interface RestAdapterLike {
   getChannel?: (channelId: string) => Promise<unknown>;
+  disconnectMemberFromVoice?: (guildId: string, userId: string) => Promise<unknown>;
+  sendMessage?: (channelId: string, payload: MessagePayload | string) => Promise<unknown>;
 }
 
 export interface VoiceStateStoreLike {

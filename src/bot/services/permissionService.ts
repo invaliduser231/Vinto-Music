@@ -4,6 +4,7 @@ const SEND_MESSAGES = 1n << 11n;
 const EMBED_LINKS = 1n << 14n;
 const CONNECT = 1n << 20n;
 const SPEAK = 1n << 21n;
+const MOVE_MEMBERS = 1n << 24n;
 
 function toBigInt(value: unknown): bigint | null {
   if (value == null) return null;
@@ -80,6 +81,7 @@ type PermissionResolution = {
   canEmbedLinks: boolean;
   canConnect: boolean;
   canSpeak: boolean;
+  canMoveMembers: boolean;
 };
 
 type PermissionServiceOptions = {
@@ -145,6 +147,12 @@ export class PermissionService {
     const perms = await this.getBotChannelPermissions(guildId, channelId);
     if (!perms.known) return null;
     return perms.canViewChannel && perms.canConnect && perms.canSpeak;
+  }
+
+  async canBotMoveMembers(guildId: unknown, channelId: unknown): Promise<boolean | null> {
+    const perms = await this.getBotChannelPermissions(guildId, channelId);
+    if (!perms.known) return null;
+    return perms.canViewChannel && perms.canMoveMembers;
   }
 
   async getBotChannelPermissions(guildId: unknown, channelId: unknown): Promise<PermissionResolution> {
@@ -275,6 +283,7 @@ export class PermissionService {
       canEmbedLinks: canViewChannel && (bits & EMBED_LINKS) !== 0n,
       canConnect: canViewChannel && (bits & CONNECT) !== 0n,
       canSpeak: canViewChannel && (bits & SPEAK) !== 0n,
+      canMoveMembers: canViewChannel && (bits & MOVE_MEMBERS) !== 0n,
     };
   }
 
@@ -287,6 +296,7 @@ export class PermissionService {
       canEmbedLinks: false,
       canConnect: false,
       canSpeak: false,
+      canMoveMembers: false,
     };
   }
 

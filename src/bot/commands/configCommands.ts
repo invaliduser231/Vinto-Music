@@ -60,6 +60,66 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
   }));
 
   registry.register(createCommand({
+    name: 'earrape',
+    aliases: ['earrapeprotection'],
+    description: 'Toggle automatic earrape detection with offender disconnects.',
+    usage: 'earrape [on|off]',
+    async execute(ctx: CommandContextLike) {
+      ensureGuild(ctx);
+      const guildConfig = await getGuildConfigOrThrow(ctx);
+      await ensureManageGuildAccess(ctx, 'change earrape protection');
+      const current = Boolean(guildConfig.settings.earrapeProtectionEnabled);
+
+      if (!ctx.args.length) {
+        await ctx.reply.info(`Earrape protection is currently **${current ? 'on' : 'off'}**.`);
+        return;
+      }
+
+      const value = parseOnOff(ctx.args[0], null);
+      if (value == null) {
+        throw new ValidationError('Use `on` or `off`.');
+      }
+
+      if (value && ctx.permissionService?.canBotMoveMembers) {
+        const channelIds = new Set<string>();
+        if (ctx.activeVoiceChannelId) {
+          channelIds.add(ctx.activeVoiceChannelId);
+        }
+        const scopedSession = ctx.sessions.get(ctx.guildId, {
+          voiceChannelId: ctx.activeVoiceChannelId,
+          textChannelId: ctx.channelId,
+          allowAnyGuildSession: true,
+        });
+        const scopedChannel = String(scopedSession?.connection?.channelId ?? '').trim();
+        if (scopedChannel) {
+          channelIds.add(scopedChannel);
+        }
+        if (typeof ctx.sessions.listByGuild === 'function') {
+          const sessions = ctx.sessions.listByGuild(ctx.guildId);
+          for (const session of sessions) {
+            const channelId = String(session?.connection?.channelId ?? '').trim();
+            if (channelId) channelIds.add(channelId);
+          }
+        }
+
+        for (const channelId of channelIds) {
+          const canMove = await ctx.permissionService.canBotMoveMembers(ctx.guildId, channelId);
+          if (canMove === false) {
+            throw new ValidationError(
+              `I need the "Move Members" permission in <#${channelId}> before earrape protection can disconnect users.`
+            );
+          }
+        }
+      }
+
+      await updateGuildConfig(ctx, {
+        settings: { earrapeProtectionEnabled: value },
+      });
+      await ctx.reply.success(`Earrape protection is now **${value ? 'on' : 'off'}**.`);
+    },
+  }));
+
+  registry.register(createCommand({
     name: 'minimalmode',
     aliases: ['minimal'],
     description: 'Toggle compact text replies instead of embeds.',
@@ -346,6 +406,11 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
         { name: 'Minimal Mode', value: guildConfig.settings.minimalMode ? 'on' : 'off', inline: true },
         { name: 'Default Volume', value: `${guildConfig.settings.volumePercent}%`, inline: true },
         { name: '24/7', value: stayInVoiceLabel, inline: true },
+        {
+          name: 'Earrape Protection',
+          value: guildConfig.settings.earrapeProtectionEnabled ? 'on (bot undeafens)' : 'off (bot joins deafened)',
+          inline: true,
+        },
         { name: 'Vote Ratio', value: String(guildConfig.settings.voteSkipRatio), inline: true },
         { name: 'Vote Min', value: String(guildConfig.settings.voteSkipMinVotes), inline: true },
         { name: 'DJ Roles', value: roles },

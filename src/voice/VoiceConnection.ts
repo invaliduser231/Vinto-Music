@@ -1,9 +1,11 @@
 import {
+  AudioStream,
   AudioFrame,
   AudioSource,
   LocalAudioTrack,
   Room,
   RoomEvent,
+  TrackKind,
   TrackPublishOptions,
   TrackSource,
 } from '@livekit/rtc-node';
@@ -21,6 +23,12 @@ const MAX_QUEUE_MS = 1200;
 const STARTUP_PREFILL_MS = 240;
 const CONCEALMENT_MAX_FRAMES = 12;
 const PUMP_IDLE_WAIT_MS = 5;
+const EARRAPE_PEAK_THRESHOLD = 0.38;
+const EARRAPE_CONSEC_FRAMES = 4;
+const EARRAPE_MUTE_HOLD_MS = 250;
+const EARRAPE_RECOVERY_DELAY_MS = 200;
+const EARRAPE_CALM_THRESHOLD = 0.2;
+const EARRAPE_DISCONNECT_COOLDOWN_MS = 2_500;
 
 type VoiceConnectionOptions = {
   logger?: {
@@ -31,6 +39,9 @@ type VoiceConnectionOptions = {
   } | null;
   connectTimeoutMs?: number;
   voiceMaxBitrate?: number;
+  earrapeProtectionEnabled?: boolean;
+  botUserId?: string | null;
+  onEarrapeDetected?: EarrapeDetectionHandler | null;
 };
 
 type VoiceServerUpdate = {
@@ -40,11 +51,36 @@ type VoiceServerUpdate = {
 };
 
 type GatewayLike = {
-  joinVoice: (guildId: string, channelId: string) => void;
+  joinVoice: (guildId: string, channelId: string, options?: { selfDeaf?: boolean }) => void;
   leaveVoice: (guildId: string) => void;
   on: (event: string, listener: (data: VoiceServerUpdate) => void) => void;
   off: (event: string, listener: (data: VoiceServerUpdate) => void) => void;
 };
+
+type RemoteParticipantLike = {
+  identity?: unknown;
+};
+
+type EarrapeParticipantState = {
+  hitCount: number;
+  mutedSinceMs: number | null;
+  calmSinceMs: number | null;
+  lastDisconnectAtMs: number;
+};
+
+type AudioFrameLike = {
+  data?: unknown;
+};
+
+export type EarrapeDetectionEvent = {
+  guildId: string;
+  channelId: string | null;
+  participantId: string;
+  peak: number;
+  threshold: number;
+};
+
+type EarrapeDetectionHandler = (event: EarrapeDetectionEvent) => Promise<unknown> | unknown;
 
 type PcmReadableLike = AsyncIterable<unknown> & {
   destroy?: (error?: Error) => void;
@@ -108,6 +144,13 @@ export class VoiceConnection {
   _pumpStats: PumpStats;
   _pumpStatsSample: { tsMs: number; bytesIn: number; framesCaptured: number } | null;
   roomDisconnectedListener: (() => void) | null;
+  roomTrackSubscribedListener: ((track: unknown, publication: unknown, participant: unknown) => void) | null;
+  roomTrackUnsubscribedListener: ((track: unknown, publication: unknown, participant: unknown) => void) | null;
+  earrapeProtectionEnabled: boolean;
+  botUserId: string | null;
+  onEarrapeDetected: EarrapeDetectionHandler | null;
+  remoteAudioMonitorToken: number;
+  participantAudioStates: Map<string, EarrapeParticipantState>;
   constructor(gateway: GatewayLike, guildId: string, options: VoiceConnectionOptions = {}) {
     this.gateway = gateway;
     this.guildId = guildId;
@@ -131,6 +174,13 @@ export class VoiceConnection {
     this._pumpStats = this._createPumpStats();
     this._pumpStatsSample = null;
     this.roomDisconnectedListener = null;
+    this.roomTrackSubscribedListener = null;
+    this.roomTrackUnsubscribedListener = null;
+    this.earrapeProtectionEnabled = options.earrapeProtectionEnabled === true;
+    this.botUserId = String(options.botUserId ?? '').trim() || null;
+    this.onEarrapeDetected = options.onEarrapeDetected ?? null;
+    this.remoteAudioMonitorToken = 0;
+    this.participantAudioStates = new Map();
   }
 
   get connected() {
@@ -141,6 +191,26 @@ export class VoiceConnection {
     return Boolean(this.currentAudioStream);
   }
 
+  setEarrapeProtectionEnabled(enabled: unknown) {
+    const next = enabled === true;
+    if (this.earrapeProtectionEnabled === next) return;
+
+    this.earrapeProtectionEnabled = next;
+    if (!next) {
+      this._resetEarrapeStates();
+    }
+
+    this._syncVoiceDeafState();
+  }
+
+  setBotUserId(botUserId: unknown) {
+    this.botUserId = String(botUserId ?? '').trim() || null;
+  }
+
+  setEarrapeDetectionHandler(handler: EarrapeDetectionHandler | null | undefined) {
+    this.onEarrapeDetected = handler ?? null;
+  }
+
   async connect(channelId: string) {
     if (!channelId) {
       throw new Error('Missing voice channel id.');
@@ -148,10 +218,13 @@ export class VoiceConnection {
 
     if (this.connected) {
       this.channelId = channelId;
+      this._syncVoiceDeafState();
       return;
     }
 
-    this.gateway.joinVoice(this.guildId, channelId);
+    this.gateway.joinVoice(this.guildId, channelId, {
+      selfDeaf: !this.earrapeProtectionEnabled,
+    });
     const update = await this._waitForVoiceServer();
     const endpoint = update.endpoint;
     const token = update.token;
@@ -166,10 +239,7 @@ export class VoiceConnection {
 
     const room = new Room();
     this.room = room;
-    this.roomDisconnectedListener = () => {
-      this.logger?.warn?.('Voice room disconnected', { guildId: this.guildId });
-    };
-    room.on(RoomEvent.Disconnected, this.roomDisconnectedListener);
+    this._attachRoomListeners(room);
 
     try {
       await room.connect(roomUrl, token);
@@ -188,6 +258,7 @@ export class VoiceConnection {
 
   async disconnect() {
     this._stopAudioPump();
+    this._stopRemoteAudioMonitoring();
     this.gateway.leaveVoice(this.guildId);
 
     const room = this.room;
@@ -204,6 +275,7 @@ export class VoiceConnection {
 
   async _cleanupFailedConnect(room: Room) {
     this._stopAudioPump();
+    this._stopRemoteAudioMonitoring();
     this._detachRoomListeners();
 
     try {
@@ -257,25 +329,75 @@ export class VoiceConnection {
     }
   }
 
+  _attachRoomListeners(room: Room) {
+    this._detachRoomListeners();
+    const roomLike = room as {
+      on?: (event: string | number, listener: (...args: unknown[]) => void) => unknown;
+    };
+    if (typeof roomLike.on !== 'function') return;
+
+    this.roomDisconnectedListener = () => {
+      this.logger?.warn?.('Voice room disconnected', { guildId: this.guildId });
+    };
+    this.roomTrackSubscribedListener = (track, _publication, participant) => {
+      this._monitorRemoteAudioTrack(track, participant).catch((err) => {
+        this.logger?.debug?.('Remote audio monitor failed', {
+          guildId: this.guildId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    };
+    this.roomTrackUnsubscribedListener = (_track, _publication, participant) => {
+      const participantId = this._normalizeParticipantId(participant);
+      if (!participantId) return;
+      this.participantAudioStates.delete(participantId);
+    };
+
+    roomLike.on(RoomEvent.Disconnected, this.roomDisconnectedListener);
+    roomLike.on(RoomEvent.TrackSubscribed, this.roomTrackSubscribedListener);
+    roomLike.on(RoomEvent.TrackUnsubscribed, this.roomTrackUnsubscribedListener);
+  }
+
   _detachRoomListeners() {
     const room = this.room as {
-      off?: (event: string, listener: () => void) => unknown;
-      removeListener?: (event: string, listener: () => void) => unknown;
-      removeAllListeners?: (event?: string) => unknown;
+      off?: (event: string | number, listener: (...args: unknown[]) => void) => unknown;
+      removeListener?: (event: string | number, listener: (...args: unknown[]) => void) => unknown;
+      removeAllListeners?: (event?: string | number) => unknown;
     } | null;
-    const listener = this.roomDisconnectedListener;
-    this.roomDisconnectedListener = null;
-    if (!room || !listener) return;
+    if (!room) {
+      this.roomDisconnectedListener = null;
+      this.roomTrackSubscribedListener = null;
+      this.roomTrackUnsubscribedListener = null;
+      return;
+    }
 
+    this._detachSingleRoomListener(room, RoomEvent.Disconnected, this.roomDisconnectedListener);
+    this._detachSingleRoomListener(room, RoomEvent.TrackSubscribed, this.roomTrackSubscribedListener);
+    this._detachSingleRoomListener(room, RoomEvent.TrackUnsubscribed, this.roomTrackUnsubscribedListener);
+    this.roomDisconnectedListener = null;
+    this.roomTrackSubscribedListener = null;
+    this.roomTrackUnsubscribedListener = null;
+  }
+
+  _detachSingleRoomListener(
+    room: {
+      off?: (event: string | number, listener: (...args: unknown[]) => void) => unknown;
+      removeListener?: (event: string | number, listener: (...args: unknown[]) => void) => unknown;
+      removeAllListeners?: (event?: string | number) => unknown;
+    },
+    event: string | number,
+    listener: ((...args: unknown[]) => void) | null,
+  ) {
+    if (!listener) return;
     if (typeof room.off === 'function') {
-      room.off(RoomEvent.Disconnected, listener);
+      room.off(event, listener);
       return;
     }
     if (typeof room.removeListener === 'function') {
-      room.removeListener(RoomEvent.Disconnected, listener);
+      room.removeListener(event, listener);
       return;
     }
-    room.removeAllListeners?.(RoomEvent.Disconnected);
+    room.removeAllListeners?.(event);
   }
 
   _detachRoomFfiListener(room: Room | null) {
@@ -298,6 +420,187 @@ export class VoiceConnection {
     const internalRoom = room as unknown as InternalRoomLike | null;
     if (!internalRoom || !Array.isArray(internalRoom.preConnectEvents)) return;
     internalRoom.preConnectEvents.length = 0;
+  }
+
+  _syncVoiceDeafState() {
+    if (!this.connected || !this.channelId) return;
+    try {
+      this.gateway.joinVoice(this.guildId, this.channelId, {
+        selfDeaf: !this.earrapeProtectionEnabled,
+      });
+    } catch (err) {
+      this.logger?.debug?.('Failed to synchronize voice deaf state', {
+        guildId: this.guildId,
+        channelId: this.channelId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  _stopRemoteAudioMonitoring() {
+    this.remoteAudioMonitorToken += 1;
+    this._resetEarrapeStates();
+  }
+
+  _resetEarrapeStates() {
+    this.participantAudioStates.clear();
+  }
+
+  _normalizeParticipantId(participant: unknown) {
+    const normalized = String((participant as RemoteParticipantLike | null | undefined)?.identity ?? '').trim();
+    return normalized || null;
+  }
+
+  async _monitorRemoteAudioTrack(track: unknown, participant: unknown) {
+    const trackKind = (track as { kind?: unknown } | null | undefined)?.kind;
+    if (trackKind !== TrackKind.KIND_AUDIO) return;
+
+    const participantId = this._normalizeParticipantId(participant);
+    if (!participantId) return;
+    if (this.botUserId && participantId === this.botUserId) return;
+
+    const monitorToken = this.remoteAudioMonitorToken;
+    const stream = new AudioStream(track as ConstructorParameters<typeof AudioStream>[0]);
+    for await (const frame of stream) {
+      if (monitorToken !== this.remoteAudioMonitorToken) break;
+      // Keep ingestion lightweight while protection is disabled, then resume from a clean state.
+      if (!this.earrapeProtectionEnabled) {
+        this.participantAudioStates.delete(participantId);
+        continue;
+      }
+
+      const peak = this._computeFramePeak(frame);
+      const triggered = this._ingestParticipantPeak(participantId, peak);
+      if (!triggered) continue;
+      await this._emitEarrapeDetection(participantId, peak);
+    }
+  }
+
+  _computeFramePeak(frame: AudioFrameLike | null | undefined): number {
+    const samples = this._toInt16Samples(frame?.data);
+    if (!samples || samples.length === 0) return 0;
+
+    let max = 0;
+    for (let i = 0; i < samples.length; i += 1) {
+      const normalized = Math.abs(samples[i] ?? 0) / 32_767;
+      if (normalized > max) max = normalized;
+    }
+    return max;
+  }
+
+  _toInt16Samples(value: unknown): Int16Array | null {
+    if (!value) return null;
+    if (value instanceof Int16Array) return value;
+
+    if (Buffer.isBuffer(value)) {
+      const sampleBytes = Math.floor(value.byteLength / 2) * 2;
+      return sampleBytes > 0
+        ? new Int16Array(value.buffer, value.byteOffset, sampleBytes / 2)
+        : null;
+    }
+
+    if (value instanceof Uint8Array || ArrayBuffer.isView(value)) {
+      const bytes = value as ArrayBufferView;
+      const sampleBytes = Math.floor(bytes.byteLength / 2) * 2;
+      return sampleBytes > 0
+        ? new Int16Array(bytes.buffer, bytes.byteOffset, sampleBytes / 2)
+        : null;
+    }
+
+    if (value instanceof ArrayBuffer) {
+      const sampleBytes = Math.floor(value.byteLength / 2) * 2;
+      return sampleBytes > 0 ? new Int16Array(value, 0, sampleBytes / 2) : null;
+    }
+
+    if (Array.isArray(value)) {
+      const sampleArray = Int16Array.from(value.map((item) => Number.parseInt(String(item ?? 0), 10) || 0));
+      return sampleArray.length ? sampleArray : null;
+    }
+
+    return null;
+  }
+
+  _ensureParticipantAudioState(participantId: string): EarrapeParticipantState {
+    const existing = this.participantAudioStates.get(participantId);
+    if (existing) return existing;
+
+    const created: EarrapeParticipantState = {
+      hitCount: 0,
+      mutedSinceMs: null,
+      calmSinceMs: null,
+      lastDisconnectAtMs: -EARRAPE_DISCONNECT_COOLDOWN_MS,
+    };
+    this.participantAudioStates.set(participantId, created);
+    return created;
+  }
+
+  _ingestParticipantPeak(participantId: string, peak: number, nowMs = Date.now()): boolean {
+    const safeParticipantId = String(participantId ?? '').trim();
+    if (!safeParticipantId) return false;
+    const state = this._ensureParticipantAudioState(safeParticipantId);
+
+    if (state.mutedSinceMs != null) {
+      // After a trigger we wait for a short hold window, then require calm audio before re-arming.
+      const holdElapsed = nowMs - state.mutedSinceMs;
+      if (holdElapsed < EARRAPE_MUTE_HOLD_MS) return false;
+
+      if (peak < EARRAPE_CALM_THRESHOLD) {
+        if (state.calmSinceMs == null) {
+          state.calmSinceMs = nowMs;
+          return false;
+        }
+        if ((nowMs - state.calmSinceMs) >= EARRAPE_RECOVERY_DELAY_MS) {
+          state.mutedSinceMs = null;
+          state.calmSinceMs = null;
+          state.hitCount = 0;
+        }
+        return false;
+      }
+
+      state.calmSinceMs = null;
+      return false;
+    }
+
+    if (peak >= EARRAPE_PEAK_THRESHOLD) {
+      state.hitCount += 1;
+    } else {
+      state.hitCount = 0;
+      return false;
+    }
+
+    if (state.hitCount < EARRAPE_CONSEC_FRAMES) {
+      return false;
+    }
+
+    state.hitCount = 0;
+    if ((nowMs - state.lastDisconnectAtMs) < EARRAPE_DISCONNECT_COOLDOWN_MS) {
+      return false;
+    }
+
+    state.lastDisconnectAtMs = nowMs;
+    state.mutedSinceMs = nowMs;
+    state.calmSinceMs = null;
+    return true;
+  }
+
+  async _emitEarrapeDetection(participantId: string, peak: number) {
+    if (!this.onEarrapeDetected) return;
+    try {
+      await this.onEarrapeDetected({
+        guildId: this.guildId,
+        channelId: this.channelId,
+        participantId,
+        peak,
+        threshold: EARRAPE_PEAK_THRESHOLD,
+      });
+    } catch (err) {
+      this.logger?.debug?.('Failed to handle earrape detection', {
+        guildId: this.guildId,
+        channelId: this.channelId,
+        participantId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   async sendAudio(pcmStream: unknown) {
@@ -432,6 +735,8 @@ export class VoiceConnection {
         : null,
       trackSid: this.audioTrackSid ?? null,
       voiceMaxBitrate: this.voiceMaxBitrate,
+      earrapeProtectionEnabled: this.earrapeProtectionEnabled,
+      trackedParticipants: this.participantAudioStates.size,
     };
 
     const transport = await this._collectTransportStats();

@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.7.0] - 2026-04-26
+
+- Features:
+  - added a guild-scoped `earrape` config command to enable or disable automatic earrape protection
+  - monitored remote livekit audio tracks and disconnected participants that hit repeated peak thresholds
+  - switched bot voice join behavior to `self_deaf=false` while earrape protection is enabled and kept default deaf joins otherwise
+- Tests:
+  - added coverage for the new `earrape` command behavior and settings rendering
+  - added unit tests for peak detection cadence, cooldown handling, and voice state toggling
+  - covered the REST member voice-disconnect endpoint wrapper and session-level enforcement flow
+
 ## [0.6.5] - 2026-04-20
 
 - Features:

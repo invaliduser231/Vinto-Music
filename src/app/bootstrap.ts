@@ -180,6 +180,7 @@ export async function startApp() {
       settings: {
         dedupeEnabled: config.defaultDedupeEnabled,
         stayInVoiceEnabled: config.defaultStayInVoiceEnabled,
+        earrapeProtectionEnabled: false,
         minimalMode: false,
         volumePercent: config.defaultVolumePercent,
         voteSkipRatio: config.voteSkipRatio,
