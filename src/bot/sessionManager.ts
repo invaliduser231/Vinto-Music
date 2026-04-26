@@ -254,8 +254,8 @@ export class SessionManager extends EventEmitter {
       : this.get(guildId, { allowAnyGuildSession: true });
     if (!session?.settings?.earrapeProtectionEnabled) return;
 
-    const disconnectMemberFromVoice = this.rest?.disconnectMemberFromVoice;
-    if (typeof disconnectMemberFromVoice !== 'function') {
+    const rest = this.rest;
+    if (!rest || typeof rest.disconnectMemberFromVoice !== 'function') {
       this.logger?.warn?.('Earrape protection triggered without a voice-disconnect REST adapter', {
         guildId,
         channelId,
@@ -269,7 +269,7 @@ export class SessionManager extends EventEmitter {
     }
 
     try {
-      await disconnectMemberFromVoice(guildId, userId);
+      await rest.disconnectMemberFromVoice(guildId, userId);
       this.logger?.warn?.('Disconnected member due to earrape protection trigger', {
         guildId,
         channelId,

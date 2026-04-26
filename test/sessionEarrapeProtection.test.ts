@@ -158,6 +158,50 @@ test('earrape detection callback disconnects offending participants when enabled
   assert.deepEqual(disconnectCalls, [['guild-1', 'user-77']]);
 });
 
+test('earrape detection calls disconnect adapter with bound rest context', async () => {
+  const requestCalls: Array<[string, string, unknown]> = [];
+  const manager = createManager({
+    async request(method: string, path: string, options?: unknown) {
+      requestCalls.push([method, path, options]);
+      return { method, path, options };
+    },
+    async disconnectMemberFromVoice(this: { request: (method: string, path: string, options?: unknown) => Promise<unknown> }, guildId: string, userId: string) {
+      return this.request('PATCH', `/guilds/${guildId}/members/${userId}`, {
+        body: {
+          channel_id: null,
+        },
+        retryUnsafe: false,
+      });
+    },
+  });
+  const session = createSession({
+    settings: {
+      dedupeEnabled: false,
+      stayInVoiceEnabled: false,
+      earrapeProtectionEnabled: true,
+      minimalMode: false,
+      volumePercent: 100,
+      voteSkipRatio: 0.5,
+      voteSkipMinVotes: 2,
+      djRoleIds: new Set<string>(),
+      musicLogChannelId: null,
+    },
+  });
+  manager.sessions.set('guild-1:voice-1', session as never);
+
+  await manager._handleEarrapeDetected({
+    guildId: 'guild-1',
+    channelId: 'voice-1',
+    participantId: 'user-99',
+    peak: 0.95,
+    threshold: 0.38,
+  });
+
+  assert.equal(requestCalls.length, 1);
+  assert.equal(requestCalls[0]?.[0], 'PATCH');
+  assert.equal(requestCalls[0]?.[1], '/guilds/guild-1/members/user-99');
+});
+
 test('earrape detection notifies channel when disconnect fails due to missing permissions', async () => {
   const notifications: Array<[string, unknown]> = [];
   const manager = createManager({
