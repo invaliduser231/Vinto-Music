@@ -448,7 +448,11 @@ export class VoiceConnection {
 
   _normalizeParticipantId(participant: unknown) {
     const normalized = String((participant as RemoteParticipantLike | null | undefined)?.identity ?? '').trim();
-    return normalized || null;
+    if (!normalized) return null;
+
+    // Fluxer identities can include a user tag prefix/suffix around the real snowflake.
+    const snowflakeMatch = normalized.match(/\d{17,20}/);
+    return snowflakeMatch?.[0] ?? normalized;
   }
 
   async _monitorRemoteAudioTrack(track: unknown, participant: unknown) {

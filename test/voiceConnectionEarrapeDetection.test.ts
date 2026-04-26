@@ -69,3 +69,13 @@ test('earrape frame peak calculation normalizes int16 PCM values', () => {
   assert.ok(peak > 0.99);
   assert.ok(peak <= 1);
 });
+
+test('participant identities with embedded snowflakes are normalized to the user id', () => {
+  const connection = new VoiceConnection(createGateway() as never, 'guild-1', { logger: null });
+
+  const participantId = connection._normalizeParticipantId({
+    identity: 'user_1474761291856015469_crane-cirius',
+  });
+
+  assert.equal(participantId, '1474761291856015469');
+});
