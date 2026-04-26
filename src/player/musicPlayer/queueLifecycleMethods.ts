@@ -126,6 +126,10 @@ export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecy
     if (this.currentTrack.nodelinkEncodedTrack) {
       return this.currentTrack.nodelinkInfo?.isSeekable !== false;
     }
+    const source = String(this.currentTrack.source ?? '').trim().toLowerCase();
+    if (String(this.currentTrack.deezerTrackId ?? '').trim() || source.startsWith('deezer')) return true;
+    if (String(this.currentTrack.soundcloudTrackId ?? '').trim() || source.startsWith('soundcloud')) return true;
+    if (String(this.currentTrack.audiusTrackId ?? '').trim() || source.startsWith('audius')) return true;
     if (isYouTubeUrl(this.currentTrack.url)) return true;
     return isHttpUrl(this.currentTrack.url) && (
       String(this.currentTrack.source ?? '') === 'http-audio'

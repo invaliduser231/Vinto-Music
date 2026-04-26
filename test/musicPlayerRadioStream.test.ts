@@ -332,6 +332,36 @@ test('play() uses direct HTTP pipeline for non-live http audio tracks and allows
   assert.equal(player.canSeekCurrentTrack(), true);
 });
 
+test('canSeekCurrentTrack allows local Deezer tracks that use the deezer pipeline', () => {
+  const player = createPlayer();
+  player.queue.current = player._buildTrack({
+    title: 'Deezer Local',
+    url: 'https://www.deezer.com/track/3135556',
+    duration: '03:44',
+    source: 'deezer-direct',
+    requestedBy: 'user-1',
+    deezerTrackId: '3135556',
+    isLive: false,
+  });
+
+  assert.equal(player.canSeekCurrentTrack(), true);
+});
+
+test('canSeekCurrentTrack allows local SoundCloud tracks that use the soundcloud pipeline', () => {
+  const player = createPlayer();
+  player.queue.current = player._buildTrack({
+    title: 'SoundCloud Local',
+    url: 'https://soundcloud.com/artist/demo',
+    duration: '03:21',
+    source: 'soundcloud-direct',
+    requestedBy: 'user-1',
+    soundcloudTrackId: 'sc-demo',
+    isLive: false,
+  });
+
+  assert.equal(player.canSeekCurrentTrack(), true);
+});
+
 test('non-youtube m3u8 urls bypass play-dl validation and use the generic url resolver', async () => {
   const player = createPlayer();
   let resolverCalls = 0;
