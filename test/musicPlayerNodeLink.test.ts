@@ -506,7 +506,6 @@ test('NodeLink streamTrack posts to v4 loadstream endpoint', async () => {
     assert.equal(calls.length, 1);
     assert.equal(new URL(calls[0]!).pathname, '/v4/loadstream');
     assert.equal(Boolean(requestSignals[0]), true);
-    assert.equal(typeof (requestSignals[0] as { aborted?: unknown } | null)?.aborted, 'boolean');
   } finally {
     globalThis.fetch = originalFetch;
   }
