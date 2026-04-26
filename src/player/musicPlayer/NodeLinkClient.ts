@@ -228,6 +228,7 @@ export class NodeLinkClient {
         accept: 'audio/l16',
         'content-type': 'application/json',
       }),
+      signal: AbortSignal.timeout(this.streamStartTimeoutMs),
       body: JSON.stringify({
         encodedTrack,
         volume: options.volume ?? 100,

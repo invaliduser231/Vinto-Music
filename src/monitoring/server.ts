@@ -58,13 +58,18 @@ export class MonitoringServer {
           });
           res.end(body);
         } catch (err) {
+          this.logger?.error?.('Monitoring health check failed', {
+            error: err instanceof Error
+              ? { name: err.name, message: err.message, stack: err.stack }
+              : String(err),
+          });
           res.writeHead(503, {
             'Content-Type': 'application/json; charset=utf-8',
             'Cache-Control': 'no-store',
           });
           res.end(JSON.stringify({
             ok: false,
-            error: err instanceof Error ? err.message : String(err),
+            error: 'Health check failed',
           }));
         }
         return;

@@ -1215,6 +1215,81 @@ test('session snapshot restore re-resolves YouTube tracks when NodeLink is enabl
   ]);
 });
 
+test('session snapshot restore does not treat spoofed youtube hostnames as YouTube tracks for NodeLink re-resolve', async () => {
+  const calls: unknown[][] = [];
+  const manager = createManager({
+    library: {
+      async getSessionSnapshot() {
+        return {
+          state: {
+            playing: true,
+            paused: false,
+            loopMode: 'off',
+            volumePercent: 100,
+            progressSec: 12,
+          },
+          currentTrack: {
+            title: 'Spoofed Host Track',
+            url: 'https://youtube.com.evil.test/watch?v=restore12345',
+            duration: '3:00',
+            source: 'youtube',
+            requestedBy: 'user-1',
+          },
+          pendingTracks: [],
+        };
+      },
+    },
+  });
+  manager._isSnapshotTrackDirectlyPlayable = () => true;
+
+  const session = createSession({
+    guildId: '171717',
+    voiceChannelId: '393939',
+    textChannelId: '616161',
+    stayInVoiceEnabled: true,
+  });
+  session.player = {
+    nodeLinkEnabled: true,
+    nodeLinkClient: { enabled: true },
+    setVolumePercent(value) {
+      calls.push(['volume', value]);
+    },
+    setLoopMode(value) {
+      calls.push(['loop', value]);
+    },
+    async previewTracks(query: string, options: { requestedBy?: string | null }) {
+      calls.push(['preview', query, options.requestedBy]);
+      return [];
+    },
+    createTrackFromData(track) {
+      calls.push(['create', track.title, track.url, track.seekStartSec ?? 0]);
+      return { ...track };
+    },
+    clearQueue() {
+      calls.push(['clear']);
+    },
+    enqueueResolvedTracks(tracks) {
+      calls.push(['enqueue', tracks.map((track) => track.title)]);
+      return tracks;
+    },
+    async play() {
+      calls.push(['play']);
+    },
+  };
+
+  const restored = await manager.restoreSessionSnapshot(session);
+  assert.equal(restored, true);
+  assert.deepEqual(calls, [
+    ['volume', 100],
+    ['loop', 'off'],
+    // A spoofed hostname must not force a NodeLink re-resolve attempt.
+    ['create', 'Spoofed Host Track', 'https://youtube.com.evil.test/watch?v=restore12345', 12],
+    ['clear'],
+    ['enqueue', ['Spoofed Host Track']],
+    ['play'],
+  ]);
+});
+
 test('session snapshot restore clears persisted Deezer full stream URLs so tracks are rehydrated from track id', async () => {
   const calls: unknown[][] = [];
   const manager = createManager({

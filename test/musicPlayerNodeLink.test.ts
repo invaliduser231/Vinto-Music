@@ -92,6 +92,33 @@ test('NodeLink load result mapping skips non-playable YouTube channel URLs', () 
   assert.equal(tracks[0]!.url, 'https://www.youtube.com/watch?v=1NiSbpN-LaI');
 });
 
+test('NodeLink load result mapping does not treat spoofed youtube hostnames as youtube URLs', () => {
+  const player = createPlayer();
+  const result: NodeLinkLoadResult = {
+    loadType: 'search',
+    data: [
+      {
+        encoded: 'encoded-spoofed-host',
+        info: {
+          identifier: 'spoofed-channel',
+          title: 'Spoofed Host Result',
+          author: 'Attacker',
+          length: 0,
+          isSeekable: false,
+          isStream: false,
+          uri: 'https://youtube.com.evil.test/channel/not-real',
+          sourceName: 'youtube',
+        },
+      },
+    ],
+  };
+
+  const tracks = player._nodeLinkLoadResultToTracks(result, 'user-1', 5);
+  assert.equal(tracks.length, 1);
+  assert.equal(tracks[0]!.title, 'Spoofed Host Result');
+  assert.equal(tracks[0]!.url, 'https://youtube.com.evil.test/channel/not-real');
+});
+
 test('NodeLink hard-cutover resolves text search through loadtracks', async () => {
   const calls: Array<{ url: string; authorization: string | null }> = [];
   const originalFetch = globalThis.fetch;
@@ -478,7 +505,8 @@ test('NodeLink streamTrack posts to v4 loadstream endpoint', async () => {
 
     assert.equal(calls.length, 1);
     assert.equal(new URL(calls[0]!).pathname, '/v4/loadstream');
-    assert.equal(requestSignals[0], null);
+    assert.equal(Boolean(requestSignals[0]), true);
+    assert.equal(typeof (requestSignals[0] as { aborted?: unknown } | null)?.aborted, 'boolean');
   } finally {
     globalThis.fetch = originalFetch;
   }

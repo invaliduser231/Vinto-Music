@@ -60,7 +60,8 @@ function isLikelyNonPlayableYouTubeUrl(url: string | null): boolean {
   }
 
   const hostname = parsed.hostname.toLowerCase();
-  if (!hostname.includes('youtube.com')) return false;
+  const isYouTubeHost = hostname === 'youtube.com' || hostname.endsWith('.youtube.com');
+  if (!isYouTubeHost) return false;
   const path = parsed.pathname.toLowerCase();
   if (path === '/watch') return !parsed.searchParams.has('v');
   return (

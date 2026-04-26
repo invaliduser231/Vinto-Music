@@ -45,8 +45,20 @@ function shouldReResolveSnapshotTrackViaNodeLink(
   player: { nodeLinkEnabled?: unknown; nodeLinkClient?: { enabled?: unknown } | null } | null | undefined,
   track: Partial<Track> | null | undefined,
 ) {
-  const url = String(track?.url ?? '').trim().toLowerCase();
-  if (!url.includes('youtube.com/') && !url.includes('youtu.be/')) return false;
+  const rawUrl = String(track?.url ?? '').trim();
+  let hostname = '';
+  try {
+    hostname = new URL(rawUrl).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  const isYouTubeHost = (
+    hostname === 'youtube.com'
+    || hostname.endsWith('.youtube.com')
+    || hostname === 'youtu.be'
+    || hostname.endsWith('.youtu.be')
+  );
+  if (!isYouTubeHost) return false;
   if (String(track?.nodelinkEncodedTrack ?? '').trim()) return false;
   return Boolean(player?.nodeLinkEnabled && player?.nodeLinkClient?.enabled);
 }
