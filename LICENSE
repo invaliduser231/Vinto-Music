@@ -1,62 +1,19 @@
-Vinto Private Use License v1.0
-
-Copyright (c) 2026 invaliduser231
-All rights reserved.
-
-IMPORTANT: This is a source-available license, not an open source license.
-
-1. Definitions
-
-"Software" means this repository, its source code, build artifacts, and related documentation.
-"Licensor" means the copyright holder.
-"You" means any person or legal entity using, copying, or modifying the Software.
-
-2. Limited License Grant
-
-Subject to this License, Licensor grants You a limited, non-exclusive,
-non-transferable, non-sublicensable, revocable license to:
-
-- view and modify the source code; and
-- run the Software only for private, personal, non-commercial use.
-
-3. Prohibited Uses
-
-You may not, without prior explicit written permission from Licensor:
-
-- deploy or operate the Software as a public bot or shared service;
-- run the Software for third parties, communities, customers, or users outside Your private use;
-- use the Software for commercial purposes or for any direct or indirect commercial advantage;
-- sell, license, rent, host, sublicense, distribute, or publish the Software (modified or unmodified);
-- remove or alter copyright, license, or attribution notices.
-
-4. Ownership and Reserved Rights
-
-Licensor retains all rights, title, and interest in and to the Software.
-No rights are granted except those expressly stated in this License.
-Licensor may use, relicense, commercialize, or enforce the Software without restriction.
-
-5. Revocation, Termination, and Takedown
-
-This License is revocable by Licensor at any time, with or without cause, by written notice.
-Your rights under this License terminate immediately if:
-
-- Licensor revokes the License; or
-- You breach any term of this License.
-
-Upon termination, You must immediately stop all use of the Software and, within 72 hours:
-
-- take down and disable all running instances, bots, and deployments;
-- delete all copies under Your control, except copies required by mandatory law; and
-- upon request, confirm completion of takedown/deletion in writing.
-
-6. No Warranty
-
-THE SOFTWARE IS PROVIDED "AS IS" AND "AS AVAILABLE", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE,
-AND NON-INFRINGEMENT.
-
-7. Limitation of Liability
-
-TO THE MAXIMUM EXTENT PERMITTED BY LAW, LICENSOR IS NOT LIABLE FOR ANY CLAIMS,
-DAMAGES, OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT, OR OTHERWISE, ARISING FROM
-OR RELATED TO THE SOFTWARE OR THIS LICENSE.
+Copyright (c) 2026 Rainer Schnittert
+  
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+  
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+  
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
