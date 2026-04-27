@@ -319,7 +319,7 @@ High-level runtime notes are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ## Legal
 
 - Code license: [LICENSE](LICENSE)
-- License model: source-available, private-use-only
+- License model: MIT
 - Operator policy templates: [TERMS.md](TERMS.md), [PRIVACY.md](PRIVACY.md)
 
 If you operate a public instance, you are responsible for complying with platform, provider, privacy, and copyright rules in your jurisdiction.
