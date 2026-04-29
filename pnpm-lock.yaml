@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@livekit/rtc-node':
-        specifier: ^0.13.25
-        version: 0.13.25
+        specifier: ^0.13.27
+        version: 0.13.27
       '@sentry/node':
         specifier: ^10.43.0
         version: 10.47.0
@@ -253,8 +253,8 @@ packages:
     resolution: {integrity: sha512-e01PH3AAS0/oN93LzgLDycDWzLGCpHqvZ35qzSuBWrG7V9mmQpdW/bOc6r9UFGZx/BcUXov4OTtao4OyDVVyHw==}
     engines: {node: '>= 18'}
 
-  '@livekit/rtc-node@0.13.25':
-    resolution: {integrity: sha512-4tL58O2DdTDP+g1ajyP5mgEOzjymD/u06IxWWVKBee1goEwDSQlMqEog/DJW34FoNNqXp1yRMCsphI4V/T1ILg==}
+  '@livekit/rtc-node@0.13.27':
+    resolution: {integrity: sha512-IuP8lG57ceqJ7HyPS6GX7Moaj6jK/OZnm3/QM+NG8fpnoOUOsh4Q+aQ0kWYONgasW1SvUTtMStOkwhM6Au2i9w==}
     engines: {node: '>= 18'}
 
   '@livekit/typed-emitter@3.0.0':
@@ -627,8 +627,8 @@ packages:
     engines: {node: '>=18'}
     hasBin: true
 
-  fast-copy@4.0.2:
-    resolution: {integrity: sha512-ybA6PDXIXOXivLJK/z9e+Otk7ve13I4ckBvGO5I2RRmBU1gMHLVDJYEuJYhGwez7YNlYji2M2DvVU+a9mSFDlw==}
+  fast-copy@4.0.3:
+    resolution: {integrity: sha512-58apWr0GUiDFM8+3afrO6eYwJBn9ZAhDOzG3L+/9llab/haCARS2UIfffmOurYLwbgDRs8n0rfr6qAAPEAuAQw==}
 
   fast-safe-stringify@2.1.1:
     resolution: {integrity: sha512-W+KJc2dmILlPplD/H4K9l9LcAHAfPtP6BY84uVLXQ6Evcz9Lcg33Y2z1IVblT6xdY54PXYVHEv+0Wpq8Io6zkA==}
@@ -1020,7 +1020,7 @@ snapshots:
       '@livekit/rtc-ffi-bindings-linux-x64-gnu': 0.12.52-patch.0
       '@livekit/rtc-ffi-bindings-win32-x64-msvc': 0.12.52-patch.0
 
-  '@livekit/rtc-node@0.13.25':
+  '@livekit/rtc-node@0.13.27':
     dependencies:
       '@datastructures-js/deque': 1.0.8
       '@livekit/mutex': 1.1.1
@@ -1489,7 +1489,7 @@ snapshots:
       '@esbuild/win32-ia32': 0.27.4
       '@esbuild/win32-x64': 0.27.4
 
-  fast-copy@4.0.2: {}
+  fast-copy@4.0.3: {}
 
   fast-safe-stringify@2.1.1: {}
 
@@ -1597,7 +1597,7 @@ snapshots:
     dependencies:
       colorette: 2.0.20
       dateformat: 4.6.3
-      fast-copy: 4.0.2
+      fast-copy: 4.0.3
       fast-safe-stringify: 2.1.1
       help-me: 5.0.0
       joycon: 3.1.1
