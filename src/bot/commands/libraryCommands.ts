@@ -90,10 +90,12 @@ function toTrackLike(track: TrackDataLike | null | undefined): TrackLike {
   };
 }
 
-function formatFavoriteLine(track: TrackDataLike, absoluteIndex: number, trackLabel: (track: TrackLike) => string): string {
+function formatFavoriteLine(track: TrackDataLike, absoluteIndex: number): string {
   const alias = String(track?.alias ?? '').trim();
-  const prefix = alias ? `**${alias}** - ` : '';
-  return `${absoluteIndex}. ${prefix}${trackLabel(toTrackLike(track))}`;
+  const title = String(track?.title ?? '').trim() || 'Unknown title';
+  const duration = String(track?.duration ?? '').trim() || 'Unknown';
+  const value = alias || title;
+  return `${absoluteIndex}. ${value} (${duration})`;
 }
 
 function chunkLines(lines: unknown, maxChars = 1000): string[] {
@@ -690,8 +692,7 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
 
       const lines = result.items.map((track: TrackDataLike, idx: number) => formatFavoriteLine(
         track,
-        (result.page - 1) * result.pageSize + idx + 1,
-        trackLabel
+        (result.page - 1) * result.pageSize + idx + 1
       ));
       const pages = chunkLines(lines, 1000);
       if (pages.length === 1) {

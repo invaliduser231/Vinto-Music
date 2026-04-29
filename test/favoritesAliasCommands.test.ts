@@ -176,7 +176,38 @@ test('favs command shows alias in favorites list', async () => {
 
   await execute(context);
 
-  assert.ok(replyCalls.some((entry) => entry.includes('**Roadtrip Mix** - **Track One** (3:00)')));
+  assert.ok(replyCalls.some((entry) => entry.includes('1. Roadtrip Mix (3:00)')));
+});
+
+test('favs command falls back to song title when alias is missing', async () => {
+  const registry = buildRegistry();
+  const command = registry.resolve('favs');
+  const execute = command?.execute as Execute | undefined;
+  assert.ok(execute);
+
+  const { context, replyCalls } = createBaseContext({
+    library: {
+      async listUserFavorites() {
+        return {
+          items: [{
+            title: 'Fernweh',
+            url: 'https://example.com/track-1',
+            duration: '2:48',
+            source: 'youtube',
+            requestedBy: '123456',
+          }],
+          page: 1,
+          pageSize: 10,
+          total: 1,
+          totalPages: 1,
+        };
+      },
+    },
+  });
+
+  await execute(context);
+
+  assert.ok(replyCalls.some((entry) => entry.includes('1. Fernweh (2:48)')));
 });
 
 test('favplay accepts alias selector', async () => {
