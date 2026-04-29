@@ -355,6 +355,70 @@ test('NodeLink all routing mode bypasses NodeLink for direct audio file urls', a
   assert.equal(tracks[0]!.source, 'http-audio');
 });
 
+test('NodeLink all routing mode bypasses NodeLink for generic radio stream urls without file extension', async () => {
+  const player = createPlayer({ nodeLinkRoutingMode: 'all' });
+  let nodeLinkCalled = false;
+  player.nodeLinkClient = {
+    enabled: true,
+    loadTracks: async () => {
+      nodeLinkCalled = true;
+      return {
+        loadType: 'search',
+        data: [nodeLinkTrack('Unexpected', 'encoded-unexpected', 'http')],
+      } as NodeLinkLoadResult;
+    },
+  } as unknown as MusicPlayer['nodeLinkClient'];
+  player.sources.resolver.normalizeInputUrl = async (url: unknown) => String(url ?? '');
+  player.sources.resolver.resolveSingleUrlTrack = async (url: string, requestedBy: string | null) => [
+    player.createTrackFromData({
+      title: 'Radio Los Santos',
+      url,
+      duration: 'Live',
+      source: 'radio-stream',
+      isLive: true,
+      requestedBy,
+    }, requestedBy),
+  ];
+
+  const tracks = await player.previewTracks(
+    'https://audio.gtaradio.net/sa/radio-los-santos',
+    { requestedBy: 'user-1', limit: 1 },
+  );
+
+  assert.equal(nodeLinkCalled, false);
+  assert.equal(tracks.length, 1);
+  assert.equal(tracks[0]!.source, 'radio-stream');
+  assert.equal(tracks[0]!.isLive, true);
+});
+
+test('createTrackFromData normalizes stale youtube favorite source for live direct stream urls', () => {
+  const player = createPlayer();
+
+  const track = player.createTrackFromData({
+    title: 'Favorite Stream',
+    url: 'https://audio.gtaradio.net/sa/radio-los-santos',
+    duration: 'Live',
+    source: 'youtube',
+  }, 'user-1');
+
+  assert.equal(track.source, 'radio-stream');
+  assert.equal(track.isLive, true);
+});
+
+test('createTrackFromData normalizes stale http favorite source for direct audio files', () => {
+  const player = createPlayer();
+
+  const track = player.createTrackFromData({
+    title: 'Favorite File',
+    url: 'https://cdn.vinto.test/audio/demo.mp3',
+    duration: '3:00',
+    source: 'http',
+  }, 'user-1');
+
+  assert.equal(track.source, 'http-audio');
+  assert.equal(track.isLive, false);
+});
+
 test('NodeLink youtube-only routing mode bypasses NodeLink for text search', async () => {
   const player = createPlayer({ nodeLinkRoutingMode: 'youtube-only' });
   let nodeLinkCalled = false;
@@ -579,6 +643,50 @@ test('NodeLink stream failure falls back to local YouTube pipeline', async () =>
 
   assert.equal(localPipelineStarted, true);
   assert.equal(player.playing, true);
+
+  player.stop();
+});
+
+test('NodeLink stream failure falls back to Spotify mirror playback', async () => {
+  const player = createPlayer();
+  const ffmpeg = {
+    stdout: { pipe() {} },
+    once() {},
+    stderr: null,
+  } as unknown as NonNullable<MusicPlayer['ffmpeg']>;
+
+  const fallbackCalls: Array<[string | undefined, string | undefined]> = [];
+  let mirrorCalls = 0;
+  player._startNodeLinkStream = async () => {
+    throw new Error('NodeLink stream failed (500): {"message":"Unknown error"}');
+  };
+  player._resolveSpotifyMirror = async () => {
+    mirrorCalls += 1;
+    return [player.createTrackFromData({
+      title: 'Mirror Track',
+      url: 'https://example.com/mirror',
+      duration: '3:10',
+      source: 'soundcloud',
+    })];
+  };
+  player.sources.soundcloud.startPipeline = async (track: Track) => {
+    fallbackCalls.push([track.title, track.source]);
+    player.ffmpeg = ffmpeg;
+  };
+  player._awaitInitialPlaybackChunk = async () => {};
+
+  player.enqueueResolvedTracks([player.createTrackFromData({
+    title: 'Rote Flaggen',
+    url: 'https://open.spotify.com/track/7bkUa9kDFGxgCC7d36dzFI?explicit=true',
+    duration: '3:00',
+    source: 'spotify',
+    nodelinkEncodedTrack: 'encoded-spotify',
+  })]);
+
+  await player.play();
+
+  assert.equal(mirrorCalls, 1);
+  assert.deepEqual(fallbackCalls, [['Mirror Track', 'soundcloud']]);
 
   player.stop();
 });

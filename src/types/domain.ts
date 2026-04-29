@@ -230,6 +230,7 @@ export interface SessionManagerOptions {
   logger?: LoggerLike | null | undefined;
   guildConfigs?: GuildConfigStoreLike | null;
   library?: LibraryStoreLike | null;
+  earrapeProfiles?: EarrapeProfileStoreLike | null;
   rest?: RestAdapterLike | null;
   voiceStateStore?: VoiceStateStoreLike | null;
   botUserId?: string | null;
@@ -258,6 +259,29 @@ export interface LibraryStoreLike {
   getSessionSnapshot?: (guildId: string, voiceChannelId: string) => Promise<unknown>;
   getVoiceProfile?: (guildId: string, voiceChannelId: string) => Promise<VoiceProfileDocument | null>;
   getGuildFeatureConfig?: (guildId: string) => Promise<GuildFeatureConfigDocument | null>;
+}
+
+export interface EarrapeProfileSnapshot {
+  offenseScore: number;
+  offenseEvents: number[];
+  offenseEventCount: number;
+  lastOffenseAtMs: number | null;
+  calmRmsBaseline: number | null;
+}
+
+export interface EarrapeProfileUpdate {
+  offenseDetected?: boolean;
+  calmRmsSample?: number | null;
+}
+
+export interface EarrapeProfileStoreLike {
+  getProfile: (guildId: string, userId: string, nowMs?: number) => Promise<EarrapeProfileSnapshot>;
+  updateProfile: (
+    guildId: string,
+    userId: string,
+    update: EarrapeProfileUpdate,
+    nowMs?: number
+  ) => Promise<EarrapeProfileSnapshot>;
 }
 
 export interface RestAdapterLike {

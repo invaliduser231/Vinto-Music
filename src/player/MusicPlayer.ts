@@ -55,6 +55,7 @@ import {
   getYouTubePlaylistId,
   isDeezerUrl,
   isHttpUrl,
+  isSpotifyUrl,
   isYouTubeUrl,
   normalizeThumbnailUrl,
   pickArtistName,
@@ -305,6 +306,7 @@ export class MusicPlayer extends EventEmitter {
   declare _resolveSpotifyCollection: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
   declare _resolveSpotifyArtist: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
   declare _resolveSpotifyByGuess: BivariantCallback<[string, (string | null | undefined)?, (number | null | undefined)?], Promise<Track[]>>;
+  declare _resolveSpotifyMirror: BivariantCallback<[Partial<Track> | null | undefined, (string | null | undefined)?], Promise<Track[]>>;
   declare _spotifyApiRequest: (pathname: string, query?: Record<string, unknown>) => Promise<unknown>;
   declare _resolveTidalTrack: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
   declare _resolveTidalCollection: BivariantCallback<[string, (string | null | undefined)?, (number | null | undefined)?], Promise<Track[]>>;
@@ -807,7 +809,7 @@ export class MusicPlayer extends EventEmitter {
     const startupHint = this.nextPlaybackStartupHint;
     this.nextPlaybackStartupHint = null;
 
-    const track = this.queue.next();
+    let track = this.queue.next();
     if (!track) {
       this._clearNextTrackPrefetch();
       this._cleanupRuntimeYtDlpCookiesFile();
@@ -825,11 +827,12 @@ export class MusicPlayer extends EventEmitter {
     let onFfmpegStartupStderr = null;
     let ffmpegProc = null;
     let initialPlaybackChunkTimeoutMs: number | null = null;
+    let retryStartupTrack: Track | null = null;
     this.activeSourceProcessCloseInfo = null;
 
     try {
       this._ensurePlaybackStartupActive(startupToken);
-      const trackUrl = String(track.url ?? '').trim();
+      let trackUrl = String(track.url ?? '').trim();
       if (!trackUrl) {
         throw new ValidationError('Track is missing a playable URL.');
       }
@@ -849,6 +852,36 @@ export class MusicPlayer extends EventEmitter {
             url: trackUrl,
             error: nodeLinkErr instanceof Error ? nodeLinkErr.message : String(nodeLinkErr),
           });
+
+          if (String(track.source ?? '').startsWith('spotify') || isSpotifyUrl(trackUrl)) {
+            const requestedBy = String(track.requestedBy ?? '').trim() || null;
+            const spotifyFallbackTracksResult = await this._resolveSpotifyMirror(track, requestedBy).catch((fallbackErr: unknown): Track[] => {
+              this.logger?.warn?.('Spotify fallback resolution failed after NodeLink startup failure', {
+                title: track.title,
+                url: trackUrl,
+                error: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr),
+              });
+              return [];
+            });
+            const spotifyFallbackTracks = Array.isArray(spotifyFallbackTracksResult)
+              ? spotifyFallbackTracksResult.filter((candidate): candidate is Track => Boolean(candidate && typeof candidate === 'object'))
+              : [];
+            const spotifyFallbackTrack = spotifyFallbackTracks[0] ?? null;
+            if (spotifyFallbackTrack) {
+              retryStartupTrack = this._cloneTrack(spotifyFallbackTrack, {
+                seekStartSec: track.seekStartSec ?? 0,
+              });
+              (retryStartupTrack as Track & { startupRetryCount?: number }).startupRetryCount = 1;
+              this.logger?.warn?.('Retrying Spotify playback after NodeLink startup failure', {
+                title: track.title,
+                url: trackUrl,
+                fallbackSource: retryStartupTrack.source ?? null,
+              });
+              track = retryStartupTrack;
+              trackUrl = String(track.url ?? '').trim() || trackUrl;
+              this._cleanupProcesses();
+            }
+          }
           this._cleanupProcesses();
         }
       }
@@ -955,7 +988,6 @@ export class MusicPlayer extends EventEmitter {
     } catch (err) {
       const startupAborted = this._isPlaybackStartupAbortedError(err);
       let normalizedMessage = '';
-      let retryStartupTrack: Track | null = null;
       if (!startupAborted) {
         const normalized = this._normalizePlaybackError(this._withStartupStderr(err, ffmpegStartupStderr));
         normalizedMessage = String(normalized?.message ?? '').toLowerCase();

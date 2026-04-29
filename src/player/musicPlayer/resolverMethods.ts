@@ -56,6 +56,21 @@ function getNodeLinkRoutingMode(value: unknown): 'smart' | 'all' | 'youtube-only
 function shouldBypassNodeLinkForDirectStreamUrl(url: string, routingMode: 'smart' | 'all' | 'youtube-only') {
   if (routingMode !== 'all') return false;
   if (isYouTubeUrl(url)) return false;
+  if (
+    !isSoundCloudUrl(url)
+    && !isSpotifyUrl(url)
+    && !isDeezerUrl(url)
+    && !isTidalUrl(url)
+    && !isBandcampUrl(url)
+    && !isAudiomackUrl(url)
+    && !isMixcloudUrl(url)
+    && !isJioSaavnUrl(url)
+    && !isAmazonMusicUrl(url)
+    && !isAppleMusicUrl(url)
+    && !isAudiusUrl(url)
+  ) {
+    return true;
+  }
   return isLikelyDirectAudioFileUrl(url) || isLikelyPlaylistUrl(url);
 }
 
@@ -312,15 +327,54 @@ export const resolverMethods: LooseMethodMap = {
       ?? data?.thumbnail
       ?? pickThumbnailUrlFromItem(data)
     );
+    const normalizedUrl = String(data?.url ?? '').trim();
+    const rawSource = String(data?.source ?? 'stored').trim();
+    const normalizedSource = rawSource.toLowerCase();
+    const explicitIsLive = data?.isLive ?? data?.is_live ?? false;
+    const inferredIsLive =
+      explicitIsLive === true
+      || String(data?.duration ?? '').trim().toLowerCase() === 'live';
+
+    let effectiveSource = rawSource || 'stored';
+    if (isHttpUrl(normalizedUrl) && !isYouTubeUrl(normalizedUrl)) {
+      const isKnownProviderUrl = (
+        isSoundCloudUrl(normalizedUrl)
+        || isSpotifyUrl(normalizedUrl)
+        || isDeezerUrl(normalizedUrl)
+        || isTidalUrl(normalizedUrl)
+        || isBandcampUrl(normalizedUrl)
+        || isAudiomackUrl(normalizedUrl)
+        || isMixcloudUrl(normalizedUrl)
+        || isJioSaavnUrl(normalizedUrl)
+        || isAmazonMusicUrl(normalizedUrl)
+        || isAppleMusicUrl(normalizedUrl)
+        || isAudiusUrl(normalizedUrl)
+      );
+
+      if (
+        !isKnownProviderUrl
+        && (
+          normalizedSource === 'http'
+          || normalizedSource === 'youtube'
+          || normalizedSource === 'ytmusic'
+          || normalizedSource === 'stored'
+          || normalizedSource === 'url'
+        )
+      ) {
+        effectiveSource = inferredIsLive || isLikelyPlaylistUrl(normalizedUrl)
+          ? 'radio-stream'
+          : 'http-audio';
+      }
+    }
 
     return this._buildTrack({
       title: data?.title,
-      url: data?.url,
+      url: normalizedUrl,
       duration: data?.duration,
       metadataDeferred: data?.metadataDeferred ?? false,
       thumbnailUrl: normalizedThumbnailUrl,
       requestedBy: requestedBy ?? data?.requestedBy ?? null,
-      source: data?.source ?? 'stored',
+      source: effectiveSource,
       artist: data?.artist ?? data?.artist_name ?? pickTrackArtistFromMetadata(data),
       soundcloudTrackId: data?.soundcloudTrackId ?? data?.soundcloud_track_id ?? null,
       audiusTrackId: data?.audiusTrackId ?? data?.audius_track_id ?? null,
@@ -333,7 +387,7 @@ export const resolverMethods: LooseMethodMap = {
       nodelinkEncodedTrack: data?.nodelinkEncodedTrack ?? data?.nodelink_encoded_track ?? null,
       nodelinkInfo: data?.nodelinkInfo ?? data?.nodelink_info ?? null,
       isPreview: data?.isPreview ?? data?.is_preview ?? false,
-      isLive: data?.isLive ?? data?.is_live ?? false,
+      isLive: inferredIsLive,
       seekStartSec: data?.seekStartSec ?? data?.seek_start_sec ?? 0,
     });
   },

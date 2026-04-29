@@ -36,27 +36,78 @@ test('earrape protection toggles the gateway self_deaf voice state for active se
   ]);
 });
 
-test('earrape peak ingestion requires consecutive frames and enforces cooldown', () => {
+test('earrape detector ignores isolated high-crest pop bursts', () => {
   const connection = new VoiceConnection(createGateway() as never, 'guild-1', { logger: null });
+  const state = connection._ensureParticipantAudioState('user-1');
+  state.joinedAtMs = 0;
+  state.profileLoaded = true;
+  state.baselineRms = 0.08;
+  state.baselineFrames = 120;
 
-  assert.equal(connection._ingestParticipantPeak('user-1', 0.39, 0), false);
-  assert.equal(connection._ingestParticipantPeak('user-1', 0.40, 20), false);
-  assert.equal(connection._ingestParticipantPeak('user-1', 0.41, 40), false);
-  assert.equal(connection._ingestParticipantPeak('user-1', 0.42, 60), true);
+  const popLikeFrame = {
+    peak: 1.0,
+    rms: 0.09,
+    clippedSampleRatio: 0.01,
+    crestFactor: 11.1,
+  };
 
-  assert.equal(connection._ingestParticipantPeak('user-1', 0.10, 200), false);
-  assert.equal(connection._ingestParticipantPeak('user-1', 0.10, 320), false);
-  assert.equal(connection._ingestParticipantPeak('user-1', 0.10, 540), false);
+  for (let i = 0; i < 12; i += 1) {
+    const triggered = connection._ingestParticipantFrame('user-1', popLikeFrame, 2_000 + (i * 20));
+    assert.equal(triggered, null);
+  }
+});
 
-  assert.equal(connection._ingestParticipantPeak('user-1', 0.45, 600), false);
-  assert.equal(connection._ingestParticipantPeak('user-1', 0.45, 620), false);
-  assert.equal(connection._ingestParticipantPeak('user-1', 0.45, 640), false);
-  assert.equal(connection._ingestParticipantPeak('user-1', 0.45, 660), false);
+test('earrape detector triggers on sustained clipped loud audio and enforces cooldown', () => {
+  const connection = new VoiceConnection(createGateway() as never, 'guild-1', { logger: null });
+  const state = connection._ensureParticipantAudioState('user-1');
+  state.joinedAtMs = 0;
+  state.profileLoaded = true;
+  state.baselineRms = 0.07;
+  state.baselineFrames = 120;
 
-  assert.equal(connection._ingestParticipantPeak('user-1', 0.46, 2_600), false);
-  assert.equal(connection._ingestParticipantPeak('user-1', 0.46, 2_620), false);
-  assert.equal(connection._ingestParticipantPeak('user-1', 0.46, 2_640), false);
-  assert.equal(connection._ingestParticipantPeak('user-1', 0.46, 2_660), true);
+  const abusiveFrame = {
+    peak: 0.99,
+    rms: 0.62,
+    clippedSampleRatio: 0.26,
+    crestFactor: 1.6,
+  };
+
+  let firstTriggerAt: number | null = null;
+  for (let i = 0; i < 40; i += 1) {
+    const nowMs = 3_000 + (i * 20);
+    const triggered = connection._ingestParticipantFrame('user-1', abusiveFrame, nowMs);
+    if (triggered) {
+      firstTriggerAt = nowMs;
+      break;
+    }
+  }
+
+  assert.ok(firstTriggerAt != null);
+
+  const immediateRetry = connection._ingestParticipantFrame('user-1', abusiveFrame, (firstTriggerAt ?? 0) + 60);
+  assert.equal(immediateRetry, null);
+
+  const calmFrame = {
+    peak: 0.06,
+    rms: 0.03,
+    clippedSampleRatio: 0,
+    crestFactor: 2,
+  };
+  for (let i = 0; i < 24; i += 1) {
+    connection._ingestParticipantFrame('user-1', calmFrame, (firstTriggerAt ?? 0) + 500 + (i * 20));
+  }
+
+  let secondTriggerAt: number | null = null;
+  for (let i = 0; i < 60; i += 1) {
+    const nowMs = (firstTriggerAt ?? 0) + 3_300 + (i * 20);
+    const triggered = connection._ingestParticipantFrame('user-1', abusiveFrame, nowMs);
+    if (triggered) {
+      secondTriggerAt = nowMs;
+      break;
+    }
+  }
+
+  assert.ok(secondTriggerAt != null);
 });
 
 test('earrape frame peak calculation normalizes int16 PCM values', () => {

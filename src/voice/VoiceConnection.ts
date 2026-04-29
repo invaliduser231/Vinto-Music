@@ -9,6 +9,7 @@ import {
   TrackPublishOptions,
   TrackSource,
 } from '@livekit/rtc-node';
+import type { EarrapeProfileSnapshot, EarrapeProfileStoreLike } from '../types/domain.ts';
 
 const SAMPLE_RATE = 48_000;
 const CHANNELS = 2;
@@ -23,12 +24,30 @@ const MAX_QUEUE_MS = 1200;
 const STARTUP_PREFILL_MS = 240;
 const CONCEALMENT_MAX_FRAMES = 12;
 const PUMP_IDLE_WAIT_MS = 5;
-const EARRAPE_PEAK_THRESHOLD = 0.38;
-const EARRAPE_CONSEC_FRAMES = 4;
-const EARRAPE_MUTE_HOLD_MS = 250;
-const EARRAPE_RECOVERY_DELAY_MS = 200;
-const EARRAPE_CALM_THRESHOLD = 0.2;
-const EARRAPE_DISCONNECT_COOLDOWN_MS = 2_500;
+const EARRAPE_WARMUP_MS = 1_100;
+const EARRAPE_CONFIDENCE_TRIGGER = 1.1;
+const EARRAPE_CONFIDENCE_MAX = 2.5;
+const EARRAPE_CONFIDENCE_DECAY_ACTIVE = 0.06;
+const EARRAPE_CONFIDENCE_DECAY_CALM = 0.18;
+const EARRAPE_SUSTAIN_MIN_MS = 140;
+const EARRAPE_SUSTAIN_RMS_MIN = 0.36;
+const EARRAPE_RMS_HARD = 0.5;
+const EARRAPE_BURST_PEAK_THRESHOLD = 0.95;
+const EARRAPE_BURST_RMS_MIN = 0.26;
+const EARRAPE_BURST_WINDOW_MS = 1_600;
+const EARRAPE_BURST_TRIGGER_COUNT = 3;
+const EARRAPE_CLIP_HIGH_RATIO = 0.08;
+const EARRAPE_CLIP_SEVERE_RATIO = 0.2;
+const EARRAPE_CREST_POP_THRESHOLD = 5.3;
+const EARRAPE_BASELINE_ALPHA = 0.04;
+const EARRAPE_BASELINE_CAPTURE_RMS_MAX = 0.3;
+const EARRAPE_BASELINE_DELTA_TRIGGER = 0.18;
+const EARRAPE_CALM_RMS_THRESHOLD = 0.18;
+const EARRAPE_CALM_PEAK_THRESHOLD = 0.32;
+const EARRAPE_MUTE_HOLD_MS = 300;
+const EARRAPE_RECOVERY_DELAY_MS = 300;
+const EARRAPE_DISCONNECT_COOLDOWN_MS = 3_000;
+const EARRAPE_PROFILE_SYNC_INTERVAL_MS = 75_000;
 
 type VoiceConnectionOptions = {
   logger?: {
@@ -42,6 +61,7 @@ type VoiceConnectionOptions = {
   earrapeProtectionEnabled?: boolean;
   botUserId?: string | null;
   onEarrapeDetected?: EarrapeDetectionHandler | null;
+  earrapeProfileStore?: EarrapeProfileStoreLike | null;
 };
 
 type VoiceServerUpdate = {
@@ -62,14 +82,42 @@ type RemoteParticipantLike = {
 };
 
 type EarrapeParticipantState = {
-  hitCount: number;
+  joinedAtMs: number;
+  lastSeenAtMs: number;
+  sustainSinceMs: number | null;
+  lastBurstAtMs: number;
+  burstCount: number;
+  confidence: number;
   mutedSinceMs: number | null;
   calmSinceMs: number | null;
   lastDisconnectAtMs: number;
+  baselineRms: number | null;
+  baselineFrames: number;
+  offenseScore: number;
+  profileLoaded: boolean;
+  lastProfileSyncAtMs: number;
 };
 
 type AudioFrameLike = {
   data?: unknown;
+};
+
+type EarrapeFrameMetrics = {
+  peak: number;
+  rms: number;
+  clippedSampleRatio: number;
+  crestFactor: number;
+};
+
+type EarrapeTriggerDecision = {
+  peak: number;
+  rms: number;
+  clippedSampleRatio: number;
+  crestFactor: number;
+  sustainMs: number;
+  confidence: number;
+  baselineRms: number | null;
+  offenseScore: number;
 };
 
 export type EarrapeDetectionEvent = {
@@ -77,6 +125,13 @@ export type EarrapeDetectionEvent = {
   channelId: string | null;
   participantId: string;
   peak: number;
+  rms?: number;
+  clippedSampleRatio?: number;
+  crestFactor?: number;
+  sustainMs?: number;
+  confidence?: number;
+  baselineRms?: number | null;
+  offenseScore?: number;
   threshold: number;
 };
 
@@ -151,6 +206,7 @@ export class VoiceConnection {
   onEarrapeDetected: EarrapeDetectionHandler | null;
   remoteAudioMonitorToken: number;
   participantAudioStates: Map<string, EarrapeParticipantState>;
+  earrapeProfileStore: EarrapeProfileStoreLike | null;
   constructor(gateway: GatewayLike, guildId: string, options: VoiceConnectionOptions = {}) {
     this.gateway = gateway;
     this.guildId = guildId;
@@ -179,6 +235,7 @@ export class VoiceConnection {
     this.earrapeProtectionEnabled = options.earrapeProtectionEnabled === true;
     this.botUserId = String(options.botUserId ?? '').trim() || null;
     this.onEarrapeDetected = options.onEarrapeDetected ?? null;
+    this.earrapeProfileStore = options.earrapeProfileStore ?? null;
     this.remoteAudioMonitorToken = 0;
     this.participantAudioStates = new Map();
   }
@@ -350,6 +407,12 @@ export class VoiceConnection {
     this.roomTrackUnsubscribedListener = (_track, _publication, participant) => {
       const participantId = this._normalizeParticipantId(participant);
       if (!participantId) return;
+      const state = this.participantAudioStates.get(participantId) ?? null;
+      if (state) {
+        this._syncParticipantProfile(participantId, state, {
+          calmRmsSample: state.baselineRms,
+        }, Date.now(), false);
+      }
       this.participantAudioStates.delete(participantId);
     };
 
@@ -443,6 +506,12 @@ export class VoiceConnection {
   }
 
   _resetEarrapeStates() {
+    const nowMs = Date.now();
+    for (const [participantId, state] of this.participantAudioStates.entries()) {
+      this._syncParticipantProfile(participantId, state, {
+        calmRmsSample: state.baselineRms,
+      }, nowMs, false);
+    }
     this.participantAudioStates.clear();
   }
 
@@ -463,33 +532,66 @@ export class VoiceConnection {
     if (!participantId) return;
     if (this.botUserId && participantId === this.botUserId) return;
 
+    const state = this._ensureParticipantAudioState(participantId);
+    await this._hydrateParticipantProfile(participantId, state).catch(() => null);
+
     const monitorToken = this.remoteAudioMonitorToken;
     const stream = new AudioStream(track as ConstructorParameters<typeof AudioStream>[0]);
     for await (const frame of stream) {
       if (monitorToken !== this.remoteAudioMonitorToken) break;
       // Keep ingestion lightweight while protection is disabled, then resume from a clean state.
       if (!this.earrapeProtectionEnabled) {
+        const profileState = this.participantAudioStates.get(participantId) ?? null;
+        if (profileState) {
+          this._syncParticipantProfile(participantId, profileState, {
+            calmRmsSample: profileState.baselineRms,
+          }, Date.now(), false);
+        }
         this.participantAudioStates.delete(participantId);
         continue;
       }
 
-      const peak = this._computeFramePeak(frame);
-      const triggered = this._ingestParticipantPeak(participantId, peak);
-      if (!triggered) continue;
-      await this._emitEarrapeDetection(participantId, peak);
+      const metrics = this._computeFrameMetrics(frame);
+      const decision = this._ingestParticipantFrame(participantId, metrics);
+      if (!decision) continue;
+      await this._emitEarrapeDetection(participantId, decision);
     }
   }
 
   _computeFramePeak(frame: AudioFrameLike | null | undefined): number {
+    return this._computeFrameMetrics(frame).peak;
+  }
+
+  _computeFrameMetrics(frame: AudioFrameLike | null | undefined): EarrapeFrameMetrics {
     const samples = this._toInt16Samples(frame?.data);
-    if (!samples || samples.length === 0) return 0;
+    if (!samples || samples.length === 0) {
+      return {
+        peak: 0,
+        rms: 0,
+        clippedSampleRatio: 0,
+        crestFactor: 0,
+      };
+    }
 
     let max = 0;
+    let sumSquares = 0;
+    let clippedSamples = 0;
     for (let i = 0; i < samples.length; i += 1) {
       const normalized = Math.abs(samples[i] ?? 0) / 32_767;
       if (normalized > max) max = normalized;
+      sumSquares += normalized * normalized;
+      if (normalized >= 0.985) clippedSamples += 1;
     }
-    return max;
+
+    const rms = Math.sqrt(sumSquares / samples.length);
+    const clippedSampleRatio = clippedSamples / samples.length;
+    const crestFactor = rms > 0 ? max / rms : 0;
+    return {
+      peak: max,
+      rms,
+      clippedSampleRatio,
+      crestFactor,
+    };
   }
 
   _toInt16Samples(value: unknown): Int16Array | null {
@@ -528,74 +630,256 @@ export class VoiceConnection {
     const existing = this.participantAudioStates.get(participantId);
     if (existing) return existing;
 
+    const nowMs = Date.now();
     const created: EarrapeParticipantState = {
-      hitCount: 0,
+      joinedAtMs: nowMs,
+      lastSeenAtMs: nowMs,
+      sustainSinceMs: null,
+      lastBurstAtMs: -EARRAPE_BURST_WINDOW_MS,
+      burstCount: 0,
+      confidence: 0,
       mutedSinceMs: null,
       calmSinceMs: null,
       lastDisconnectAtMs: -EARRAPE_DISCONNECT_COOLDOWN_MS,
+      baselineRms: null,
+      baselineFrames: 0,
+      offenseScore: 0,
+      profileLoaded: false,
+      lastProfileSyncAtMs: 0,
     };
     this.participantAudioStates.set(participantId, created);
     return created;
   }
 
+  async _hydrateParticipantProfile(participantId: string, state: EarrapeParticipantState, nowMs = Date.now()) {
+    if (!this.earrapeProfileStore || state.profileLoaded) return;
+    const profile = await this.earrapeProfileStore.getProfile(this.guildId, participantId, nowMs);
+    state.offenseScore = Math.max(0, Number(profile?.offenseScore ?? 0));
+    if (profile?.calmRmsBaseline != null) {
+      state.baselineRms = Math.max(0, Math.min(1, Number(profile.calmRmsBaseline)));
+      state.baselineFrames = Math.max(state.baselineFrames, 100);
+    }
+    state.profileLoaded = true;
+  }
+
+  _syncParticipantProfile(
+    participantId: string,
+    state: EarrapeParticipantState,
+    update: { offenseDetected?: boolean; calmRmsSample?: number | null },
+    nowMs = Date.now(),
+    wait = false
+  ) {
+    if (!this.earrapeProfileStore) return Promise.resolve(null);
+    const hasOffense = update.offenseDetected === true;
+    const calmSample = Number(update.calmRmsSample);
+    const hasCalmSample = Number.isFinite(calmSample);
+    if (!hasOffense && !hasCalmSample) return Promise.resolve(null);
+
+    const shouldSyncCalmOnly = update.offenseDetected !== true;
+    if (
+      shouldSyncCalmOnly
+      && state.lastProfileSyncAtMs > 0
+      && (nowMs - state.lastProfileSyncAtMs) < EARRAPE_PROFILE_SYNC_INTERVAL_MS
+    ) {
+      return Promise.resolve(null);
+    }
+
+    state.lastProfileSyncAtMs = nowMs;
+    const promise = this.earrapeProfileStore
+      .updateProfile(this.guildId, participantId, update, nowMs)
+      .then((profile: EarrapeProfileSnapshot) => {
+        state.offenseScore = Math.max(0, Number(profile.offenseScore ?? state.offenseScore ?? 0));
+        if (profile.calmRmsBaseline != null) {
+          state.baselineRms = Math.max(0, Math.min(1, Number(profile.calmRmsBaseline)));
+        }
+        return profile;
+      })
+      .catch((err: unknown) => {
+        this.logger?.debug?.('Failed to sync earrape participant profile', {
+          guildId: this.guildId,
+          participantId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return null;
+      });
+
+    return wait ? promise : Promise.resolve(null);
+  }
+
+  _updateAdaptiveBaseline(state: EarrapeParticipantState, rms: number) {
+    if (!Number.isFinite(rms)) return;
+    if (rms > EARRAPE_BASELINE_CAPTURE_RMS_MAX) return;
+
+    if (state.baselineRms == null) {
+      state.baselineRms = rms;
+      state.baselineFrames = 1;
+      return;
+    }
+
+    const alpha = state.baselineFrames < 60 ? 0.14 : EARRAPE_BASELINE_ALPHA;
+    state.baselineRms = (state.baselineRms * (1 - alpha)) + (rms * alpha);
+    state.baselineFrames += 1;
+  }
+
   _ingestParticipantPeak(participantId: string, peak: number, nowMs = Date.now()): boolean {
+    const metrics: EarrapeFrameMetrics = {
+      peak,
+      rms: peak,
+      clippedSampleRatio: peak >= 0.985 ? 1 : 0,
+      crestFactor: 1,
+    };
+    return Boolean(this._ingestParticipantFrame(participantId, metrics, nowMs));
+  }
+
+  _ingestParticipantFrame(
+    participantId: string,
+    metrics: EarrapeFrameMetrics,
+    nowMs = Date.now()
+  ): EarrapeTriggerDecision | null {
     const safeParticipantId = String(participantId ?? '').trim();
-    if (!safeParticipantId) return false;
+    if (!safeParticipantId) return null;
     const state = this._ensureParticipantAudioState(safeParticipantId);
+    state.lastSeenAtMs = nowMs;
+    this._updateAdaptiveBaseline(state, metrics.rms);
+
+    if ((nowMs - state.joinedAtMs) < EARRAPE_WARMUP_MS) {
+      return null;
+    }
 
     if (state.mutedSinceMs != null) {
       // After a trigger we wait for a short hold window, then require calm audio before re-arming.
       const holdElapsed = nowMs - state.mutedSinceMs;
-      if (holdElapsed < EARRAPE_MUTE_HOLD_MS) return false;
+      if (holdElapsed < EARRAPE_MUTE_HOLD_MS) return null;
 
-      if (peak < EARRAPE_CALM_THRESHOLD) {
+      if (metrics.rms < EARRAPE_CALM_RMS_THRESHOLD && metrics.peak < EARRAPE_CALM_PEAK_THRESHOLD) {
         if (state.calmSinceMs == null) {
           state.calmSinceMs = nowMs;
-          return false;
+          return null;
         }
         if ((nowMs - state.calmSinceMs) >= EARRAPE_RECOVERY_DELAY_MS) {
           state.mutedSinceMs = null;
           state.calmSinceMs = null;
-          state.hitCount = 0;
+          state.confidence = Math.max(0, state.confidence * 0.4);
+          state.sustainSinceMs = null;
+          state.burstCount = 0;
         }
-        return false;
+        return null;
       }
 
       state.calmSinceMs = null;
-      return false;
+      return null;
     }
 
-    if (peak >= EARRAPE_PEAK_THRESHOLD) {
-      state.hitCount += 1;
+    const baselineRms = state.baselineRms ?? 0.09;
+    const baselineTriggerRms = Math.max(EARRAPE_SUSTAIN_RMS_MIN, baselineRms + EARRAPE_BASELINE_DELTA_TRIGGER);
+    const isLoudFrame = metrics.rms >= baselineTriggerRms || metrics.clippedSampleRatio >= EARRAPE_CLIP_HIGH_RATIO;
+
+    if (isLoudFrame) {
+      if (state.sustainSinceMs == null) state.sustainSinceMs = nowMs;
     } else {
-      state.hitCount = 0;
-      return false;
+      state.sustainSinceMs = null;
+    }
+    const sustainMs = state.sustainSinceMs == null ? 0 : Math.max(FRAME_DURATION_MS, (nowMs - state.sustainSinceMs) + FRAME_DURATION_MS);
+
+    if (metrics.peak >= EARRAPE_BURST_PEAK_THRESHOLD && metrics.rms >= EARRAPE_BURST_RMS_MIN) {
+      if ((nowMs - state.lastBurstAtMs) > EARRAPE_BURST_WINDOW_MS) {
+        state.burstCount = 1;
+      } else {
+        state.burstCount += 1;
+      }
+      state.lastBurstAtMs = nowMs;
+    } else if ((nowMs - state.lastBurstAtMs) > EARRAPE_BURST_WINDOW_MS) {
+      state.burstCount = 0;
     }
 
-    if (state.hitCount < EARRAPE_CONSEC_FRAMES) {
-      return false;
+    const calmFrame = metrics.rms < Math.max(EARRAPE_CALM_RMS_THRESHOLD, baselineRms + 0.05);
+    const activeDecay = calmFrame ? EARRAPE_CONFIDENCE_DECAY_CALM : EARRAPE_CONFIDENCE_DECAY_ACTIVE;
+
+    let confidenceDelta = 0;
+    if (sustainMs >= EARRAPE_SUSTAIN_MIN_MS) confidenceDelta += 0.55;
+    if (metrics.rms >= EARRAPE_RMS_HARD) confidenceDelta += 0.32;
+    if (metrics.clippedSampleRatio >= EARRAPE_CLIP_HIGH_RATIO) confidenceDelta += 0.28;
+    if (metrics.clippedSampleRatio >= EARRAPE_CLIP_SEVERE_RATIO) confidenceDelta += 0.3;
+    if (state.burstCount >= EARRAPE_BURST_TRIGGER_COUNT) confidenceDelta += 0.24;
+    if (metrics.crestFactor >= EARRAPE_CREST_POP_THRESHOLD && sustainMs < EARRAPE_SUSTAIN_MIN_MS) {
+      confidenceDelta -= 0.4;
+    }
+    if (metrics.rms < baselineRms + 0.03) confidenceDelta -= 0.15;
+
+    const offenseBias = Math.min(0.3, state.offenseScore * 0.09);
+    state.confidence = Math.max(
+      0,
+      Math.min(EARRAPE_CONFIDENCE_MAX, state.confidence + confidenceDelta + offenseBias - activeDecay)
+    );
+
+    if (
+      state.profileLoaded
+      && state.baselineRms != null
+      && calmFrame
+      && (nowMs - state.lastProfileSyncAtMs) >= EARRAPE_PROFILE_SYNC_INTERVAL_MS
+    ) {
+      this._syncParticipantProfile(safeParticipantId, state, {
+        calmRmsSample: state.baselineRms,
+      }, nowMs, false);
     }
 
-    state.hitCount = 0;
+    const hasSustainedSignal = sustainMs >= EARRAPE_SUSTAIN_MIN_MS;
+    const hasSevereBurstSignal = (
+      metrics.clippedSampleRatio >= EARRAPE_CLIP_SEVERE_RATIO
+      && state.burstCount >= Math.max(2, EARRAPE_BURST_TRIGGER_COUNT - 1)
+    );
+    if (state.confidence < EARRAPE_CONFIDENCE_TRIGGER || (!hasSustainedSignal && !hasSevereBurstSignal)) {
+      return null;
+    }
+
     if ((nowMs - state.lastDisconnectAtMs) < EARRAPE_DISCONNECT_COOLDOWN_MS) {
-      return false;
+      return null;
     }
 
+    const confidence = state.confidence;
     state.lastDisconnectAtMs = nowMs;
     state.mutedSinceMs = nowMs;
     state.calmSinceMs = null;
-    return true;
+    state.sustainSinceMs = null;
+    state.burstCount = 0;
+    state.confidence = 0;
+    return {
+      peak: metrics.peak,
+      rms: metrics.rms,
+      clippedSampleRatio: metrics.clippedSampleRatio,
+      crestFactor: metrics.crestFactor,
+      sustainMs,
+      confidence,
+      baselineRms: state.baselineRms,
+      offenseScore: state.offenseScore,
+    };
   }
 
-  async _emitEarrapeDetection(participantId: string, peak: number) {
+  async _emitEarrapeDetection(participantId: string, decision: EarrapeTriggerDecision) {
     if (!this.onEarrapeDetected) return;
+    const state = this.participantAudioStates.get(participantId) ?? null;
+    const nowMs = Date.now();
+    if (state) {
+      await this._syncParticipantProfile(participantId, state, {
+        offenseDetected: true,
+        calmRmsSample: state.baselineRms,
+      }, nowMs, true);
+    }
+
     try {
       await this.onEarrapeDetected({
         guildId: this.guildId,
         channelId: this.channelId,
         participantId,
-        peak,
-        threshold: EARRAPE_PEAK_THRESHOLD,
+        peak: decision.peak,
+        rms: decision.rms,
+        clippedSampleRatio: decision.clippedSampleRatio,
+        crestFactor: decision.crestFactor,
+        sustainMs: decision.sustainMs,
+        confidence: decision.confidence,
+        baselineRms: decision.baselineRms,
+        offenseScore: decision.offenseScore,
+        threshold: EARRAPE_CONFIDENCE_TRIGGER,
       });
     } catch (err) {
       this.logger?.debug?.('Failed to handle earrape detection', {

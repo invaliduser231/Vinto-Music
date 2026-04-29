@@ -4,6 +4,7 @@ import { MusicPlayer } from '../player/MusicPlayer.ts';
 import type {
   GuildConfig,
   GuildConfigStoreLike,
+  EarrapeProfileStoreLike,
   LibraryStoreLike,
   RestAdapterLike,
   Session,
@@ -124,6 +125,7 @@ export class SessionManager extends EventEmitter {
   logger: SessionManagerOptions['logger'] | undefined;
   guildConfigs: GuildConfigStoreLike | null;
   library: LibraryStoreLike | null;
+  earrapeProfiles: EarrapeProfileStoreLike | null;
   rest: RestAdapterLike | null;
   voiceStateStore: VoiceStateStoreLike | null;
   botUserId: string | null;
@@ -139,6 +141,7 @@ export class SessionManager extends EventEmitter {
     this.logger = options.logger;
     this.guildConfigs = options.guildConfigs ?? null;
     this.library = options.library ?? null;
+    this.earrapeProfiles = options.earrapeProfiles ?? null;
     this.rest = options.rest ?? null;
     this.voiceStateStore = options.voiceStateStore ?? null;
     this.botUserId = options.botUserId ? String(options.botUserId) : null;
@@ -379,6 +382,7 @@ export class SessionManager extends EventEmitter {
       ...(this.config.voiceMaxBitrate != null ? { voiceMaxBitrate: this.config.voiceMaxBitrate } : {}),
       earrapeProtectionEnabled: Boolean(initialSettings.earrapeProtectionEnabled),
       botUserId: this.botUserId,
+      earrapeProfileStore: this.earrapeProfiles,
       onEarrapeDetected: (event: EarrapeDetectionEvent) => this._handleEarrapeDetected(event),
     };
     const connection = new VoiceConnection(this.gateway, guildId, connectionOptions);

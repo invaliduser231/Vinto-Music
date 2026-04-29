@@ -15,6 +15,7 @@ import { initializePlayDlAuth } from '../integrations/playDlAuth.ts';
 import { MusicLibraryStore } from '../bot/services/musicLibraryStore.ts';
 import { PermissionService } from '../bot/services/permissionService.ts';
 import { GuildStateCache } from '../bot/services/guildStateCache.ts';
+import { EarrapeProfileStore } from '../bot/services/earrapeProfileStore.ts';
 import { MonitoringServer } from '../monitoring/server.ts';
 import { initializeSentry } from '../monitoring/sentry.ts';
 import { NodeLinkClient } from '../player/musicPlayer/NodeLinkClient.ts';
@@ -208,6 +209,11 @@ export async function startApp() {
     maxHistoryTracks: config.persistentHistorySize,
   });
   await musicLibrary.init();
+  const earrapeProfiles = new EarrapeProfileStore({
+    collection: mongo.collection('guild_earrape_profiles'),
+    logger: logger.child('earrape-profiles'),
+  });
+  await earrapeProfiles.init();
 
   const connectivityRest = rest as ConnectivityRest;
   const gatewayUrl = await resolveGatewayUrl({ config, rest: connectivityRest, logger });
@@ -259,6 +265,7 @@ export async function startApp() {
     gateway,
     config,
     library: musicLibrary,
+    earrapeProfiles,
     rest,
     voiceStateStore: voiceStateStore ?? null,
     logger: logger.child('sessions'),
