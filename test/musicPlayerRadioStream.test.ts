@@ -179,6 +179,26 @@ test('generic URL resolver falls back to a live radio track for non-youtube m3u8
   }
 });
 
+test('generic URL resolver classifies unresolved extensionless HTTP stream urls as live radio', async () => {
+  const player = createPlayer();
+  const originalFetch = global.fetch;
+
+  global.fetch = (async () => {
+    throw new Error('network blocked');
+  }) as typeof fetch;
+
+  try {
+    const tracks = await player._resolveSingleUrlTrack('https://radios.inpi.gob.mx:8080/xezv', 'user-1');
+    assert.equal(tracks.length, 1);
+    assert.equal(tracks[0]!.source, 'radio-stream');
+    assert.equal(tracks[0]!.duration, 'Live');
+    assert.equal(tracks[0]!.isLive, true);
+    assert.equal(tracks[0]!.url, 'https://radios.inpi.gob.mx:8080/xezv');
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 test('generic URL resolver treats direct mp3 files as non-live HTTP audio tracks', async () => {
   const player = createPlayer();
   const originalFetch = global.fetch;

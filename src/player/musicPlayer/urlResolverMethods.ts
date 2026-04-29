@@ -3,10 +3,21 @@ import { ValidationError } from '../../core/errors.ts';
 import type { MusicPlayer } from '../MusicPlayer.ts';
 import type { Track } from '../../types/domain.ts';
 import {
+  isAmazonMusicUrl,
+  isAppleMusicUrl,
+  isAudiomackUrl,
+  isAudiusUrl,
+  isBandcampUrl,
+  isDeezerUrl,
+  isJioSaavnUrl,
   isTidalUrl,
   isHttpUrl,
   isLikelyDirectAudioFileUrl,
   isLikelyPlaylistUrl,
+  isMixcloudUrl,
+  isSoundCloudUrl,
+  isSpotifyUrl,
+  isYouTubeUrl,
   pickArtistName,
   pickThumbnailUrlFromItem,
   sanitizeUrlToSearchQuery,
@@ -190,6 +201,31 @@ function isDirectHttpAudioCandidate({ contentType, finalUrl, headers }: { conten
   return true;
 }
 
+function isKnownProviderUrl(url: string) {
+  return (
+    isYouTubeUrl(url)
+    || isSoundCloudUrl(url)
+    || isSpotifyUrl(url)
+    || isDeezerUrl(url)
+    || isTidalUrl(url)
+    || isBandcampUrl(url)
+    || isAudiomackUrl(url)
+    || isMixcloudUrl(url)
+    || isJioSaavnUrl(url)
+    || isAmazonMusicUrl(url)
+    || isAppleMusicUrl(url)
+    || isAudiusUrl(url)
+  );
+}
+
+function shouldFallbackToLiveRadioUnknownUrl(url: string) {
+  const normalized = String(url ?? '').trim();
+  if (!normalized || !isHttpUrl(normalized)) return false;
+  if (isKnownProviderUrl(normalized)) return false;
+  if (isLikelyDirectAudioFileUrl(normalized)) return false;
+  return true;
+}
+
 function resolveSourceArtist(sourceTrack: CrossSourceTrack | null | undefined) {
   const nestedArtist = pickArtistName(sourceTrack);
   if (nestedArtist) return nestedArtist;
@@ -354,6 +390,20 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
       return [radioTrack];
     }
 
+    if (shouldFallbackToLiveRadioUnknownUrl(url)) {
+      this.logger?.debug?.('Classifying unresolved extensionless HTTP URL as live radio fallback', {
+        url,
+      });
+      return [this._buildTrack({
+        title: buildRadioTitle(url, null),
+        url,
+        duration: 'Live',
+        requestedBy,
+        source: 'radio-stream',
+        isLive: true,
+      })];
+    }
+
     try {
       const info = await playdl.video_info(url);
       return [this._buildTrack({
@@ -425,6 +475,9 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
     }).catch(() => null);
 
     if (!response?.ok) {
+      this.logger?.debug?.('Radio stream probe failed or returned non-ok response', {
+        url: normalizedUrl,
+      });
       return null;
     }
 
@@ -456,6 +509,10 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
       } catch {
         // ignore early body cancellation errors
       }
+      this.logger?.debug?.('Radio stream probe rejected content type without ICY metadata', {
+        url: finalUrl,
+        contentType,
+      });
       return null;
     }
 
@@ -463,6 +520,9 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
       try {
         await response.body?.cancel?.();
       } catch {}
+      this.logger?.debug?.('Radio stream probe rejected URL because it looks like a direct file', {
+        url: finalUrl,
+      });
       return null;
     }
 
@@ -473,6 +533,11 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
     }
 
     const title = buildRadioTitle(finalUrl, response.headers);
+    this.logger?.debug?.('Radio stream probe classified URL as live stream', {
+      url: finalUrl,
+      contentType,
+      hasIcyHeaders,
+    });
     return this._buildTrack({
       title,
       url: finalUrl,

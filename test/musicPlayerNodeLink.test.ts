@@ -419,6 +419,20 @@ test('createTrackFromData normalizes stale http favorite source for direct audio
   assert.equal(track.isLive, false);
 });
 
+test('createTrackFromData normalizes unresolved extensionless url source to live radio stream', () => {
+  const player = createPlayer();
+
+  const track = player.createTrackFromData({
+    title: 'INPI Radio',
+    url: 'https://radios.inpi.gob.mx:8080/xezv',
+    duration: 'Unknown',
+    source: 'url',
+  }, 'user-1');
+
+  assert.equal(track.source, 'radio-stream');
+  assert.equal(track.isLive, true);
+});
+
 test('NodeLink youtube-only routing mode bypasses NodeLink for text search', async () => {
   const player = createPlayer({ nodeLinkRoutingMode: 'youtube-only' });
   let nodeLinkCalled = false;

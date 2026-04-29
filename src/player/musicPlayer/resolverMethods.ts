@@ -361,7 +361,13 @@ export const resolverMethods: LooseMethodMap = {
           || normalizedSource === 'url'
         )
       ) {
+        const unresolvedExtensionlessUrlFallback = (
+          normalizedSource === 'url'
+          && !isLikelyDirectAudioFileUrl(normalizedUrl)
+          && String(data?.duration ?? '').trim().toLowerCase() === 'unknown'
+        );
         effectiveSource = inferredIsLive || isLikelyPlaylistUrl(normalizedUrl)
+          || unresolvedExtensionlessUrlFallback
           ? 'radio-stream'
           : 'http-audio';
       }
@@ -387,7 +393,7 @@ export const resolverMethods: LooseMethodMap = {
       nodelinkEncodedTrack: data?.nodelinkEncodedTrack ?? data?.nodelink_encoded_track ?? null,
       nodelinkInfo: data?.nodelinkInfo ?? data?.nodelink_info ?? null,
       isPreview: data?.isPreview ?? data?.is_preview ?? false,
-      isLive: inferredIsLive,
+      isLive: inferredIsLive || effectiveSource === 'radio-stream',
       seekStartSec: data?.seekStartSec ?? data?.seek_start_sec ?? 0,
     });
   },
