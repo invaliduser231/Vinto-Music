@@ -174,6 +174,7 @@ test('play interrupts an active live radio stream and starts the new selection n
 
   await execute(ctx);
 
+  assert.ok(calls.includes('bind:guild-1:text-1'));
   assert.deepEqual(playerCalls, [
     'previewTracks',
     'createTrackFromData:user-1',
@@ -320,6 +321,85 @@ test('play starts the first playlist track immediately and loads the rest in the
     'enqueue:Track 2:{"playNext":false,"dedupe":false}',
   ]);
   assert.ok(calls.some((entry) => entry.includes('Queued **2/2** playlist tracks.')));
+});
+
+test('play keeps playlist background status in queued mode when a normal track is already playing', async () => {
+  const play = buildPlayCommand();
+  const execute = play?.execute as PlayExecute | undefined;
+  assert.ok(execute);
+
+  const calls: string[] = [];
+  const playerCalls: string[] = [];
+  let resolveBackground: ((tracks: TestTrack[]) => void) | null = null;
+
+  const firstTrack = {
+    title: 'Track 1',
+    duration: '03:00',
+    url: 'https://example.com/track-1',
+    source: 'youtube-playlist',
+  };
+  const secondTrack = {
+    title: 'Track 2',
+    duration: '03:30',
+    url: 'https://example.com/track-2',
+    source: 'youtube-playlist',
+  };
+
+  const ctx = createBaseContext({
+    playing: true,
+    currentTrack: {
+      title: 'Current Song',
+      duration: '04:00',
+      url: 'https://example.com/current',
+      source: 'youtube',
+      isLive: false,
+    },
+    async previewTracks(_query: string, options?: { limit?: number }) {
+      playerCalls.push(`previewTracks:${options?.limit ?? 'full'}`);
+      if (options?.limit === 1) {
+        return [firstTrack];
+      }
+      return await new Promise<TestTrack[]>((resolve) => {
+        resolveBackground = resolve;
+      });
+    },
+    createTrackFromData(track: TestTrack, requestedBy: string) {
+      playerCalls.push(`createTrackFromData:${track.title}:${requestedBy}`);
+      return { ...track, requestedBy };
+    },
+    enqueueResolvedTracks(tracks: TestTrack[], options: { playNext?: boolean; dedupe?: boolean }) {
+      playerCalls.push(`enqueue:${tracks.map((track) => track.title).join(',')}:${JSON.stringify({ playNext: options.playNext, dedupe: options.dedupe })}`);
+      return tracks;
+    },
+    async play() {
+      playerCalls.push('play');
+    },
+    skip() {
+      playerCalls.push('skip');
+      return true;
+    },
+  }, calls);
+  ctx.args = ['https://music.apple.com/us/playlist/classic-punk-essentials/pl.878b36908fda455c8dd2cb0b5ef7ef0e'];
+
+  await execute(ctx);
+
+  assert.deepEqual(playerCalls, [
+    'previewTracks:1',
+    'createTrackFromData:Track 1:user-1',
+    'enqueue:Track 1:{"playNext":false,"dedupe":false}',
+    'previewTracks:25',
+  ]);
+  assert.ok(calls.some((entry) => entry.includes('Added to queue: **Track 1**') && entry.includes('Loading remaining playlist tracks in the background...')));
+  assert.ok(!calls.some((entry) => entry.includes('Playing now: **Track 1**')));
+
+  const finishBackground = resolveBackground as ((tracks: TestTrack[]) => void) | null;
+  if (typeof finishBackground === 'function') {
+    finishBackground([firstTrack, secondTrack]);
+  }
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.ok(calls.some((entry) => entry.includes('Added to queue: **Track 1**') && entry.includes('Queued **2/2** playlist tracks.')));
+  assert.ok(!calls.some((entry) => entry.includes('Playing now: **Track 1**') && entry.includes('Queued **2/2** playlist tracks.')));
 });
 
 test('play does not double-count the first playlist track when background metadata differs', async () => {

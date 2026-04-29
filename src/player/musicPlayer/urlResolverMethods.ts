@@ -3,10 +3,21 @@ import { ValidationError } from '../../core/errors.ts';
 import type { MusicPlayer } from '../MusicPlayer.ts';
 import type { Track } from '../../types/domain.ts';
 import {
+  isAmazonMusicUrl,
+  isAppleMusicUrl,
+  isAudiomackUrl,
+  isAudiusUrl,
+  isBandcampUrl,
+  isDeezerUrl,
+  isJioSaavnUrl,
   isTidalUrl,
   isHttpUrl,
   isLikelyDirectAudioFileUrl,
   isLikelyPlaylistUrl,
+  isMixcloudUrl,
+  isSoundCloudUrl,
+  isSpotifyUrl,
+  isYouTubeUrl,
   pickArtistName,
   pickThumbnailUrlFromItem,
   sanitizeUrlToSearchQuery,
@@ -47,6 +58,7 @@ type UrlResolverRuntime = MusicPlayer & UrlResolverMethods & {
   _resolveDeezerTrack(url: string, requestedBy: string | null): Promise<Track[]>;
   _searchYouTubeTracks(query: string, limit: number, requestedBy: string | null): Promise<Track[]>;
   _cloneTrack(track: Track, overrides?: Partial<Track>): Track;
+  logger?: { debug?: (message: string, payload?: Record<string, unknown>) => void };
 };
 type NormalizedInputUrlCacheEntry = { url: string; expiresAtMs: number };
 
@@ -189,6 +201,31 @@ function isDirectHttpAudioCandidate({ contentType, finalUrl, headers }: { conten
   return true;
 }
 
+function isKnownProviderUrl(url: string) {
+  return (
+    isYouTubeUrl(url)
+    || isSoundCloudUrl(url)
+    || isSpotifyUrl(url)
+    || isDeezerUrl(url)
+    || isTidalUrl(url)
+    || isBandcampUrl(url)
+    || isAudiomackUrl(url)
+    || isMixcloudUrl(url)
+    || isJioSaavnUrl(url)
+    || isAmazonMusicUrl(url)
+    || isAppleMusicUrl(url)
+    || isAudiusUrl(url)
+  );
+}
+
+function shouldFallbackToLiveRadioUnknownUrl(url: string) {
+  const normalized = String(url ?? '').trim();
+  if (!normalized || !isHttpUrl(normalized)) return false;
+  if (isKnownProviderUrl(normalized)) return false;
+  if (isLikelyDirectAudioFileUrl(normalized)) return false;
+  return true;
+}
+
 function resolveSourceArtist(sourceTrack: CrossSourceTrack | null | undefined) {
   const nestedArtist = pickArtistName(sourceTrack);
   if (nestedArtist) return nestedArtist;
@@ -212,6 +249,45 @@ function resolveSourceArtist(sourceTrack: CrossSourceTrack | null | undefined) {
 function normalizeIsrc(value: unknown) {
   const normalized = String(value ?? '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
   return normalized.length === 12 ? normalized : null;
+}
+
+function getNodeLinkRoutingMode(value: unknown): 'smart' | 'all' | 'youtube-only' {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (normalized === 'all') return 'all';
+  if (normalized === 'youtube-only' || normalized === 'youtube') return 'youtube-only';
+  return 'smart';
+}
+
+function shouldUseStrictNodeLinkAllRouting(runtime: UrlResolverRuntime) {
+  const mode = getNodeLinkRoutingMode(runtime.nodeLinkRoutingMode);
+  return Boolean(runtime.nodeLinkEnabled && runtime.nodeLinkClient?.enabled && mode === 'all');
+}
+
+async function searchMirrorCandidatesWithRouting(
+  runtime: UrlResolverRuntime,
+  query: string,
+  requestedBy: string | null,
+) {
+  const nodeLinkRoutingMode = getNodeLinkRoutingMode(runtime.nodeLinkRoutingMode);
+  const strictNodeLinkAllRouting = shouldUseStrictNodeLinkAllRouting(runtime);
+  if (runtime.nodeLinkEnabled && runtime.nodeLinkClient?.enabled && nodeLinkRoutingMode !== 'youtube-only') {
+    const nodeLinkMatches = await runtime._resolveNodeLinkTracks(query, requestedBy, 1).catch((err: unknown) => {
+      runtime.logger?.debug?.('NodeLink mirror search failed, falling back to local YouTube search', {
+        query,
+        routingMode: nodeLinkRoutingMode,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return [];
+    });
+    if (Array.isArray(nodeLinkMatches) && nodeLinkMatches.length) {
+      return nodeLinkMatches;
+    }
+    if (strictNodeLinkAllRouting) {
+      return [];
+    }
+  }
+
+  return runtime._searchYouTubeTracks(query, 1, requestedBy).catch(() => []);
 }
 
 export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntime> = {
@@ -246,12 +322,12 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
       let matchedTrack = null;
 
       if (isrc) {
-        const isrcResults = await this._searchYouTubeTracks(`"${isrc}"`, 1, requestedBy).catch(() => []);
+        const isrcResults = await searchMirrorCandidatesWithRouting(this, `"${isrc}"`, requestedBy);
         matchedTrack = isrcResults[0] ?? null;
       }
 
       if (!matchedTrack) {
-        const queryResults = await this._searchYouTubeTracks(query, 1, requestedBy).catch(() => []);
+        const queryResults = await searchMirrorCandidatesWithRouting(this, query, requestedBy);
         matchedTrack = queryResults[0] ?? null;
       }
 
@@ -260,6 +336,10 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
           requestedBy,
           source,
         }));
+        continue;
+      }
+
+      if (shouldUseStrictNodeLinkAllRouting(this)) {
         continue;
       }
 
@@ -308,6 +388,20 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
     const radioTrack = await this._resolveRadioStreamTrack(url, requestedBy).catch(() => null);
     if (radioTrack) {
       return [radioTrack];
+    }
+
+    if (shouldFallbackToLiveRadioUnknownUrl(url)) {
+      this.logger?.debug?.('Classifying unresolved extensionless HTTP URL as live radio fallback', {
+        url,
+      });
+      return [this._buildTrack({
+        title: buildRadioTitle(url, null),
+        url,
+        duration: 'Live',
+        requestedBy,
+        source: 'radio-stream',
+        isLive: true,
+      })];
     }
 
     try {
@@ -381,6 +475,9 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
     }).catch(() => null);
 
     if (!response?.ok) {
+      this.logger?.debug?.('Radio stream probe failed or returned non-ok response', {
+        url: normalizedUrl,
+      });
       return null;
     }
 
@@ -412,6 +509,10 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
       } catch {
         // ignore early body cancellation errors
       }
+      this.logger?.debug?.('Radio stream probe rejected content type without ICY metadata', {
+        url: finalUrl,
+        contentType,
+      });
       return null;
     }
 
@@ -419,6 +520,9 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
       try {
         await response.body?.cancel?.();
       } catch {}
+      this.logger?.debug?.('Radio stream probe rejected URL because it looks like a direct file', {
+        url: finalUrl,
+      });
       return null;
     }
 
@@ -429,6 +533,11 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
     }
 
     const title = buildRadioTitle(finalUrl, response.headers);
+    this.logger?.debug?.('Radio stream probe classified URL as live stream', {
+      url: finalUrl,
+      contentType,
+      hasIcyHeaders,
+    });
     return this._buildTrack({
       title,
       url: finalUrl,
@@ -482,6 +591,18 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
     const query = sanitizeUrlToSearchQuery(url);
     if (!query) {
       throw new ValidationError(`Could not resolve ${source} URL to a playable track.`);
+    }
+
+    const mirrored = await searchMirrorCandidatesWithRouting(this, query, requestedBy);
+    if (mirrored.length) {
+      return [this._cloneTrack(mirrored[0]!, {
+        requestedBy,
+        source,
+      })];
+    }
+
+    if (shouldUseStrictNodeLinkAllRouting(this)) {
+      throw new ValidationError(`Could not resolve ${source} URL to a playable track via NodeLink.`);
     }
 
     const result = await playdl.search(query, { source: { youtube: 'video' }, limit: 1 }).catch(() => []);

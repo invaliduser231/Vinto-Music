@@ -4,8 +4,24 @@ import assert from 'node:assert/strict';
 import { createAppMetrics } from '../src/app/metrics.ts';
 import { CommandRouter } from '../src/bot/commandRouter.ts';
 
-function createRouter() {
+function createRouter(
+  sessionsOverride: Partial<ConstructorParameters<typeof CommandRouter>[0]['sessions']> | null = null,
+) {
   const metrics = createAppMetrics();
+  const baseSessions = {
+    on() {},
+    sessions: new Map(),
+    has() { return false; },
+    bindTextChannel() { return null; },
+    get() { return null; },
+    destroy() { return Promise.resolve(null); },
+  } as ConstructorParameters<typeof CommandRouter>[0]['sessions'];
+  const sessions = sessionsOverride
+    ? {
+        ...baseSessions,
+        ...sessionsOverride,
+      }
+    : baseSessions;
   const router = new CommandRouter({
     config: {
       prefix: '!',
@@ -27,14 +43,7 @@ function createRouter() {
       on() {},
       off() {},
     },
-    sessions: {
-      on() {},
-      sessions: new Map(),
-      has() { return false; },
-      bindTextChannel() { return null; },
-      get() { return null; },
-      destroy() { return Promise.resolve(null); },
-    } as ConstructorParameters<typeof CommandRouter>[0]['sessions'],
+    sessions,
     guildConfigs: null,
     voiceStateStore: {
       resolveMemberVoiceChannel() { return null; },
@@ -83,4 +92,28 @@ test('unknown commands share a single metrics label bucket', async () => {
     outcome: 'unknown',
   });
   assert.equal(sample?.value, 2);
+});
+
+test('router does not rebind session text channel for non-play commands', async () => {
+  const bindCalls: string[] = [];
+  const { router } = createRouter({
+    has() { return true; },
+    bindTextChannel(_guildId: string, _channelId: string) {
+      bindCalls.push('bind');
+      return null;
+    },
+  });
+
+  try {
+    await router.handleMessage({
+      content: '!ping',
+      channel_id: 'channel-1',
+      guild_id: 'guild-1',
+      author: { id: 'user-1', bot: false },
+    });
+  } finally {
+    cleanupRouter(router);
+  }
+
+  assert.deepEqual(bindCalls, []);
 });

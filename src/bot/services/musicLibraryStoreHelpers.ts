@@ -153,6 +153,23 @@ export function normalizeTrack(track: Record<string, unknown> | null | undefined
   };
 }
 
+export function normalizeFavoriteAlias(alias: unknown): string {
+  const value = String(alias ?? '').trim();
+  if (!value) {
+    throw new ValidationError('Favorite alias is required.');
+  }
+  if (value.length > 64) {
+    throw new ValidationError('Favorite alias must be at most 64 characters.');
+  }
+  return value;
+}
+
+export function normalizeFavoriteAliasKey(alias: unknown): string {
+  return normalizeFavoriteAlias(alias)
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
 export function paginateList<T>(items: T[], page: number, pageSize: number) {
   const total = items.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));

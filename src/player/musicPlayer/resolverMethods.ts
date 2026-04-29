@@ -12,6 +12,7 @@ import {
   isDeezerUrl,
   isHttpUrl,
   isJioSaavnUrl,
+  isLikelyDirectAudioFileUrl,
   isLikelyPlaylistUrl,
   isMixcloudUrl,
   isSoundCloudUrl,
@@ -45,7 +46,60 @@ function isYouTubeWatchContextMixUrl(url: string | null | undefined) {
   return normalized.includes('/watch?') && (normalized.includes('start_radio=1') || normalized.includes('list=rd'));
 }
 
+function getNodeLinkRoutingMode(value: unknown): 'smart' | 'all' | 'youtube-only' {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (normalized === 'all') return 'all';
+  if (normalized === 'youtube-only' || normalized === 'youtube') return 'youtube-only';
+  return 'smart';
+}
+
+function shouldBypassNodeLinkForDirectStreamUrl(url: string, routingMode: 'smart' | 'all' | 'youtube-only') {
+  if (routingMode !== 'all') return false;
+  if (isYouTubeUrl(url)) return false;
+  if (
+    !isSoundCloudUrl(url)
+    && !isSpotifyUrl(url)
+    && !isDeezerUrl(url)
+    && !isTidalUrl(url)
+    && !isBandcampUrl(url)
+    && !isAudiomackUrl(url)
+    && !isMixcloudUrl(url)
+    && !isJioSaavnUrl(url)
+    && !isAmazonMusicUrl(url)
+    && !isAppleMusicUrl(url)
+    && !isAudiusUrl(url)
+  ) {
+    return true;
+  }
+  return isLikelyDirectAudioFileUrl(url) || isLikelyPlaylistUrl(url);
+}
+
 export const resolverMethods: LooseMethodMap = {
+  async _resolveYouTubeTrackViaNodeLink(track: Partial<Track> | null | undefined) {
+    const url = String(track?.url ?? '').trim();
+    if (!url || !isYouTubeUrl(url)) return null;
+    if (!this.nodeLinkEnabled || !this.nodeLinkClient?.enabled) return null;
+
+    const nodeLinkRoutingMode = getNodeLinkRoutingMode(this.nodeLinkRoutingMode);
+    const shouldBypassNodeLink = shouldBypassNodeLinkForDirectStreamUrl(url, nodeLinkRoutingMode);
+    const shouldTryNodeLinkForUrl = !shouldBypassNodeLink && (nodeLinkRoutingMode === 'all' || isYouTubeUrl(url));
+    if (!shouldTryNodeLinkForUrl) return null;
+
+    const requestedBy = track?.requestedBy ?? null;
+    const nodeLinkResolved = await this._resolveNodeLinkTracks(url, requestedBy, 1).catch((err: unknown) => {
+      if (nodeLinkRoutingMode === 'all') {
+        throw err;
+      }
+      this.logger?.debug?.('NodeLink YouTube track resolution failed, keeping local fallback path available', {
+        url,
+        routingMode: nodeLinkRoutingMode,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    });
+    return Array.isArray(nodeLinkResolved) ? (nodeLinkResolved[0] ?? null) : null;
+  },
+
   async _resolveTracks(query: string, requestedBy: string | null, limit?: number | null) {
     const raw = String(query ?? '').trim();
     if (!raw) {
@@ -53,12 +107,33 @@ export const resolverMethods: LooseMethodMap = {
     }
 
     const safeLimit = normalizeResolveLimit(limit, this.maxPlaylistTracks);
-
+    const nodeLinkRoutingMode = getNodeLinkRoutingMode(this.nodeLinkRoutingMode);
     if (!isHttpUrl(raw)) {
       return this._resolveSearchTrack(raw, requestedBy);
     }
 
     const url = await this.sources.resolver.normalizeInputUrl(raw);
+    const shouldBypassNodeLink = shouldBypassNodeLinkForDirectStreamUrl(url, nodeLinkRoutingMode);
+    const shouldTryNodeLinkForUrl = !shouldBypassNodeLink && (nodeLinkRoutingMode === 'all' || isYouTubeUrl(url));
+    if (this.nodeLinkEnabled && this.nodeLinkClient?.enabled && shouldTryNodeLinkForUrl) {
+      const nodeLinkResolved = await this._resolveNodeLinkTracks(url, requestedBy, safeLimit).catch((err: unknown) => {
+        if (nodeLinkRoutingMode === 'all') {
+          throw new ValidationError('NodeLink URL resolution failed and local fallback is disabled in NODELINK_ROUTING_MODE=all.');
+        }
+        this.logger?.debug?.('NodeLink URL resolution failed, falling back to local resolver path', {
+          url,
+          routingMode: nodeLinkRoutingMode,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return null;
+      });
+      if (Array.isArray(nodeLinkResolved) && nodeLinkResolved.length > 0) {
+        return nodeLinkResolved;
+      }
+      if (nodeLinkRoutingMode === 'all') {
+        throw new ValidationError('NodeLink returned no playable tracks and local fallback is disabled in NODELINK_ROUTING_MODE=all.');
+      }
+    }
     const isGenericStreamPlaylist = !isYouTubeUrl(url) && isLikelyPlaylistUrl(url);
     if (isGenericStreamPlaylist) {
       return this.sources.resolver.resolveSingleUrlTrack(url, requestedBy);
@@ -112,6 +187,11 @@ export const resolverMethods: LooseMethodMap = {
       if (deezer.length) return deezer;
     }
 
+    const nodeLinkRoutingMode = getNodeLinkRoutingMode(this.nodeLinkRoutingMode);
+    if (this.nodeLinkEnabled && this.nodeLinkClient?.enabled && nodeLinkRoutingMode !== 'youtube-only') {
+      return this._resolveNodeLinkTracks(query, requestedBy, 1);
+    }
+
     if (!this.enableYtSearch) {
       throw new ValidationError('YouTube search is currently disabled by bot configuration.');
     }
@@ -144,16 +224,24 @@ export const resolverMethods: LooseMethodMap = {
       ffmpegPid: this.ffmpeg?.pid ?? null,
       ffmpegArgs: Array.isArray(this._lastFfmpegArgs) ? [...this._lastFfmpegArgs] : null,
       ytdlp: this._lastYtDlpDiagnostics ? { ...this._lastYtDlpDiagnostics } : null,
+      nodeLink: this.nodeLinkClient?.getDiagnostics?.() ?? {
+        enabled: Boolean(this.nodeLinkEnabled),
+        baseUrl: null,
+      },
     };
   },
 
   async searchCandidates(query: string, limit = 5, options: { requestedBy?: string | null } = { requestedBy: null }) {
     const requestedBy = options.requestedBy ?? null;
     const safeLimit = Math.max(1, Math.min(10, Number.parseInt(String(limit), 10) || 5));
-
     if (this.deezerArl && this.enableDeezerImport) {
       const deezer = await this.sources.deezer.searchTracks(query, safeLimit, requestedBy).catch(() => []);
       if (deezer.length) return deezer;
+    }
+
+    const nodeLinkRoutingMode = getNodeLinkRoutingMode(this.nodeLinkRoutingMode);
+    if (this.nodeLinkEnabled && this.nodeLinkClient?.enabled && nodeLinkRoutingMode !== 'youtube-only') {
+      return this._resolveNodeLinkTracks(query, requestedBy, safeLimit, { searchIdentifier: 'search' });
     }
 
     if (!this.enableYtSearch) {
@@ -239,15 +327,60 @@ export const resolverMethods: LooseMethodMap = {
       ?? data?.thumbnail
       ?? pickThumbnailUrlFromItem(data)
     );
+    const normalizedUrl = String(data?.url ?? '').trim();
+    const rawSource = String(data?.source ?? 'stored').trim();
+    const normalizedSource = rawSource.toLowerCase();
+    const explicitIsLive = data?.isLive ?? data?.is_live ?? false;
+    const inferredIsLive =
+      explicitIsLive === true
+      || String(data?.duration ?? '').trim().toLowerCase() === 'live';
+
+    let effectiveSource = rawSource || 'stored';
+    if (isHttpUrl(normalizedUrl) && !isYouTubeUrl(normalizedUrl)) {
+      const isKnownProviderUrl = (
+        isSoundCloudUrl(normalizedUrl)
+        || isSpotifyUrl(normalizedUrl)
+        || isDeezerUrl(normalizedUrl)
+        || isTidalUrl(normalizedUrl)
+        || isBandcampUrl(normalizedUrl)
+        || isAudiomackUrl(normalizedUrl)
+        || isMixcloudUrl(normalizedUrl)
+        || isJioSaavnUrl(normalizedUrl)
+        || isAmazonMusicUrl(normalizedUrl)
+        || isAppleMusicUrl(normalizedUrl)
+        || isAudiusUrl(normalizedUrl)
+      );
+
+      if (
+        !isKnownProviderUrl
+        && (
+          normalizedSource === 'http'
+          || normalizedSource === 'youtube'
+          || normalizedSource === 'ytmusic'
+          || normalizedSource === 'stored'
+          || normalizedSource === 'url'
+        )
+      ) {
+        const unresolvedExtensionlessUrlFallback = (
+          normalizedSource === 'url'
+          && !isLikelyDirectAudioFileUrl(normalizedUrl)
+          && String(data?.duration ?? '').trim().toLowerCase() === 'unknown'
+        );
+        effectiveSource = inferredIsLive || isLikelyPlaylistUrl(normalizedUrl)
+          || unresolvedExtensionlessUrlFallback
+          ? 'radio-stream'
+          : 'http-audio';
+      }
+    }
 
     return this._buildTrack({
       title: data?.title,
-      url: data?.url,
+      url: normalizedUrl,
       duration: data?.duration,
       metadataDeferred: data?.metadataDeferred ?? false,
       thumbnailUrl: normalizedThumbnailUrl,
       requestedBy: requestedBy ?? data?.requestedBy ?? null,
-      source: data?.source ?? 'stored',
+      source: effectiveSource,
       artist: data?.artist ?? data?.artist_name ?? pickTrackArtistFromMetadata(data),
       soundcloudTrackId: data?.soundcloudTrackId ?? data?.soundcloud_track_id ?? null,
       audiusTrackId: data?.audiusTrackId ?? data?.audius_track_id ?? null,
@@ -257,8 +390,10 @@ export const resolverMethods: LooseMethodMap = {
       spotifyTrackId: data?.spotifyTrackId ?? data?.spotify_track_id ?? null,
       spotifyPreviewUrl: data?.spotifyPreviewUrl ?? data?.spotify_preview_url ?? null,
       isrc: data?.isrc ?? null,
+      nodelinkEncodedTrack: data?.nodelinkEncodedTrack ?? data?.nodelink_encoded_track ?? null,
+      nodelinkInfo: data?.nodelinkInfo ?? data?.nodelink_info ?? null,
       isPreview: data?.isPreview ?? data?.is_preview ?? false,
-      isLive: data?.isLive ?? data?.is_live ?? false,
+      isLive: inferredIsLive || effectiveSource === 'radio-stream',
       seekStartSec: data?.seekStartSec ?? data?.seek_start_sec ?? 0,
     });
   },

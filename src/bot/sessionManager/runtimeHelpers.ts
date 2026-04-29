@@ -85,6 +85,10 @@ export function cloneTrackForSnapshot(track: Partial<Track> | null | undefined, 
     spotifyTrackId: track.spotifyTrackId ?? null,
     spotifyPreviewUrl: track.spotifyPreviewUrl ?? null,
     isrc: track.isrc ?? null,
+    nodelinkEncodedTrack: track.nodelinkEncodedTrack ?? null,
+    nodelinkInfo: track.nodelinkInfo && typeof track.nodelinkInfo === 'object'
+      ? { ...track.nodelinkInfo }
+      : null,
     isPreview: track.isPreview === true,
     isLive: track.isLive === true,
     queuedAt,
@@ -108,6 +112,7 @@ export function isSnapshotTrackDirectlyPlayable(track: Partial<Track> | null | u
   const source = String(track.source ?? '').trim().toLowerCase();
   const url = String(track.url ?? '').trim();
 
+  if (track.nodelinkEncodedTrack) return true;
   if (isYouTubeUrl(url)) return true;
   if (track.deezerTrackId || source.startsWith('deezer')) return true;
   if (source.startsWith('audius')) return true;
@@ -149,6 +154,7 @@ export function defaultSettings(config: SessionManagerConfigLike): SessionSettin
   return {
     dedupeEnabled: Boolean(config.defaultDedupeEnabled),
     stayInVoiceEnabled: Boolean(config.defaultStayInVoiceEnabled),
+    earrapeProtectionEnabled: false,
     minimalMode: false,
     volumePercent: toVolumePercent(config.defaultVolumePercent, 100),
     voteSkipRatio: toRatio(config.voteSkipRatio, 0.5),
@@ -181,6 +187,7 @@ export function settingsFromGuildConfig(
   const defaults = defaultSettings(config);
   const fallbackDedupeEnabled = defaults.dedupeEnabled ?? false;
   const fallbackStayInVoiceEnabled = defaults.stayInVoiceEnabled ?? false;
+  const fallbackEarrapeProtectionEnabled = defaults.earrapeProtectionEnabled ?? false;
   const fallbackVolumePercent = defaults.volumePercent ?? 100;
   const fallbackVoteSkipRatio = defaults.voteSkipRatio ?? 0.5;
   const fallbackVoteSkipMinVotes = defaults.voteSkipMinVotes ?? 2;
@@ -192,6 +199,7 @@ export function settingsFromGuildConfig(
     stayInVoiceEnabled: typeof profile.stayInVoiceEnabled === 'boolean'
       ? profile.stayInVoiceEnabled
       : toBool(source.stayInVoiceEnabled, fallbackStayInVoiceEnabled),
+    earrapeProtectionEnabled: toBool(source.earrapeProtectionEnabled, fallbackEarrapeProtectionEnabled),
     minimalMode: toBool(source.minimalMode, defaults.minimalMode ?? false),
     volumePercent: toVolumePercent(source.volumePercent, fallbackVolumePercent),
     voteSkipRatio: toRatio(source.voteSkipRatio, fallbackVoteSkipRatio),

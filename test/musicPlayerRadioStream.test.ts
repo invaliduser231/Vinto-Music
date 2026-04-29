@@ -179,6 +179,26 @@ test('generic URL resolver falls back to a live radio track for non-youtube m3u8
   }
 });
 
+test('generic URL resolver classifies unresolved extensionless HTTP stream urls as live radio', async () => {
+  const player = createPlayer();
+  const originalFetch = global.fetch;
+
+  global.fetch = (async () => {
+    throw new Error('network blocked');
+  }) as typeof fetch;
+
+  try {
+    const tracks = await player._resolveSingleUrlTrack('https://radios.inpi.gob.mx:8080/xezv', 'user-1');
+    assert.equal(tracks.length, 1);
+    assert.equal(tracks[0]!.source, 'radio-stream');
+    assert.equal(tracks[0]!.duration, 'Live');
+    assert.equal(tracks[0]!.isLive, true);
+    assert.equal(tracks[0]!.url, 'https://radios.inpi.gob.mx:8080/xezv');
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 test('generic URL resolver treats direct mp3 files as non-live HTTP audio tracks', async () => {
   const player = createPlayer();
   const originalFetch = global.fetch;
@@ -329,6 +349,36 @@ test('play() uses direct HTTP pipeline for non-live http audio tracks and allows
   await player.play();
   assert.equal(httpPipelineCalled, true);
   assert.equal(seekSec, 15);
+  assert.equal(player.canSeekCurrentTrack(), true);
+});
+
+test('canSeekCurrentTrack allows local Deezer tracks that use the deezer pipeline', () => {
+  const player = createPlayer();
+  player.queue.current = player._buildTrack({
+    title: 'Deezer Local',
+    url: 'https://www.deezer.com/track/3135556',
+    duration: '03:44',
+    source: 'deezer-direct',
+    requestedBy: 'user-1',
+    deezerTrackId: '3135556',
+    isLive: false,
+  });
+
+  assert.equal(player.canSeekCurrentTrack(), true);
+});
+
+test('canSeekCurrentTrack allows local SoundCloud tracks that use the soundcloud pipeline', () => {
+  const player = createPlayer();
+  player.queue.current = player._buildTrack({
+    title: 'SoundCloud Local',
+    url: 'https://soundcloud.com/artist/demo',
+    duration: '03:21',
+    source: 'soundcloud-direct',
+    requestedBy: 'user-1',
+    soundcloudTrackId: 'sc-demo',
+    isLive: false,
+  });
+
   assert.equal(player.canSeekCurrentTrack(), true);
 });
 

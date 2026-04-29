@@ -69,6 +69,7 @@ function cloneConfig(config: GuildConfigDocument) {
     settings: {
       dedupeEnabled: config.settings.dedupeEnabled,
       stayInVoiceEnabled: config.settings.stayInVoiceEnabled,
+      earrapeProtectionEnabled: config.settings.earrapeProtectionEnabled,
       minimalMode: config.settings.minimalMode,
       volumePercent: config.settings.volumePercent,
       voteSkipRatio: config.settings.voteSkipRatio,
@@ -92,6 +93,7 @@ type GuildConfigPatch = {
   settings?: {
     dedupeEnabled?: unknown;
     stayInVoiceEnabled?: unknown;
+    earrapeProtectionEnabled?: unknown;
     minimalMode?: unknown;
     volumePercent?: unknown;
     voteSkipRatio?: unknown;
@@ -106,6 +108,7 @@ type GuildConfigDocLike = {
   settings?: {
     dedupeEnabled?: unknown;
     stayInVoiceEnabled?: unknown;
+    earrapeProtectionEnabled?: unknown;
     minimalMode?: unknown;
     volumePercent?: unknown;
     voteSkipRatio?: unknown;
@@ -149,6 +152,7 @@ export class GuildConfigStore {
       settings: {
         dedupeEnabled: Boolean(options.defaults?.settings?.dedupeEnabled),
         stayInVoiceEnabled: Boolean(options.defaults?.settings?.stayInVoiceEnabled),
+        earrapeProtectionEnabled: Boolean(options.defaults?.settings?.earrapeProtectionEnabled),
         minimalMode: Boolean(options.defaults?.settings?.minimalMode),
         volumePercent: normalizeVolumePercent(options.defaults?.settings?.volumePercent, 100),
         voteSkipRatio: toRatio(options.defaults?.settings?.voteSkipRatio, 0.5),
@@ -233,6 +237,7 @@ export class GuildConfigStore {
           settings: {
             dedupeEnabled: next.settings.dedupeEnabled,
             stayInVoiceEnabled: next.settings.stayInVoiceEnabled,
+            earrapeProtectionEnabled: next.settings.earrapeProtectionEnabled,
             minimalMode: next.settings.minimalMode,
             volumePercent: next.settings.volumePercent,
             voteSkipRatio: next.settings.voteSkipRatio,
@@ -271,6 +276,13 @@ export class GuildConfigStore {
 
       if (settingsPatch.stayInVoiceEnabled !== undefined) {
         next.settings.stayInVoiceEnabled = toBool(settingsPatch.stayInVoiceEnabled, next.settings.stayInVoiceEnabled);
+      }
+
+      if (settingsPatch.earrapeProtectionEnabled !== undefined) {
+        next.settings.earrapeProtectionEnabled = toBool(
+          settingsPatch.earrapeProtectionEnabled,
+          next.settings.earrapeProtectionEnabled
+        );
       }
 
       if (settingsPatch.minimalMode !== undefined) {
@@ -324,6 +336,10 @@ export class GuildConfigStore {
       settings: {
         dedupeEnabled: toBool(settings.dedupeEnabled, this.defaults.settings.dedupeEnabled),
         stayInVoiceEnabled: toBool(settings.stayInVoiceEnabled, this.defaults.settings.stayInVoiceEnabled),
+        earrapeProtectionEnabled: toBool(
+          settings.earrapeProtectionEnabled,
+          this.defaults.settings.earrapeProtectionEnabled
+        ),
         minimalMode: toBool(settings.minimalMode, this.defaults.settings.minimalMode),
         volumePercent: normalizeVolumePercent(settings.volumePercent, this.defaults.settings.volumePercent),
         voteSkipRatio: toRatio(settings.voteSkipRatio, this.defaults.settings.voteSkipRatio),
@@ -344,6 +360,7 @@ export class GuildConfigStore {
 
     if (as.dedupeEnabled !== bs.dedupeEnabled) return false;
     if (as.stayInVoiceEnabled !== bs.stayInVoiceEnabled) return false;
+    if (as.earrapeProtectionEnabled !== bs.earrapeProtectionEnabled) return false;
     if (as.minimalMode !== bs.minimalMode) return false;
     if (as.volumePercent !== bs.volumePercent) return false;
     if (as.voteSkipRatio !== bs.voteSkipRatio) return false;
@@ -391,6 +408,7 @@ import type { LoggerLike } from '../../types/core.ts';
 type GuildConfigSettings = {
   dedupeEnabled: boolean;
   stayInVoiceEnabled: boolean;
+  earrapeProtectionEnabled: boolean;
   minimalMode: boolean;
   volumePercent: number;
   voteSkipRatio: number;

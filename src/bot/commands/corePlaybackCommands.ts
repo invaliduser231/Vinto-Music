@@ -830,7 +830,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       await ctx.withGuildOpLock('play', async () => {
         const progress = await createProgressReporter(ctx, `Looking up: **${query}**`, null, null, { replyReference: true });
         await ctx.safeTyping();
-        const preparedSession = await prepareSessionConnection(ctx, explicitChannelId);
+        const preparedSession = await prepareSessionConnection(ctx, explicitChannelId, { bindTextChannel: true });
         const shouldLoadPlaylistInBackground = isLikelyPlaylistLoad(query);
         const directYouTubeTrack = shouldLoadPlaylistInBackground
           ? null
@@ -864,6 +864,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
 
         const queueGuard = await resolveQueueGuard(ctx);
         const activeTrack = session.player.currentTrack ?? null;
+        const hadActivePlaybackBeforeQueue = Boolean(session.player.playing);
         const shouldInterruptLivePlayback = Boolean(
           session.player.playing
           && activeTrack
@@ -877,6 +878,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
           queueGuard,
           playNext: shouldInterruptLivePlayback,
         });
+        const startedPlaylistPlaybackNow = shouldInterruptLivePlayback || !hadActivePlaybackBeforeQueue;
 
         if (!added.length) {
           const dedupeBlocked = tracks.length > 0 && Boolean(session.settings.dedupeEnabled);
@@ -945,9 +947,13 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
           firstTrackLabel = trackLabel(firstAdded);
         }
         await progress.info(
-          shouldInterruptLivePlayback
-            ? `Stopped live stream. Playing now: ${firstTrackLabel}\nLoading remaining playlist tracks in the background...`
-            : `Playing now: ${firstTrackLabel}\nLoading remaining playlist tracks in the background...`
+          startedPlaylistPlaybackNow
+            ? (
+                shouldInterruptLivePlayback
+                  ? `Stopped live stream. Playing now: ${firstTrackLabel}\nLoading remaining playlist tracks in the background...`
+                  : `Playing now: ${firstTrackLabel}\nLoading remaining playlist tracks in the background...`
+              )
+            : `Added to queue: ${firstTrackLabel}\nLoading remaining playlist tracks in the background...`
         );
 
         const initialPreviewTrack = tracks[0] ?? null;
@@ -963,9 +969,13 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
             if (hydratedFirstTrack) {
               firstTrackLabel = trackLabel(hydratedFirstTrack);
               await progress.info(
-                shouldInterruptLivePlayback
-                  ? `Stopped live stream. Playing now: ${firstTrackLabel}\nLoading remaining playlist tracks in the background...`
-                  : `Playing now: ${firstTrackLabel}\nLoading remaining playlist tracks in the background...`
+                startedPlaylistPlaybackNow
+                  ? (
+                      shouldInterruptLivePlayback
+                        ? `Stopped live stream. Playing now: ${firstTrackLabel}\nLoading remaining playlist tracks in the background...`
+                        : `Playing now: ${firstTrackLabel}\nLoading remaining playlist tracks in the background...`
+                    )
+                  : `Added to queue: ${firstTrackLabel}\nLoading remaining playlist tracks in the background...`
               );
             }
 
@@ -976,7 +986,11 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
             const resolvedTotalCount = resolved.length;
             remainingResolved = removeFirstMatchingTrack(resolved, initialPreviewTrack);
             if (!remainingResolved.length) {
-              await progress.success(`Playing now: ${firstTrackLabel}\nQueued **${resolvedTotalCount}/${resolvedTotalCount}** playlist tracks.`);
+              await progress.success(
+                startedPlaylistPlaybackNow
+                  ? `Playing now: ${firstTrackLabel}\nQueued **${resolvedTotalCount}/${resolvedTotalCount}** playlist tracks.`
+                  : `Added to queue: ${firstTrackLabel}\nQueued **${resolvedTotalCount}/${resolvedTotalCount}** playlist tracks.`
+              );
               return;
             }
 
@@ -988,23 +1002,41 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
             }, async ({ addedCount, totalCount, queueLimitReached }) => {
               const loadedCount = 1 + addedCount;
               const statusText = queueLimitReached
-                ? `Playing now: ${firstTrackLabel}\nQueued **${loadedCount}/${resolvedTotalCount}** playlist tracks before the queue limit was reached.`
-                : `Playing now: ${firstTrackLabel}\nLoading playlist tracks in the background... **${loadedCount}/${resolvedTotalCount}** queued.`;
+                ? (
+                    startedPlaylistPlaybackNow
+                      ? `Playing now: ${firstTrackLabel}\nQueued **${loadedCount}/${resolvedTotalCount}** playlist tracks before the queue limit was reached.`
+                      : `Added to queue: ${firstTrackLabel}\nQueued **${loadedCount}/${resolvedTotalCount}** playlist tracks before the queue limit was reached.`
+                  )
+                : (
+                    startedPlaylistPlaybackNow
+                      ? `Playing now: ${firstTrackLabel}\nLoading playlist tracks in the background... **${loadedCount}/${resolvedTotalCount}** queued.`
+                      : `Added to queue: ${firstTrackLabel}\nLoading playlist tracks in the background... **${loadedCount}/${resolvedTotalCount}** queued.`
+                  );
               await progress.info(statusText);
             });
             const totalAdded = 1 + backgroundResult.added.length;
 
             if (!backgroundResult.added.length) {
               await progress.success(
-                `Playing now: ${firstTrackLabel}`,
+                startedPlaylistPlaybackNow
+                  ? `Playing now: ${firstTrackLabel}`
+                  : `Added to queue: ${firstTrackLabel}`,
                 [{ name: 'Playlist Load', value: 'No additional tracks were queued.' }]
               );
               return;
             }
 
             const playlistLoadText = backgroundResult.queueLimitReached
-              ? `Playing now: ${firstTrackLabel}\nQueued **${totalAdded}/${resolvedTotalCount}** playlist tracks before the queue limit was reached.`
-              : `Playing now: ${firstTrackLabel}\nQueued **${totalAdded}/${resolvedTotalCount}** playlist tracks.`;
+              ? (
+                  startedPlaylistPlaybackNow
+                    ? `Playing now: ${firstTrackLabel}\nQueued **${totalAdded}/${resolvedTotalCount}** playlist tracks before the queue limit was reached.`
+                    : `Added to queue: ${firstTrackLabel}\nQueued **${totalAdded}/${resolvedTotalCount}** playlist tracks before the queue limit was reached.`
+                )
+              : (
+                  startedPlaylistPlaybackNow
+                    ? `Playing now: ${firstTrackLabel}\nQueued **${totalAdded}/${resolvedTotalCount}** playlist tracks.`
+                    : `Added to queue: ${firstTrackLabel}\nQueued **${totalAdded}/${resolvedTotalCount}** playlist tracks.`
+                );
             await progress.success(
               playlistLoadText,
               backgroundResult.queueLimitReached
@@ -1013,7 +1045,9 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
             );
           } catch (err) {
             await progress.warning(
-              `Playing now: ${firstTrackLabel}\nBackground playlist loading failed.`,
+              startedPlaylistPlaybackNow
+                ? `Playing now: ${firstTrackLabel}\nBackground playlist loading failed.`
+                : `Added to queue: ${firstTrackLabel}\nBackground playlist loading failed.`,
               [{ name: 'Error', value: String(err instanceof Error ? err.message : err).slice(0, 1000) || 'Unknown error' }]
             );
           } finally {

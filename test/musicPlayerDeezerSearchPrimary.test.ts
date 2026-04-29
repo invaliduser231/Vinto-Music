@@ -80,6 +80,73 @@ test('text search falls back to YouTube when Deezer search yields no results', a
   assert.equal(youtubeCalls, 1);
 });
 
+test('text search keeps Deezer-first even when NodeLink is enabled', async () => {
+  const player = createPlayer({
+    nodeLinkEnabled: true,
+    nodeLinkBaseUrl: 'http://nodelink:3000',
+    nodeLinkPassword: 'secret',
+  });
+  let deezerCalls = 0;
+  let nodeLinkCalls = 0;
+
+  player._searchDeezerTracks = async () => {
+    deezerCalls += 1;
+    return [
+      player._buildTrack({
+        title: 'Berlin',
+        url: 'https://www.deezer.com/track/3135556',
+        duration: 180,
+        requestedBy: 'user-1',
+        source: 'deezer-search-direct',
+        deezerTrackId: '3135556',
+      }),
+    ];
+  };
+  player._resolveNodeLinkTracks = async () => {
+    nodeLinkCalls += 1;
+    return [];
+  };
+
+  const tracks = await player._resolveSearchTrack('kool savas berlin', 'user-1');
+  assert.equal(tracks.length, 1);
+  assert.equal(tracks[0]!.source, 'deezer-search-direct');
+  assert.equal(deezerCalls, 1);
+  assert.equal(nodeLinkCalls, 0);
+});
+
+test('searchCandidates keeps Deezer-first even when NodeLink is enabled', async () => {
+  const player = createPlayer({
+    nodeLinkEnabled: true,
+    nodeLinkBaseUrl: 'http://nodelink:3000',
+    nodeLinkPassword: 'secret',
+  });
+  let deezerCalls = 0;
+  let nodeLinkCalls = 0;
+
+  player._searchDeezerTracks = async () => {
+    deezerCalls += 1;
+    return [
+      player._buildTrack({
+        title: 'Berlin',
+        url: 'https://www.deezer.com/track/3135556',
+        duration: 180,
+        requestedBy: 'user-1',
+        source: 'deezer-search-direct',
+        deezerTrackId: '3135556',
+      }),
+    ];
+  };
+  player._resolveNodeLinkTracks = async () => {
+    nodeLinkCalls += 1;
+    return [];
+  };
+
+  const tracks = await player.searchCandidates('kool savas berlin', 5, { requestedBy: 'user-1' });
+  assert.equal(tracks.length, 1);
+  assert.equal(tracks[0]!.source, 'deezer-search-direct');
+  assert.equal(deezerCalls, 1);
+  assert.equal(nodeLinkCalls, 0);
+});
 
 
 

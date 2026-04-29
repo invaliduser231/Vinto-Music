@@ -206,10 +206,148 @@ test('_handleTrackClose auto-recovers an early-ended YouTube track without sourc
     && meta?.sourceCode === null
   )));
   assert.ok(warnings.some(({ message, meta }) => (
-    message === 'Scheduling automatic YouTube playback recovery after early track close'
+    message === 'Scheduling automatic playback recovery after early track close'
     && meta?.recoveryTrigger === 'pipeline_close'
+    && meta?.backend === 'local'
     && meta?.recoverySeekSec === 106
   )));
+});
+
+test('_handleTrackClose auto-recovers early-ended NodeLink tracks with NodeLink retry first', async () => {
+  const warnings: Array<{ message: string; meta: Record<string, unknown> | undefined }> = [];
+  const player = new MusicPlayer(createVoice(), {
+    logger: {
+      warn(message: string, meta?: Record<string, unknown>) {
+        warnings.push({ message, meta });
+      },
+    },
+  });
+
+  const track = player.createTrackFromData({
+    title: 'NodeLink YouTube Track',
+    url: 'https://www.youtube.com/watch?v=abcdefghijk',
+    duration: '03:40',
+    source: 'youtube',
+    requestedBy: 'user-1',
+    nodelinkEncodedTrack: 'encoded-node-track',
+    nodelinkInfo: { sourceName: 'youtube' },
+  });
+
+  let playCalls = 0;
+  player.play = async () => {
+    playCalls += 1;
+  };
+  player.getProgressSeconds = () => 32;
+  player.queue.current = track;
+  player.playing = true;
+
+  await player._handleTrackClose(track, 0, null);
+
+  const resumedTrack = player.pendingTracks[0] as ({ recoveryAttemptCount?: number; nodelinkEncodedTrack?: unknown } & Record<string, unknown>) | undefined;
+
+  assert.equal(playCalls, 1);
+  assert.equal(resumedTrack?.title, track.title);
+  assert.equal(resumedTrack?.seekStartSec, 30);
+  assert.equal(resumedTrack?.recoveryAttemptCount, 1);
+  assert.equal(resumedTrack?.nodelinkEncodedTrack ?? null, 'encoded-node-track');
+  assert.ok(warnings.some(({ message, meta }) => (
+    message === 'Scheduling automatic playback recovery after early track close'
+    && meta?.backend === 'nodelink-retry'
+    && meta?.recoverySeekSec === 30
+  )));
+});
+
+test('_handleTrackClose second NodeLink early-close retry falls back to local pipeline', async () => {
+  const warnings: Array<{ message: string; meta: Record<string, unknown> | undefined }> = [];
+  const player = new MusicPlayer(createVoice(), {
+    logger: {
+      warn(message: string, meta?: Record<string, unknown>) {
+        warnings.push({ message, meta });
+      },
+    },
+  });
+
+  const track = player.createTrackFromData({
+    title: 'NodeLink Retry Track',
+    url: 'https://www.youtube.com/watch?v=abcdefghijk',
+    duration: '03:40',
+    source: 'youtube',
+    requestedBy: 'user-1',
+    nodelinkEncodedTrack: 'encoded-node-track',
+    nodelinkInfo: { sourceName: 'youtube' },
+  }) as ({ recoveryAttemptCount?: number } & ReturnType<MusicPlayer['createTrackFromData']>);
+  track.recoveryAttemptCount = 1;
+
+  let playCalls = 0;
+  player.play = async () => {
+    playCalls += 1;
+  };
+  player.getProgressSeconds = () => 36;
+  player.queue.current = track;
+  player.playing = true;
+
+  await player._handleTrackClose(track, 0, null);
+
+  const resumedTrack = player.pendingTracks[0] as ({ recoveryAttemptCount?: number; nodelinkEncodedTrack?: unknown } & Record<string, unknown>) | undefined;
+
+  assert.equal(playCalls, 1);
+  assert.equal(resumedTrack?.title, track.title);
+  assert.equal(resumedTrack?.seekStartSec, 34);
+  assert.equal(resumedTrack?.recoveryAttemptCount, 2);
+  assert.equal(resumedTrack?.nodelinkEncodedTrack ?? null, null);
+  assert.ok(warnings.some(({ message, meta }) => (
+    message === 'Scheduling automatic playback recovery after early track close'
+    && meta?.backend === 'nodelink-local-fallback'
+    && meta?.recoverySeekSec === 34
+  )));
+});
+
+test('play() retries failed YouTube startup through NodeLink before local yt-dlp fallback', async () => {
+  const voice = createVoice();
+  const player = new MusicPlayer(voice, { logger: null, nodeLinkEnabled: true, nodeLinkBaseUrl: 'http://nodelink:3000' });
+  const ffmpeg = createFakeProcess();
+  const startupCalls: string[] = [];
+  let nodeLinkResolveCalls = 0;
+  let nodeLinkStartCalls = 0;
+
+  player._startYouTubePipeline = async () => {
+    startupCalls.push('local');
+    player.ffmpeg = ffmpeg;
+  };
+  player._awaitInitialPlaybackChunk = async () => {
+    throw new Error('Playback pipeline exited before audio output (code=1).');
+  };
+  player._resolveYouTubeTrackViaNodeLink = async (track) => {
+    nodeLinkResolveCalls += 1;
+    return player.createTrackFromData({
+      ...track,
+      nodelinkEncodedTrack: 'encoded-node-retry',
+      nodelinkInfo: { sourceName: 'youtube' },
+      source: 'youtube',
+    });
+  };
+  player._startNodeLinkStream = async (track) => {
+    nodeLinkStartCalls += 1;
+    player.queue.current = track;
+    player.playing = true;
+  };
+
+  player.enqueueResolvedTracks([
+    player.createTrackFromData({
+      title: 'Retry Through NodeLink',
+      url: 'https://www.youtube.com/watch?v=retry1234567',
+      duration: '03:00',
+      source: 'youtube',
+      requestedBy: 'user-1',
+    }),
+  ]);
+
+  await player.play();
+
+  assert.deepEqual(startupCalls, ['local']);
+  assert.equal(nodeLinkResolveCalls, 1);
+  assert.equal(nodeLinkStartCalls, 1);
+  assert.equal(player.currentTrack?.nodelinkEncodedTrack, 'encoded-node-retry');
 });
 
 

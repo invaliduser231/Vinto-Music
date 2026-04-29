@@ -439,6 +439,15 @@ export class RestClient {
     return this.request('GET', `/guilds/${guildId}/members`, { query });
   }
 
+  async disconnectMemberFromVoice(guildId: string, userId: string) {
+    return this.request('PATCH', `/guilds/${guildId}/members/${userId}`, {
+      body: {
+        channel_id: null,
+      },
+      retryUnsafe: false,
+    });
+  }
+
   async listGuildRoles(guildId: string) {
     return this.request('GET', `/guilds/${guildId}/roles`);
   }

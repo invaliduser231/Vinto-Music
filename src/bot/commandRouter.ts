@@ -68,6 +68,7 @@ type SessionLookup = {
   settings?: {
     musicLogChannelId?: string | null;
     stayInVoiceEnabled?: boolean;
+    earrapeProtectionEnabled?: boolean;
     minimalMode?: boolean;
     dedupeEnabled?: boolean;
     voteSkipRatio?: number;
@@ -146,6 +147,8 @@ type LibraryLike = {
 
 type PermissionServiceLike = {
   canBotSendMessages: (guildId: string, channelId: string) => Promise<boolean | null>;
+  canBotJoinAndSpeak?: (guildId: string, channelId: string) => Promise<boolean | null>;
+  canBotMoveMembers?: (guildId: string, channelId: string) => Promise<boolean | null>;
 };
 
 type MetricsLike = {
@@ -315,16 +318,6 @@ export class CommandRouter {
       prefix: configuredPrefix,
       guildConfig,
     });
-    if (context.guildId && this.sessions.has(context.guildId, {
-      voiceChannelId: context.activeVoiceChannelId,
-      textChannelId: context.channelId,
-    })) {
-      this.sessions.bindTextChannel(context.guildId, context.channelId, {
-        voiceChannelId: context.activeVoiceChannelId,
-        textChannelId: context.channelId,
-      });
-    }
-
     try {
       if (
         context.guildId

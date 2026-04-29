@@ -43,6 +43,8 @@ type PlaylistLibrary = LibraryLike & {
   }>;
   removeUserFavorite: (userId: string, index: number) => Promise<TrackDataLike | null>;
   getUserFavorite: (userId: string, index: number) => Promise<TrackDataLike | null>;
+  getUserFavoriteByAlias: (userId: string, alias: string) => Promise<TrackDataLike | null>;
+  renameUserFavorite: (userId: string, index: number, alias: string) => Promise<TrackDataLike | null>;
   listGuildStations?: (guildId: string) => Promise<RadioStationRecord[]>;
   getGuildStation?: (guildId: string, name: string) => Promise<RadioStationRecord | null>;
   setGuildStation?: (guildId: string, name: string, station: SavedStationInput, authorId?: string | null) => Promise<RadioStationRecord>;
@@ -86,6 +88,14 @@ function toTrackLike(track: TrackDataLike | null | undefined): TrackLike {
     ...(track?.duration != null ? { duration: track.duration } : {}),
     requestedBy: track?.requestedBy ?? null,
   };
+}
+
+function formatFavoriteLine(track: TrackDataLike, absoluteIndex: number): string {
+  const alias = String(track?.alias ?? '').trim();
+  const title = String(track?.title ?? '').trim() || 'Unknown title';
+  const duration = String(track?.duration ?? '').trim() || 'Unknown';
+  const value = alias || title;
+  return `${absoluteIndex}. ${value} (${duration})`;
 }
 
 function chunkLines(lines: unknown, maxChars = 1000): string[] {
@@ -141,10 +151,6 @@ function paginate<T>(items: T[], page: number, pageSize: number) {
 
 async function validateRadioStationUrl(ctx: CommandContextLike, url: string) {
   const session = await ctx.sessions.ensure(ctx.guildId, ctx.guildConfig, {
-    voiceChannelId: ctx.activeVoiceChannelId,
-    textChannelId: ctx.channelId,
-  });
-  ctx.sessions.bindTextChannel(ctx.guildId, ctx.channelId, {
     voiceChannelId: ctx.activeVoiceChannelId,
     textChannelId: ctx.channelId,
   });
@@ -310,10 +316,6 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
 
         await typedCtx.safeTyping?.();
         const session = await ctx.sessions.ensure(ctx.guildId, ctx.guildConfig, {
-          voiceChannelId: ctx.activeVoiceChannelId,
-          textChannelId: ctx.channelId,
-        });
-        ctx.sessions.bindTextChannel(ctx.guildId, ctx.channelId, {
           voiceChannelId: ctx.activeVoiceChannelId,
           textChannelId: ctx.channelId,
         });
@@ -633,10 +635,6 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
           voiceChannelId: ctx.activeVoiceChannelId,
           textChannelId: ctx.channelId,
         });
-        ctx.sessions.bindTextChannel(ctx.guildId, ctx.channelId, {
-          voiceChannelId: ctx.activeVoiceChannelId,
-          textChannelId: ctx.channelId,
-        });
         const preview = await session.player.previewTracks(query, {
           requestedBy: ctx.authorId,
           limit: 1,
@@ -692,7 +690,10 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
         return;
       }
 
-      const lines = result.items.map((track: TrackDataLike, idx: number) => `${(result.page - 1) * result.pageSize + idx + 1}. ${trackLabel(toTrackLike(track))}`);
+      const lines = result.items.map((track: TrackDataLike, idx: number) => formatFavoriteLine(
+        track,
+        (result.page - 1) * result.pageSize + idx + 1
+      ));
       const pages = chunkLines(lines, 1000);
       if (pages.length === 1) {
         await ctx.reply.info(
@@ -709,6 +710,33 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
         'Your favorites',
         value
       )));
+    },
+  }));
+
+  registry.register(createCommand({
+    name: 'favname',
+    aliases: ['fn'],
+    description: 'Set a custom alias name for one of your favorites.',
+    usage: 'favname <index> <alias>',
+    async execute(ctx: CommandContextLike) {
+      const library = requireLibrary(ctx) as PlaylistLibrary;
+      if (!ctx.authorId) {
+        throw new ValidationError('Cannot resolve your user id for favorites.');
+      }
+
+      const index = normalizeIndex(ctx.args[0], 'Index');
+      const alias = ctx.args.slice(1).join(' ').trim();
+      if (!alias) {
+        throw new ValidationError(`Usage: ${ctx.prefix}favname <index> <alias>`);
+      }
+
+      const renamed = await library.renameUserFavorite(ctx.authorId, index, alias);
+      if (!renamed) {
+        await ctx.reply.warning('Favorite index out of range.');
+        return;
+      }
+
+      await ctx.reply.success(`Updated favorite alias: **${String(renamed.alias ?? alias).trim()}**`);
     },
   }));
 
@@ -737,8 +765,8 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
   registry.register(createCommand({
     name: 'favplay',
     aliases: ['fp'],
-    description: 'Queue one of your favorites by index.',
-    usage: 'favplay <index>',
+    description: 'Queue one of your favorites by index or alias.',
+    usage: 'favplay <index|alias>',
     async execute(ctx: CommandContextLike) {
       const typedCtx = ctx as LibraryCommandContext;
       ensureGuild(ctx);
@@ -747,10 +775,15 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
         throw new ValidationError('Cannot resolve your user id for favorites.');
       }
 
-      const index = normalizeIndex(ctx.args[0], 'Index');
-      const favorite = await library.getUserFavorite(ctx.authorId, index);
+      const selector = ctx.args.join(' ').trim();
+      if (!selector) {
+        throw new ValidationError(`Usage: ${ctx.prefix}favplay <index|alias>`);
+      }
+      const favorite = /^\d+$/.test(selector)
+        ? await library.getUserFavorite(ctx.authorId, normalizeIndex(selector, 'Index'))
+        : await library.getUserFavoriteByAlias(ctx.authorId, selector);
       if (!favorite) {
-        await ctx.reply.warning('Favorite index out of range.');
+        await ctx.reply.warning(/^\d+$/.test(selector) ? 'Favorite index out of range.' : 'Favorite alias not found.');
         return;
       }
 

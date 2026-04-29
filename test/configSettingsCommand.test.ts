@@ -60,6 +60,7 @@ test('settings command shows 24/7 status with the active voice channel tag', asy
           prefix: '!',
           settings: {
             stayInVoiceEnabled: false,
+            earrapeProtectionEnabled: true,
             minimalMode: false,
             dedupeEnabled: false,
             volumePercent: 100,
@@ -79,4 +80,7 @@ test('settings command shows 24/7 status with the active voice channel tag', asy
   const stayField = replyFields.find((field) => field.name === '24/7');
   assert.ok(stayField);
   assert.equal(stayField.value, '<#222222>: on');
+  const earrapeField = replyFields.find((field) => field.name === 'Earrape Protection');
+  assert.ok(earrapeField);
+  assert.equal(earrapeField.value, 'on (bot undeafens)');
 });
