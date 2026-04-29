@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.8.0] - 2026-04-29
+
+- Features:
+  - added `favname <index> <alias>` so users can assign custom names to favorites
+  - allowed `favplay` to resolve favorites by alias in addition to index
+  - displayed favorite aliases in `favs` output to reduce ambiguity for large favorite lists
+- Tests:
+  - added command coverage for alias rename, alias display, and alias-based playback
+  - added store coverage for alias lookup and duplicate-alias validation
+
 ## [0.7.1] - 2026-04-29
 
 - Fixes:

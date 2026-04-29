@@ -256,7 +256,7 @@ Default prefix: `!`
 
 - `playlist <create|add|remove|show|list|delete|play> ...`
 - `station <list|show|save|delete> ...`
-- `fav`, `favs`, `ufav`, `favplay`
+- `fav`, `favs`, `favname <index> <alias>`, `ufav`, `favplay <index|alias>`
 
 ### Guild Config
 
