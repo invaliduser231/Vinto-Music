@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.7.1] - 2026-04-29
+
+- Fixes:
+  - stopped rebinding session text channels on non-play commands so music logs no longer jump to the last command channel
+  - bound session log channels explicitly in the `play` flow to keep per-session logging stable across multiple voice sessions in one guild
+  - removed library preview-path channel rebinds that unintentionally shifted active playback logs
+- Tests:
+  - added coverage that `CommandRouter` does not rebind text channels for non-play commands
+  - updated join/session-connect expectations for the new non-rebinding behavior
+  - asserted that `play` still performs the intended text-channel bind
+
 ## [0.7.0] - 2026-04-26
 
 - Features:
