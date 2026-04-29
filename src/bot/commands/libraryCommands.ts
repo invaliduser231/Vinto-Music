@@ -144,10 +144,6 @@ async function validateRadioStationUrl(ctx: CommandContextLike, url: string) {
     voiceChannelId: ctx.activeVoiceChannelId,
     textChannelId: ctx.channelId,
   });
-  ctx.sessions.bindTextChannel(ctx.guildId, ctx.channelId, {
-    voiceChannelId: ctx.activeVoiceChannelId,
-    textChannelId: ctx.channelId,
-  });
 
   const preview = await session.player.previewTracks(url, {
     requestedBy: ctx.authorId,
@@ -310,10 +306,6 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
 
         await typedCtx.safeTyping?.();
         const session = await ctx.sessions.ensure(ctx.guildId, ctx.guildConfig, {
-          voiceChannelId: ctx.activeVoiceChannelId,
-          textChannelId: ctx.channelId,
-        });
-        ctx.sessions.bindTextChannel(ctx.guildId, ctx.channelId, {
           voiceChannelId: ctx.activeVoiceChannelId,
           textChannelId: ctx.channelId,
         });
@@ -630,10 +622,6 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
       if (query) {
         ensureGuild(ctx);
         const session = await ctx.sessions.ensure(ctx.guildId, ctx.guildConfig, {
-          voiceChannelId: ctx.activeVoiceChannelId,
-          textChannelId: ctx.channelId,
-        });
-        ctx.sessions.bindTextChannel(ctx.guildId, ctx.channelId, {
           voiceChannelId: ctx.activeVoiceChannelId,
           textChannelId: ctx.channelId,
         });

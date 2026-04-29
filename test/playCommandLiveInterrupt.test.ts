@@ -174,6 +174,7 @@ test('play interrupts an active live radio stream and starts the new selection n
 
   await execute(ctx);
 
+  assert.ok(calls.includes('bind:guild-1:text-1'));
   assert.deepEqual(playerCalls, [
     'previewTracks',
     'createTrackFromData:user-1',

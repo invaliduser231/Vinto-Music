@@ -129,9 +129,14 @@ type PreparedSessionConnection = {
   session: SessionLike;
 };
 
+type PrepareSessionConnectionOptions = {
+  bindTextChannel?: boolean;
+};
+
 export async function prepareSessionConnection(
   ctx: CommandContextLike,
   explicitChannelId: string | null = null,
+  options: PrepareSessionConnectionOptions = {},
 ): Promise<PreparedSessionConnection> {
   const resolvedVoice = explicitChannelId ?? await resolveActiveVoiceChannelOrThrow(ctx, { fallbackCommand: 'play' });
 
@@ -174,7 +179,9 @@ export async function prepareSessionConnection(
     ? session.connection.hasUsablePlayer()
     : true;
 
-  ctx.sessions.bindTextChannel(ctx.guildId, ctx.channelId, selector);
+  if (options.bindTextChannel === true) {
+    ctx.sessions.bindTextChannel(ctx.guildId, ctx.channelId, selector);
+  }
   return {
     hadSession,
     hasUsablePlayer,

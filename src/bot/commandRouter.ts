@@ -318,16 +318,6 @@ export class CommandRouter {
       prefix: configuredPrefix,
       guildConfig,
     });
-    if (context.guildId && this.sessions.has(context.guildId, {
-      voiceChannelId: context.activeVoiceChannelId,
-      textChannelId: context.channelId,
-    })) {
-      this.sessions.bindTextChannel(context.guildId, context.channelId, {
-        voiceChannelId: context.activeVoiceChannelId,
-        textChannelId: context.channelId,
-      });
-    }
-
     try {
       if (
         context.guildId

@@ -71,10 +71,10 @@ test('join resolves voice channel through async fallback', async () => {
     'resolveMemberVoiceChannelWithFallback',
     'has',
     'ensure',
-    'bind:guild-1:text-1',
     'connect:voice-1',
     'reply',
   ]);
+  assert.equal(calls.includes('bind:guild-1:text-1'), false);
 });
 
 

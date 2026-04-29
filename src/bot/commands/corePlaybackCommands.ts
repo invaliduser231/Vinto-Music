@@ -830,7 +830,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       await ctx.withGuildOpLock('play', async () => {
         const progress = await createProgressReporter(ctx, `Looking up: **${query}**`, null, null, { replyReference: true });
         await ctx.safeTyping();
-        const preparedSession = await prepareSessionConnection(ctx, explicitChannelId);
+        const preparedSession = await prepareSessionConnection(ctx, explicitChannelId, { bindTextChannel: true });
         const shouldLoadPlaylistInBackground = isLikelyPlaylistLoad(query);
         const directYouTubeTrack = shouldLoadPlaylistInBackground
           ? null
