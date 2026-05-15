@@ -15,8 +15,8 @@ importers:
         specifier: ^10.43.0
         version: 10.47.0
       dotenv:
-        specifier: ^17.3.1
-        version: 17.3.1
+        specifier: ^17.4.2
+        version: 17.4.2
       egoroof-blowfish:
         specifier: ^4.0.2
         version: 4.0.2
@@ -608,8 +608,8 @@ packages:
       supports-color:
         optional: true
 
-  dotenv@17.3.1:
-    resolution: {integrity: sha512-IO8C/dzEb6O3F9/twg6ZLXz164a2fhTnEWb95H23Dm4OuN+92NmEAlTrupP9VW6Jm3sO26tQlqyvyi4CsnY9GA==}
+  dotenv@17.4.2:
+    resolution: {integrity: sha512-nI4U3TottKAcAD9LLud4Cb7b2QztQMUEfHbvhTH09bqXTxnSie8WnjPALV/WMCrJZ6UV/qHJ6L03OqO3LcdYZw==}
     engines: {node: '>=12'}
 
   egoroof-blowfish@4.0.2:
@@ -1450,7 +1450,7 @@ snapshots:
     dependencies:
       ms: 2.1.3
 
-  dotenv@17.3.1: {}
+  dotenv@17.4.2: {}
 
   egoroof-blowfish@4.0.2: {}
 
