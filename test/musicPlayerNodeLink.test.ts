@@ -355,7 +355,7 @@ test('NodeLink all routing mode bypasses NodeLink for direct audio file urls', a
   assert.equal(tracks[0]!.source, 'http-audio');
 });
 
-test('NodeLink all routing mode bypasses NodeLink for generic radio stream urls without file extension', async () => {
+test('NodeLink all routing mode routes generic extensionless urls through NodeLink', async () => {
   const player = createPlayer({ nodeLinkRoutingMode: 'all' });
   let nodeLinkCalled = false;
   player.nodeLinkClient = {
@@ -364,14 +364,14 @@ test('NodeLink all routing mode bypasses NodeLink for generic radio stream urls 
       nodeLinkCalled = true;
       return {
         loadType: 'search',
-        data: [nodeLinkTrack('Unexpected', 'encoded-unexpected', 'http')],
+        data: [nodeLinkTrack('Resolved via NodeLink', 'encoded-resolved', 'lastfm')],
       } as NodeLinkLoadResult;
     },
   } as unknown as MusicPlayer['nodeLinkClient'];
   player.sources.resolver.normalizeInputUrl = async (url: unknown) => String(url ?? '');
   player.sources.resolver.resolveSingleUrlTrack = async (url: string, requestedBy: string | null) => [
     player.createTrackFromData({
-      title: 'Radio Los Santos',
+      title: 'Should not be used',
       url,
       duration: 'Live',
       source: 'radio-stream',
@@ -381,14 +381,14 @@ test('NodeLink all routing mode bypasses NodeLink for generic radio stream urls 
   ];
 
   const tracks = await player.previewTracks(
-    'https://audio.gtaradio.net/sa/radio-los-santos',
+    'https://www.last.fm/music/GReeen/_/Panama',
     { requestedBy: 'user-1', limit: 1 },
   );
 
-  assert.equal(nodeLinkCalled, false);
+  assert.equal(nodeLinkCalled, true);
   assert.equal(tracks.length, 1);
-  assert.equal(tracks[0]!.source, 'radio-stream');
-  assert.equal(tracks[0]!.isLive, true);
+  assert.equal(tracks[0]!.source, 'lastfm');
+  assert.equal(tracks[0]!.nodelinkEncodedTrack, 'encoded-resolved');
 });
 
 test('createTrackFromData normalizes stale youtube favorite source for live direct stream urls', () => {
