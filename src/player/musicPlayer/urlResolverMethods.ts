@@ -391,6 +391,13 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
     }
 
     if (shouldFallbackToLiveRadioUnknownUrl(url)) {
+      const nodeLinkRoutingMode = getNodeLinkRoutingMode(this.nodeLinkRoutingMode);
+      if (this.nodeLinkEnabled && this.nodeLinkClient?.enabled && nodeLinkRoutingMode !== 'youtube-only') {
+        const nodeLinkResolved = await this._resolveNodeLinkTracks(url, requestedBy, 1).catch(() => []);
+        if (Array.isArray(nodeLinkResolved) && nodeLinkResolved.length > 0) {
+          return nodeLinkResolved;
+        }
+      }
       this.logger?.debug?.('Classifying unresolved extensionless HTTP URL as live radio fallback', {
         url,
       });

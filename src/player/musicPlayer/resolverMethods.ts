@@ -56,6 +56,21 @@ function getNodeLinkRoutingMode(value: unknown): 'smart' | 'all' | 'youtube-only
 function shouldBypassNodeLinkForDirectStreamUrl(url: string, routingMode: 'smart' | 'all' | 'youtube-only') {
   if (routingMode !== 'all') return false;
   if (isYouTubeUrl(url)) return false;
+  if (
+    !isSoundCloudUrl(url)
+    && !isSpotifyUrl(url)
+    && !isDeezerUrl(url)
+    && !isTidalUrl(url)
+    && !isBandcampUrl(url)
+    && !isAudiomackUrl(url)
+    && !isMixcloudUrl(url)
+    && !isJioSaavnUrl(url)
+    && !isAmazonMusicUrl(url)
+    && !isAppleMusicUrl(url)
+    && !isAudiusUrl(url)
+  ) {
+    return true;
+  }
   return isLikelyDirectAudioFileUrl(url) || isLikelyPlaylistUrl(url);
 }
 
