@@ -110,6 +110,33 @@ test('earrape detector triggers on sustained clipped loud audio and enforces coo
   assert.ok(secondTriggerAt != null);
 });
 
+test('earrape detector triggers on sustained distortion at moderate loudness without hard clipping', () => {
+  const connection = new VoiceConnection(createGateway() as never, 'guild-1', { logger: null });
+  const state = connection._ensureParticipantAudioState('user-1');
+  state.joinedAtMs = 0;
+  state.profileLoaded = true;
+  state.baselineRms = 0.08;
+  state.baselineFrames = 120;
+
+  const distortedFrame = {
+    peak: 0.42,
+    rms: 0.33,
+    clippedSampleRatio: 0,
+    crestFactor: 0.42 / 0.33,
+  };
+
+  let triggeredAt: number | null = null;
+  for (let i = 0; i < 40; i += 1) {
+    const nowMs = 3_000 + (i * 20);
+    if (connection._ingestParticipantFrame('user-1', distortedFrame, nowMs)) {
+      triggeredAt = nowMs;
+      break;
+    }
+  }
+
+  assert.ok(triggeredAt != null);
+});
+
 test('earrape frame peak calculation normalizes int16 PCM values', () => {
   const connection = new VoiceConnection(createGateway() as never, 'guild-1', { logger: null });
   const frame = {

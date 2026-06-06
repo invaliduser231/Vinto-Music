@@ -25,23 +25,26 @@ const STARTUP_PREFILL_MS = 240;
 const CONCEALMENT_MAX_FRAMES = 12;
 const PUMP_IDLE_WAIT_MS = 5;
 const EARRAPE_WARMUP_MS = 1_100;
-const EARRAPE_CONFIDENCE_TRIGGER = 0.95;
+const EARRAPE_CONFIDENCE_TRIGGER = 1.05;
 const EARRAPE_CONFIDENCE_MAX = 2.5;
 const EARRAPE_CONFIDENCE_DECAY_ACTIVE = 0.06;
 const EARRAPE_CONFIDENCE_DECAY_CALM = 0.18;
 const EARRAPE_SUSTAIN_MIN_MS = 140;
-const EARRAPE_SUSTAIN_RMS_MIN = 0.24;
-const EARRAPE_RMS_HARD = 0.34;
-const EARRAPE_BURST_PEAK_THRESHOLD = 0.9;
-const EARRAPE_BURST_RMS_MIN = 0.2;
+const EARRAPE_SUSTAIN_RMS_MIN = 0.34;
+const EARRAPE_RMS_HARD = 0.46;
+const EARRAPE_BURST_PEAK_THRESHOLD = 0.93;
+const EARRAPE_BURST_RMS_MIN = 0.23;
 const EARRAPE_BURST_WINDOW_MS = 1_600;
 const EARRAPE_BURST_TRIGGER_COUNT = 3;
 const EARRAPE_CLIP_HIGH_RATIO = 0.08;
 const EARRAPE_CLIP_SEVERE_RATIO = 0.2;
 const EARRAPE_CREST_POP_THRESHOLD = 5.3;
+const EARRAPE_DISTORTION_CREST_MAX = 1.8;
+const EARRAPE_DISTORTION_RMS_DELTA = 0.1;
+const EARRAPE_DISTORTION_CONFIDENCE = 0.45;
 const EARRAPE_BASELINE_ALPHA = 0.04;
 const EARRAPE_BASELINE_CAPTURE_RMS_MAX = 0.3;
-const EARRAPE_BASELINE_DELTA_TRIGGER = 0.12;
+const EARRAPE_BASELINE_DELTA_TRIGGER = 0.15;
 const EARRAPE_CALM_RMS_THRESHOLD = 0.18;
 const EARRAPE_CALM_PEAK_THRESHOLD = 0.32;
 const EARRAPE_MUTE_HOLD_MS = 300;
@@ -804,7 +807,12 @@ export class VoiceConnection {
 
     const baselineRms = state.baselineRms ?? 0.09;
     const baselineTriggerRms = Math.max(EARRAPE_SUSTAIN_RMS_MIN, baselineRms + EARRAPE_BASELINE_DELTA_TRIGGER);
-    const isLoudFrame = metrics.rms >= baselineTriggerRms || metrics.clippedSampleRatio >= EARRAPE_CLIP_HIGH_RATIO;
+    const isDistorted = metrics.crestFactor > 0
+      && metrics.crestFactor <= EARRAPE_DISTORTION_CREST_MAX
+      && metrics.rms >= (baselineRms + EARRAPE_DISTORTION_RMS_DELTA);
+    const isLoudFrame = metrics.rms >= baselineTriggerRms
+      || metrics.clippedSampleRatio >= EARRAPE_CLIP_HIGH_RATIO
+      || isDistorted;
 
     if (isLoudFrame) {
       if (state.sustainSinceMs == null) state.sustainSinceMs = nowMs;
@@ -832,6 +840,7 @@ export class VoiceConnection {
     if (metrics.rms >= EARRAPE_RMS_HARD) confidenceDelta += 0.32;
     if (metrics.clippedSampleRatio >= EARRAPE_CLIP_HIGH_RATIO) confidenceDelta += 0.28;
     if (metrics.clippedSampleRatio >= EARRAPE_CLIP_SEVERE_RATIO) confidenceDelta += 0.3;
+    if (isDistorted) confidenceDelta += EARRAPE_DISTORTION_CONFIDENCE;
     if (state.burstCount >= EARRAPE_BURST_TRIGGER_COUNT) confidenceDelta += 0.24;
     if (metrics.crestFactor >= EARRAPE_CREST_POP_THRESHOLD && sustainMs < EARRAPE_SUSTAIN_MIN_MS) {
       confidenceDelta -= 0.4;
