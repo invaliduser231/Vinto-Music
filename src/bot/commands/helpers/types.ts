@@ -125,6 +125,7 @@ export type SessionLike = {
     searchCandidates: (query: string, limit: number, options?: { requestedBy?: string | null }) => Promise<TrackDataLike[]>;
     getProgressSeconds: () => number;
     previewTracks: (query: string, options?: { requestedBy?: string | null; limit?: number }) => Promise<TrackDataLike[]>;
+    isNodeLinkStreamingEnabled?: () => boolean;
     on: (event: string, listener: BivariantCallback<unknown[], void | Promise<void>>) => unknown;
     off: (event: string, listener: BivariantCallback<unknown[], void | Promise<void>>) => unknown;
     [key: string]: unknown;

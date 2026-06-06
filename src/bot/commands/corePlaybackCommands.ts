@@ -832,7 +832,8 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
         await ctx.safeTyping();
         const preparedSession = await prepareSessionConnection(ctx, explicitChannelId, { bindTextChannel: true });
         const shouldLoadPlaylistInBackground = isLikelyPlaylistLoad(query);
-        const directYouTubeTrack = shouldLoadPlaylistInBackground
+        const nodeLinkStreaming = preparedSession.session.player.isNodeLinkStreamingEnabled?.() ?? false;
+        const directYouTubeTrack = (shouldLoadPlaylistInBackground || nodeLinkStreaming)
           ? null
           : buildDeferredDirectYouTubeTrack(query, ctx.authorId);
         const connectPromise = connectPreparedSession(ctx, preparedSession);

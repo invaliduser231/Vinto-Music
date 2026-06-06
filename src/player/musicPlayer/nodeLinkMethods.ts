@@ -17,6 +17,7 @@ type NodeLinkMethods = {
   ): Promise<Track[]>;
   _nodeLinkLoadResultToTracks(result: NodeLinkLoadResult, requestedBy: string | null, limit?: number | null): Track[];
   _nodeLinkTrackDataToTrack(data: NodeLinkTrackData, requestedBy: string | null): Track | null;
+  isNodeLinkStreamingEnabled(): boolean;
 };
 
 function toRecord(value: unknown): Record<string, unknown> | null {
@@ -110,6 +111,10 @@ function buildNodeLinkInfo(info: NodeLinkTrackInfo | null | undefined, isrc: str
 }
 
 export const nodeLinkMethods: NodeLinkMethods & ThisType<NodeLinkRuntime> = {
+  isNodeLinkStreamingEnabled() {
+    return Boolean(this.nodeLinkEnabled && this.nodeLinkClient?.enabled);
+  },
+
   async _resolveNodeLinkTracks(query, requestedBy, limit = null, options = {}) {
     if (!this.nodeLinkClient?.enabled) {
       throw new ValidationError('NodeLink is not configured.');

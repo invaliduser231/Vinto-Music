@@ -280,6 +280,7 @@ export class MusicPlayer extends EventEmitter {
     options?: { searchIdentifier?: string | null }
   ) => Promise<Track[]>;
   declare _resolveYouTubeTrackViaNodeLink: (track: Partial<Track> | null | undefined) => Promise<Track | null>;
+  declare isNodeLinkStreamingEnabled: () => boolean;
   declare _nodeLinkLoadResultToTracks: (result: unknown, requestedBy: string | null, limit?: number | null) => Track[];
   declare _nodeLinkTrackDataToTrack: (data: unknown, requestedBy: string | null) => Track | null;
   declare _resolveSearchTrack: (query: string, requestedBy: string | null) => Promise<Track[]>;
