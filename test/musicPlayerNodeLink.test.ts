@@ -253,6 +253,36 @@ test('NodeLink still resolves direct youtube urls through loadtracks', async () 
   assert.equal(tracks[0]!.nodelinkEncodedTrack, 'encoded-youtube');
 });
 
+test('NodeLink caches loadtracks results to avoid re-resolving the same url', async () => {
+  const player = createPlayer();
+  let loadTracksCalls = 0;
+  player.nodeLinkClient = {
+    enabled: true,
+    loadTracks: async (query: string) => {
+      loadTracksCalls += 1;
+      assert.equal(query, 'https://www.youtube.com/watch?v=1NiSbpN-LaI');
+      return {
+        loadType: 'search',
+        data: [nodeLinkTrack('Cached Song', 'encoded-cached', 'youtube')],
+      } as NodeLinkLoadResult;
+    },
+  } as unknown as MusicPlayer['nodeLinkClient'];
+
+  const first = await player.previewTracks(
+    'https://www.youtube.com/watch?v=1NiSbpN-LaI',
+    { requestedBy: 'user-1', limit: 1 },
+  );
+  const second = await player.previewTracks(
+    'https://www.youtube.com/watch?v=1NiSbpN-LaI',
+    { requestedBy: 'user-2', limit: 1 },
+  );
+
+  assert.equal(loadTracksCalls, 1);
+  assert.equal(first[0]!.nodelinkEncodedTrack, 'encoded-cached');
+  assert.equal(second[0]!.nodelinkEncodedTrack, 'encoded-cached');
+  assert.equal(second[0]!.requestedBy, 'user-2');
+});
+
 test('NodeLink all routing mode bypasses NodeLink for generic radio playlist urls', async () => {
   const player = createPlayer({ nodeLinkRoutingMode: 'all' });
   let nodeLinkCalled = false;

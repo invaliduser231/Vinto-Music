@@ -11,6 +11,7 @@ import { ResolverClient } from './musicPlayer/ResolverClient.ts';
 import { SoundCloudClient } from './musicPlayer/SoundCloudClient.ts';
 import { SpotifyClient } from './musicPlayer/SpotifyClient.ts';
 import { NodeLinkClient } from './musicPlayer/NodeLinkClient.ts';
+import type { NodeLinkLoadResult } from './musicPlayer/NodeLinkClient.ts';
 import { playbackStateMethods } from './musicPlayer/playbackStateMethods.ts';
 import { queueLifecycleMethods } from './musicPlayer/queueLifecycleMethods.ts';
 import { resolverMethods } from './musicPlayer/resolverMethods.ts';
@@ -396,6 +397,7 @@ export class MusicPlayer extends EventEmitter {
   nodeLinkEnabled: boolean;
   nodeLinkRoutingMode: NodeLinkRoutingMode;
   nodeLinkClient: NodeLinkClient | null;
+  _nodeLinkResolveCache: Map<string, { result: NodeLinkLoadResult; expiresAtMs: number }>;
   spotifyClientId: string | null;
   spotifyClientSecret: string | null;
   spotifyRefreshToken: string | null;
@@ -508,6 +510,7 @@ export class MusicPlayer extends EventEmitter {
           streamStartTimeoutMs: options.nodeLinkStreamStartTimeoutMs ?? null,
         })
       : null;
+    this._nodeLinkResolveCache = new Map();
     this.spotifyClientId = String(options.spotifyClientId ?? process.env.SPOTIFY_CLIENT_ID ?? '').trim() || null;
     this.spotifyClientSecret = String(options.spotifyClientSecret ?? process.env.SPOTIFY_CLIENT_SECRET ?? '').trim() || null;
     this.spotifyRefreshToken = String(options.spotifyRefreshToken ?? process.env.SPOTIFY_REFRESH_TOKEN ?? '').trim() || null;
