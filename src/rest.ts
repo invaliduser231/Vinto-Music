@@ -91,13 +91,15 @@ function toQueryString(query: Record<string, string | number | boolean | null | 
   return encoded ? `?${encoded}` : '';
 }
 
+const MAX_RETRY_AFTER_MS = 60_000;
+
 function parseRetryAfterMs(value: unknown): number | null {
   if (value == null) return null;
 
   const asNumber = Number.parseFloat(String(value));
   if (!Number.isFinite(asNumber) || asNumber < 0) return null;
 
-  return Math.ceil(asNumber * 1000);
+  return Math.min(MAX_RETRY_AFTER_MS, Math.ceil(asNumber * 1000));
 }
 
 function parseRateLimitResetMs(value: unknown): number | null {
@@ -107,7 +109,7 @@ function parseRateLimitResetMs(value: unknown): number | null {
   if (!Number.isFinite(asNumber) || asNumber < 0) return null;
 
   const resetAtMs = asNumber >= 1e12 ? asNumber : (asNumber * 1000);
-  return Math.max(0, Math.ceil(resetAtMs - Date.now()));
+  return Math.min(MAX_RETRY_AFTER_MS, Math.max(0, Math.ceil(resetAtMs - Date.now())));
 }
 
 function parseGlobalRateLimitFlag(value: unknown): boolean {

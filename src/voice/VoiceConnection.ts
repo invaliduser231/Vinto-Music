@@ -25,15 +25,15 @@ const STARTUP_PREFILL_MS = 240;
 const CONCEALMENT_MAX_FRAMES = 12;
 const PUMP_IDLE_WAIT_MS = 5;
 const EARRAPE_WARMUP_MS = 1_100;
-const EARRAPE_CONFIDENCE_TRIGGER = 1.1;
+const EARRAPE_CONFIDENCE_TRIGGER = 0.95;
 const EARRAPE_CONFIDENCE_MAX = 2.5;
 const EARRAPE_CONFIDENCE_DECAY_ACTIVE = 0.06;
 const EARRAPE_CONFIDENCE_DECAY_CALM = 0.18;
 const EARRAPE_SUSTAIN_MIN_MS = 140;
-const EARRAPE_SUSTAIN_RMS_MIN = 0.36;
-const EARRAPE_RMS_HARD = 0.5;
-const EARRAPE_BURST_PEAK_THRESHOLD = 0.95;
-const EARRAPE_BURST_RMS_MIN = 0.26;
+const EARRAPE_SUSTAIN_RMS_MIN = 0.24;
+const EARRAPE_RMS_HARD = 0.34;
+const EARRAPE_BURST_PEAK_THRESHOLD = 0.9;
+const EARRAPE_BURST_RMS_MIN = 0.2;
 const EARRAPE_BURST_WINDOW_MS = 1_600;
 const EARRAPE_BURST_TRIGGER_COUNT = 3;
 const EARRAPE_CLIP_HIGH_RATIO = 0.08;
@@ -41,7 +41,7 @@ const EARRAPE_CLIP_SEVERE_RATIO = 0.2;
 const EARRAPE_CREST_POP_THRESHOLD = 5.3;
 const EARRAPE_BASELINE_ALPHA = 0.04;
 const EARRAPE_BASELINE_CAPTURE_RMS_MAX = 0.3;
-const EARRAPE_BASELINE_DELTA_TRIGGER = 0.18;
+const EARRAPE_BASELINE_DELTA_TRIGGER = 0.12;
 const EARRAPE_CALM_RMS_THRESHOLD = 0.18;
 const EARRAPE_CALM_PEAK_THRESHOLD = 0.32;
 const EARRAPE_MUTE_HOLD_MS = 300;
@@ -188,6 +188,7 @@ export class VoiceConnection {
   connectTimeoutMs: number;
   voiceMaxBitrate: number;
   room: Room | null;
+  connectingPromise: Promise<void> | null;
   audioSource: AudioSource | null;
   audioTrack: LocalAudioTrack | null;
   audioTrackSid: string | null;
@@ -217,6 +218,7 @@ export class VoiceConnection {
       : 192_000;
 
     this.room = null;
+    this.connectingPromise = null;
     this.channelId = null;
     this.audioSource = null;
     this.audioTrack = null;
@@ -278,6 +280,31 @@ export class VoiceConnection {
       this._syncVoiceDeafState();
       return;
     }
+
+    if (this.connectingPromise) {
+      return this.connectingPromise;
+    }
+
+    const attempt = this._connect(channelId).finally(() => {
+      this.connectingPromise = null;
+    });
+    this.connectingPromise = attempt;
+    return attempt;
+  }
+
+  async _discardStaleRoom() {
+    const room = this.room;
+    if (!room) return;
+    this._detachRoomListeners();
+    await room.disconnect?.().catch(() => null);
+    this._detachRoomFfiListener(room);
+    this._resetRoomPreConnectEvents(room);
+    room.removeAllListeners?.();
+    this.room = null;
+  }
+
+  async _connect(channelId: string) {
+    await this._discardStaleRoom();
 
     this.gateway.joinVoice(this.guildId, channelId, {
       selfDeaf: !this.earrapeProtectionEnabled,
@@ -537,24 +564,29 @@ export class VoiceConnection {
 
     const monitorToken = this.remoteAudioMonitorToken;
     const stream = new AudioStream(track as ConstructorParameters<typeof AudioStream>[0]);
-    for await (const frame of stream) {
-      if (monitorToken !== this.remoteAudioMonitorToken) break;
-      // Keep ingestion lightweight while protection is disabled, then resume from a clean state.
-      if (!this.earrapeProtectionEnabled) {
-        const profileState = this.participantAudioStates.get(participantId) ?? null;
-        if (profileState) {
-          this._syncParticipantProfile(participantId, profileState, {
-            calmRmsSample: profileState.baselineRms,
-          }, Date.now(), false);
+    try {
+      for await (const frame of stream) {
+        if (monitorToken !== this.remoteAudioMonitorToken) break;
+        if (!this.earrapeProtectionEnabled) {
+          const profileState = this.participantAudioStates.get(participantId) ?? null;
+          if (profileState) {
+            this._syncParticipantProfile(participantId, profileState, {
+              calmRmsSample: profileState.baselineRms,
+            }, Date.now(), false);
+          }
+          this.participantAudioStates.delete(participantId);
+          continue;
         }
-        this.participantAudioStates.delete(participantId);
-        continue;
-      }
 
-      const metrics = this._computeFrameMetrics(frame);
-      const decision = this._ingestParticipantFrame(participantId, metrics);
-      if (!decision) continue;
-      await this._emitEarrapeDetection(participantId, decision);
+        const metrics = this._computeFrameMetrics(frame);
+        const decision = this._ingestParticipantFrame(participantId, metrics);
+        if (!decision) continue;
+        await this._emitEarrapeDetection(participantId, decision);
+      }
+    } finally {
+      const closable = stream as { close?: () => void; destroy?: () => void };
+      closable.close?.();
+      closable.destroy?.();
     }
   }
 

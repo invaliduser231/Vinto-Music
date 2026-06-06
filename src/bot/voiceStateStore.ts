@@ -154,6 +154,11 @@ export class VoiceStateStore {
       next.set(state.user_id, state.channel_id);
     }
 
+    if (next.size === 0) {
+      const existing = this.guildVoiceStates.get(guildId);
+      if (existing && existing.size > 0) return existing.size;
+    }
+
     this.guildVoiceStates.set(guildId, next);
     return next.size;
   }

@@ -275,7 +275,6 @@ export class Gateway extends EventEmitter {
     }, this.connectOpenTimeoutMs);
 
     this.ws?.on('open', () => {
-      this.reconnectAttempts = 0;
       if (this.connectOpenTimeoutHandle) {
         clearTimeout(this.connectOpenTimeoutHandle);
         this.connectOpenTimeoutHandle = null;

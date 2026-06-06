@@ -223,6 +223,7 @@ export class MusicLibraryStore {
   maxSavedTracksPerPlaylist: number;
   maxFavoritesPerUser: number;
   maxHistoryTracks: number;
+  _rmwChains: Map<string, Promise<unknown>>;
 
   constructor(options: MusicLibraryStoreOptions) {
     this.guildPlaylists = options.guildPlaylistsCollection;
@@ -241,6 +242,21 @@ export class MusicLibraryStore {
     );
     this.maxFavoritesPerUser = toPositiveInt(options.maxFavoritesPerUser, 500);
     this.maxHistoryTracks = toPositiveInt(options.maxHistoryTracks, 200);
+    this._rmwChains = new Map();
+  }
+
+  async _serialize<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const previous = this._rmwChains.get(key) ?? Promise.resolve();
+    const run = previous.then(() => fn(), () => fn());
+    const tail = run.then(() => undefined, () => undefined);
+    this._rmwChains.set(key, tail);
+    try {
+      return await run;
+    } finally {
+      if (this._rmwChains.get(key) === tail) {
+        this._rmwChains.delete(key);
+      }
+    }
   }
 
   async init() {
@@ -856,7 +872,14 @@ export class MusicLibraryStore {
     };
   }
 
-  async addTracksToGuildPlaylist(guildId: unknown, name: unknown, tracks: unknown[], addedBy: unknown = null) {
+  addTracksToGuildPlaylist(guildId: unknown, name: unknown, tracks: unknown[], addedBy: unknown = null) {
+    return this._serialize(
+      `pl:${normalizeGuildId(guildId)}:${normalizePlaylistNameKey(name)}`,
+      () => this._addTracksToGuildPlaylistLocked(guildId, name, tracks, addedBy)
+    );
+  }
+
+  async _addTracksToGuildPlaylistLocked(guildId: unknown, name: unknown, tracks: unknown[], addedBy: unknown = null) {
     const normalizedGuildId = normalizeGuildId(guildId);
     const normalizedName = normalizePlaylistName(name);
     const nameKey = normalizePlaylistNameKey(name);
@@ -904,7 +927,14 @@ export class MusicLibraryStore {
     };
   }
 
-  async removeTrackFromGuildPlaylist(guildId: unknown, name: unknown, index: unknown) {
+  removeTrackFromGuildPlaylist(guildId: unknown, name: unknown, index: unknown) {
+    return this._serialize(
+      `pl:${normalizeGuildId(guildId)}:${normalizePlaylistNameKey(name)}`,
+      () => this._removeTrackFromGuildPlaylistLocked(guildId, name, index)
+    );
+  }
+
+  async _removeTrackFromGuildPlaylistLocked(guildId: unknown, name: unknown, index: unknown) {
     const normalizedGuildId = normalizeGuildId(guildId);
     const normalizedName = normalizePlaylistName(name);
     const nameKey = normalizePlaylistNameKey(name);
@@ -937,7 +967,11 @@ export class MusicLibraryStore {
     return removed ?? null;
   }
 
-  async addUserFavorite(userId: unknown, track: unknown) {
+  addUserFavorite(userId: unknown, track: unknown) {
+    return this._serialize(`fav:${normalizeUserId(userId)}`, () => this._addUserFavoriteLocked(userId, track));
+  }
+
+  async _addUserFavoriteLocked(userId: unknown, track: unknown) {
     const normalizedUserId = normalizeUserId(userId);
     const normalizedTrack = {
       ...normalizeTrack(track as TrackInputLike, normalizedUserId as TrackRequesterLike),
@@ -1026,7 +1060,11 @@ export class MusicLibraryStore {
     }) ?? null;
   }
 
-  async removeUserFavorite(userId: unknown, index: unknown) {
+  removeUserFavorite(userId: unknown, index: unknown) {
+    return this._serialize(`fav:${normalizeUserId(userId)}`, () => this._removeUserFavoriteLocked(userId, index));
+  }
+
+  async _removeUserFavoriteLocked(userId: unknown, index: unknown) {
     const normalizedUserId = normalizeUserId(userId);
     const safeIndex = toPositiveInt(index, 0);
     if (safeIndex <= 0) {
@@ -1052,7 +1090,11 @@ export class MusicLibraryStore {
     return removed ?? null;
   }
 
-  async renameUserFavorite(userId: unknown, index: unknown, alias: unknown) {
+  renameUserFavorite(userId: unknown, index: unknown, alias: unknown) {
+    return this._serialize(`fav:${normalizeUserId(userId)}`, () => this._renameUserFavoriteLocked(userId, index, alias));
+  }
+
+  async _renameUserFavoriteLocked(userId: unknown, index: unknown, alias: unknown) {
     const normalizedUserId = normalizeUserId(userId);
     const safeIndex = toPositiveInt(index, 0);
     if (safeIndex <= 0) {
