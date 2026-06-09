@@ -85,6 +85,8 @@ const NORMALIZED_INPUT_URL_CACHE_MAX_SIZE = 500;
 const DEEZER_STREAM_META_CACHE_MAX_SIZE = 1_000;
 const STARTUP_FAILURE_STREAK_LIMIT = 3;
 const NEXT_TRACK_PREFETCH_TTL_MS = 10 * 60_000;
+const PUMP_RECOVERY_WINDOW_MS = 30_000;
+const PUMP_RECOVERY_MAX_ATTEMPTS = 3;
 
 type YouTubePrefetchedStream = {
   streamUrl: string;
@@ -129,6 +131,7 @@ interface VoiceAdapterLike {
   pauseAudio?: () => unknown;
   resumeAudio?: () => unknown;
   getDiagnostics?: () => Promise<unknown>;
+  onAudioPumpFatalError?: (() => void) | null;
 }
 
 class PlaybackStartupAbortedError extends Error {
@@ -265,6 +268,7 @@ export class MusicPlayer extends EventEmitter {
   declare resume: () => boolean;
   declare seekTo: (seconds: number) => number;
   declare replayCurrentTrack: () => boolean;
+  declare refreshCurrentTrackProcessing: () => boolean;
   declare queuePreviousTrack: () => Track | null;
   declare searchCandidates: (
     query: string,
@@ -466,6 +470,8 @@ export class MusicPlayer extends EventEmitter {
   normalizedInputUrlCache: Map<string, { url: string; expiresAtMs: number }>;
   consecutiveStartupFailures: number;
   activeSourceProcessCloseInfo: SourceProcessCloseInfo | null;
+  _lastPumpRecoveryAtMs: number;
+  _pumpRecoveryCount: number;
 
   constructor(voice: VoiceAdapterLike, options: MusicPlayerOptions = {}) {
     super();
@@ -591,6 +597,42 @@ export class MusicPlayer extends EventEmitter {
     this.normalizedInputUrlCache = new Map();
     this.consecutiveStartupFailures = 0;
     this.activeSourceProcessCloseInfo = null;
+    this._lastPumpRecoveryAtMs = 0;
+    this._pumpRecoveryCount = 0;
+    if (this.voice && typeof this.voice === 'object') {
+      (this.voice as VoiceAdapterLike).onAudioPumpFatalError = () => this._handleVoicePumpFatalError();
+    }
+  }
+
+  _handleVoicePumpFatalError(): void {
+    if (!this.playing || !this.currentTrack) return;
+
+    const now = Date.now();
+    if (now - this._lastPumpRecoveryAtMs > PUMP_RECOVERY_WINDOW_MS) {
+      this._pumpRecoveryCount = 0;
+    }
+    this._lastPumpRecoveryAtMs = now;
+    this._pumpRecoveryCount += 1;
+
+    if (this._pumpRecoveryCount > PUMP_RECOVERY_MAX_ATTEMPTS) {
+      this.logger?.error?.('Audio pump recovery limit reached, skipping track', {
+        title: this.currentTrack?.title ?? null,
+        attempts: this._pumpRecoveryCount,
+      });
+      this._pumpRecoveryCount = 0;
+      try {
+        this.skip();
+      } catch {
+      }
+      return;
+    }
+
+    this.logger?.warn?.('Recovering playback after fatal audio pump error', {
+      title: this.currentTrack?.title ?? null,
+      attempt: this._pumpRecoveryCount,
+      progressSec: typeof this.getProgressSeconds === 'function' ? this.getProgressSeconds() : null,
+    });
+    this.refreshCurrentTrackProcessing();
   }
 
   _setNormalizedInputUrlCacheEntry(key: string, value: { url: string; expiresAtMs: number }): void {

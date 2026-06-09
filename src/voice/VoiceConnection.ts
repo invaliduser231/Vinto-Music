@@ -211,6 +211,7 @@ export class VoiceConnection {
   remoteAudioMonitorToken: number;
   participantAudioStates: Map<string, EarrapeParticipantState>;
   earrapeProfileStore: EarrapeProfileStoreLike | null;
+  onAudioPumpFatalError: (() => void) | null;
   constructor(gateway: GatewayLike, guildId: string, options: VoiceConnectionOptions = {}) {
     this.gateway = gateway;
     this.guildId = guildId;
@@ -243,6 +244,7 @@ export class VoiceConnection {
     this.earrapeProfileStore = options.earrapeProfileStore ?? null;
     this.remoteAudioMonitorToken = 0;
     this.participantAudioStates = new Map();
+    this.onAudioPumpFatalError = null;
   }
 
   get connected() {
@@ -966,7 +968,52 @@ export class VoiceConnection {
         guildId: this.guildId,
         error: err instanceof Error ? err.message : String(err),
       });
+
+      if (token === this.audioPumpToken && this.connected && this._isFatalCaptureError(err)) {
+        this._handleFatalCaptureError();
+      }
     });
+  }
+
+  _isFatalCaptureError(err: unknown) {
+    const maybeError = this._toErrorLike(err);
+    const message = String(maybeError?.message ?? err ?? '').toLowerCase();
+    return message.includes('failed to capture frame') || message.includes('invalidstate');
+  }
+
+  _handleFatalCaptureError() {
+    this.logger?.warn?.('Audio source entered invalid state, resetting track', {
+      guildId: this.guildId,
+    });
+
+    this._resetAudioTrack()
+      .catch((err) => {
+        this.logger?.error?.('Failed to reset audio track after capture error', {
+          guildId: this.guildId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      })
+      .finally(() => {
+        const notify = this.onAudioPumpFatalError;
+        if (typeof notify !== 'function') return;
+        try {
+          notify();
+        } catch (err) {
+          this.logger?.error?.('Audio pump fatal error handler threw', {
+            guildId: this.guildId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      });
+  }
+
+  async _resetAudioTrack() {
+    this.audioPumpToken += 1;
+    this.playbackPaused = false;
+    this._flushPauseWaiters();
+    this.currentAudioStream = null;
+    this._pumpStatsSample = null;
+    await this._closeAudioResources();
   }
 
   stopAudio() {

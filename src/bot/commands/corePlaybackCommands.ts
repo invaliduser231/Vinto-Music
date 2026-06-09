@@ -111,6 +111,48 @@ function toCanonicalYouTubeWatchUrlFromValue(value: string | null | undefined) {
   }
 }
 
+function splitMultiUrlQuery(query: string): string[] | null {
+  const tokens = String(query ?? '').trim().split(/\s+/).filter(Boolean);
+  if (tokens.length < 2) return null;
+
+  const urls: string[] = [];
+  for (const token of tokens) {
+    try {
+      const parsed = new URL(token);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+      urls.push(token);
+    } catch {
+      return null;
+    }
+  }
+  return urls;
+}
+
+async function enqueueAdditionalUrls(
+  session: SessionLike,
+  urls: string[],
+  requestedBy: string | null,
+  options: { dedupe: unknown; queueGuard: unknown; limit: number | null },
+): Promise<void> {
+  for (const url of urls) {
+    try {
+      const preview = await session.player.previewTracks(url, {
+        requestedBy,
+        ...(options.limit != null ? { limit: options.limit } : {}),
+      });
+      if (!preview.length) continue;
+
+      const tracks = preview.map((track) => session.player.createTrackFromData(track, requestedBy));
+      session.player.enqueueResolvedTracks(tracks, {
+        dedupe: options.dedupe,
+        queueGuard: options.queueGuard,
+        playNext: false,
+      });
+    } catch {
+    }
+  }
+}
+
 function buildDeferredDirectYouTubeTrack(query: string, requestedBy: string | null): TrackDataLike | null {
   const watchUrl = toCanonicalYouTubeWatchUrlFromValue(query);
   if (!watchUrl) return null;
@@ -821,11 +863,14 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       ensureGuild(ctx);
 
       const { channelId: explicitChannelId, rest } = parseVoiceChannelArgument(ctx.args);
-      const query = rest.join(' ').trim();
-      if (!query) {
+      const rawQuery = rest.join(' ').trim();
+      if (!rawQuery) {
         throw new ValidationError(`Usage: ${ctx.prefix}play <query>`);
       }
       enforcePlayCooldown(ctx);
+      const multiUrlQuery = splitMultiUrlQuery(rawQuery);
+      const query = multiUrlQuery?.[0] ?? rawQuery;
+      const extraQueryUrls = multiUrlQuery ? multiUrlQuery.slice(1) : [];
 
       await ctx.withGuildOpLock('play', async () => {
         const progress = await createProgressReporter(ctx, `Looking up: **${query}**`, null, null, { replyReference: true });
@@ -895,6 +940,14 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
           session.player.skip();
         } else if (!session.player.playing) {
           await session.player.play();
+        }
+
+        if (extraQueryUrls.length) {
+          void enqueueAdditionalUrls(session, extraQueryUrls, ctx.authorId, {
+            dedupe: session.settings.dedupeEnabled,
+            queueGuard,
+            limit: ctx.config.maxPlaylistTracks ?? null,
+          });
         }
 
         const firstAdded = added[0];
