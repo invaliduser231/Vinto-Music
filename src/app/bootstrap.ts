@@ -244,7 +244,11 @@ export async function startApp() {
     if (!updated) return false;
 
     lastPresenceText = nextText;
-    logger.info('Gateway presence updated', { reason, guildCount, text: nextText });
+    if (reason === 'interval') {
+      logger.debug('Gateway presence updated', { reason, guildCount, text: nextText });
+    } else {
+      logger.info('Gateway presence updated', { reason, guildCount, text: nextText });
+    }
     return true;
   };
   const initialPresence = gatewayPresenceEnabled ? buildGatewayPresence(lastPresenceText) : null;
@@ -286,7 +290,7 @@ export async function startApp() {
   const memoryLogger = logger.child('memory');
   const logMemoryTelemetry = (reason: string) => {
     const telemetry = sessions.getMemoryTelemetry();
-    memoryLogger.info('Runtime memory telemetry', {
+    memoryLogger.debug('Runtime memory telemetry', {
       reason,
       sessionsTotal: telemetry.sessionsTotal,
       voiceConnectionsConnected: telemetry.voiceConnectionsConnected,

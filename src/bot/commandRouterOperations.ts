@@ -80,6 +80,7 @@ type RouterLike = {
   };
   logger?: {
     warn?: (message: string, context?: Record<string, unknown>) => void;
+    debug?: (message: string, context?: Record<string, unknown>) => void;
   } | undefined;
   _withGuildOpLock: (guildId: string, key: string, fn: () => Promise<unknown>) => Promise<unknown>;
 };
@@ -292,11 +293,27 @@ export async function safeReply(
       handleUnknownGuildForChannel(router, channelId);
     }
 
-    router.logger?.warn?.('Failed to send command response', {
+    const upperMessage = String(errorLike?.message ?? '').toUpperCase();
+    const upperCode = String(errorLike?.code ?? '').toUpperCase();
+    const isExpectedMissingTarget = (
+      errorLike?.status === 404
+      && (
+        upperCode.startsWith('UNKNOWN_')
+        || upperMessage.includes('UNKNOWN_MESSAGE')
+        || upperMessage.includes('UNKNOWN_CHANNEL')
+        || upperMessage.includes('UNKNOWN_GUILD')
+      )
+    );
+    const logPayload = {
       channelId,
       type,
       error: err instanceof Error ? err.message : String(err),
-    });
+    };
+    if (isExpectedMissingTarget) {
+      router.logger?.debug?.('Skipped command response for missing target', logPayload);
+    } else {
+      router.logger?.warn?.('Failed to send command response', logPayload);
+    }
     return null;
   }
 }

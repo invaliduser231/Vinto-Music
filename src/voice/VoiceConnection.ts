@@ -212,6 +212,8 @@ export class VoiceConnection {
   participantAudioStates: Map<string, EarrapeParticipantState>;
   earrapeProfileStore: EarrapeProfileStoreLike | null;
   onAudioPumpFatalError: (() => void) | null;
+  onReconnected: (() => void) | null;
+  _hasConnectedBefore: boolean;
   constructor(gateway: GatewayLike, guildId: string, options: VoiceConnectionOptions = {}) {
     this.gateway = gateway;
     this.guildId = guildId;
@@ -245,6 +247,8 @@ export class VoiceConnection {
     this.remoteAudioMonitorToken = 0;
     this.participantAudioStates = new Map();
     this.onAudioPumpFatalError = null;
+    this.onReconnected = null;
+    this._hasConnectedBefore = false;
   }
 
   get connected() {
@@ -339,10 +343,21 @@ export class VoiceConnection {
       throw err;
     }
 
+    const wasConnectedBefore = this._hasConnectedBefore;
+    this._hasConnectedBefore = true;
+
     this.logger?.info?.('Voice connection established', {
       guildId: this.guildId,
       endpoint,
     });
+
+    if (wasConnectedBefore) {
+      try {
+        this.onReconnected?.();
+      } catch {
+        // resume hook failures must not break the connect path
+      }
+    }
   }
 
   async disconnect() {

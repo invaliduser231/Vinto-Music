@@ -132,6 +132,7 @@ interface VoiceAdapterLike {
   resumeAudio?: () => unknown;
   getDiagnostics?: () => Promise<unknown>;
   onAudioPumpFatalError?: (() => void) | null;
+  onReconnected?: (() => void) | null;
 }
 
 class PlaybackStartupAbortedError extends Error {
@@ -601,6 +602,7 @@ export class MusicPlayer extends EventEmitter {
     this._pumpRecoveryCount = 0;
     if (this.voice && typeof this.voice === 'object') {
       (this.voice as VoiceAdapterLike).onAudioPumpFatalError = () => this._handleVoicePumpFatalError();
+      (this.voice as VoiceAdapterLike).onReconnected = () => this._handleVoiceReconnected();
     }
   }
 
@@ -633,6 +635,22 @@ export class MusicPlayer extends EventEmitter {
       progressSec: typeof this.getProgressSeconds === 'function' ? this.getProgressSeconds() : null,
     });
     this.refreshCurrentTrackProcessing();
+  }
+
+  _handleVoiceReconnected(): void {
+    if (this.playing) return;
+    if (this.queue.pendingSize <= 0) return;
+    if (!this.voice?.connected) return;
+
+    this.logger?.info?.('Voice reconnected, resuming playback', {
+      guildId: String((this.voice as { guildId?: unknown } | null | undefined)?.guildId ?? '').trim() || null,
+      pendingTracks: this.queue.pendingSize,
+    });
+    this.play().catch((err: unknown) => {
+      this.logger?.warn?.('Failed to resume playback after voice reconnect', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
   }
 
   _setNormalizedInputUrlCacheEntry(key: string, value: { url: string; expiresAtMs: number }): void {
@@ -1111,7 +1129,7 @@ export class MusicPlayer extends EventEmitter {
                 isStreaming: Boolean(this.voice?.isStreaming),
                 channelId: (this.voice as { channelId?: unknown } | null | undefined)?.channelId ?? null,
               };
-          this.logger?.warn?.('Playback startup diagnostics snapshot', {
+          this.logger?.debug?.('Playback startup diagnostics snapshot', {
             track: track.title,
             url: track?.url ?? null,
             source: track?.source ?? null,
@@ -1161,6 +1179,30 @@ export class MusicPlayer extends EventEmitter {
 
       if (retryStartupTrack) {
         this.queue.addFront(retryStartupTrack);
+      }
+
+      if (
+        !startupAborted
+        && !retryStartupTrack
+        && normalizedMessage.includes('not connected')
+        && !this.voice?.connected
+      ) {
+        this.queue.addFront(track);
+        this._clearNextTrackPrefetch();
+        this._cleanupRuntimeYtDlpCookiesFile();
+        this._stopVoiceStream();
+        this.consecutiveStartupFailures = 0;
+        this.logger?.warn?.('Voice not connected, pausing queue until reconnect', {
+          guildId: String((this.voice as { guildId?: unknown } | null | undefined)?.guildId ?? '').trim() || null,
+          track: track?.title ?? null,
+          pendingTracks: this.queue.pendingSize,
+        });
+        this.emit('playbackPaused', {
+          reason: 'voice_disconnected',
+          track: track?.title ?? null,
+          pendingTracks: this.queue.pendingSize,
+        });
+        return;
       }
 
       if (

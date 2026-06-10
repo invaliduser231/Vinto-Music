@@ -18,12 +18,47 @@ function resolveLevel(level: unknown): number {
   return LEVELS[normalized] ?? LEVELS.info;
 }
 
+const REDACT_KEY_PATTERN = /token|secret|password|authorization|auth|cookie|apikey|api[_-]?key|credential/i;
+const MAX_STRING_LENGTH = 500;
+const MAX_ARRAY_ITEMS = 20;
+const MAX_DEPTH = 4;
+
+function sanitizeValue(value: unknown, depth: number, seen: WeakSet<object>): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value === 'string') {
+    return value.length > MAX_STRING_LENGTH
+      ? `${value.slice(0, MAX_STRING_LENGTH)}…(${value.length})`
+      : value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  if (typeof value === 'bigint') return value.toString();
+  if (value instanceof Error) return { name: value.name, message: value.message };
+  if (typeof value === 'function') return '[function]';
+  if (typeof value !== 'object') return String(value);
+
+  if (seen.has(value)) return '[circular]';
+  if (depth >= MAX_DEPTH) return '[truncated]';
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    const items = value.slice(0, MAX_ARRAY_ITEMS).map((entry) => sanitizeValue(entry, depth + 1, seen));
+    if (value.length > MAX_ARRAY_ITEMS) items.push(`…(+${value.length - MAX_ARRAY_ITEMS})`);
+    return items;
+  }
+
+  const out: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    out[key] = REDACT_KEY_PATTERN.test(key) ? '[redacted]' : sanitizeValue(entry, depth + 1, seen);
+  }
+  return out;
+}
+
 function formatContext(context: LoggerContext): string {
   if (!context || typeof context !== 'object') return '';
   const keys = Object.keys(context);
   if (!keys.length) return '';
   try {
-    return ` ${JSON.stringify(context)}`;
+    return ` ${JSON.stringify(sanitizeValue(context, 0, new WeakSet()))}`;
   } catch {
     return '';
   }

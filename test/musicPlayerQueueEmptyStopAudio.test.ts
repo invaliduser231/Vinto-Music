@@ -110,6 +110,61 @@ test('play() reports a startup pipeline close as trackError instead of queueEmpt
   assert.match(String((trackError as Error | null)?.message ?? ''), /before audio output/i);
 });
 
+test('play() pauses the queue instead of draining it when voice is disconnected', async () => {
+  const voice = {
+    stopCalls: 0,
+    connected: false,
+    async sendAudio() {
+      throw new Error('Voice room is not connected.');
+    },
+    stopAudio() {
+      this.stopCalls += 1;
+    },
+  };
+  const player = new MusicPlayer(voice, {});
+  player._scheduleNextTrackPrefetch = () => {};
+  const ffmpeg = new EventEmitter() as FfmpegMock;
+  ffmpeg.stdout = new PassThrough();
+  ffmpeg.kill = () => {};
+  player._startPlayDlPipeline = async () => {
+    player.ffmpeg = ffmpeg;
+  };
+
+  let queueEmptyCount = 0;
+  let pausedEvent: { reason?: string; pendingTracks?: number } | null = null;
+  player.on('queueEmpty', () => {
+    queueEmptyCount += 1;
+  });
+  player.on('playbackPaused', (event: { reason?: string; pendingTracks?: number }) => {
+    pausedEvent = event;
+  });
+
+  player.enqueueResolvedTracks([
+    player._buildTrack({
+      title: 'Track A',
+      url: 'https://example.com/a',
+      duration: '03:00',
+      source: 'url',
+      requestedBy: 'user-1',
+    }),
+    player._buildTrack({
+      title: 'Track B',
+      url: 'https://example.com/b',
+      duration: '03:00',
+      source: 'url',
+      requestedBy: 'user-1',
+    }),
+  ]);
+
+  await player.play();
+
+  assert.equal(queueEmptyCount, 0);
+  assert.equal((pausedEvent as { reason?: string } | null)?.reason, 'voice_disconnected');
+  assert.equal(player.playing, false);
+  assert.equal(player.queue.pendingSize, 2);
+  assert.equal(player.currentTrack, null);
+});
+
 test('play() increases initial playback timeout for large seek offsets', async () => {
   const voice = createVoice();
   const player = new MusicPlayer(voice, {});
