@@ -979,14 +979,25 @@ export class VoiceConnection {
         return;
       }
 
+      const recoverableCapture = (
+        token === this.audioPumpToken
+        && this.connected
+        && this._isFatalCaptureError(err)
+      );
+
+      if (recoverableCapture) {
+        this.logger?.warn?.('Audio pump capture error, recovering track', {
+          guildId: this.guildId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        this._handleFatalCaptureError();
+        return;
+      }
+
       this.logger?.error?.('Audio pump failed', {
         guildId: this.guildId,
         error: err instanceof Error ? err.message : String(err),
       });
-
-      if (token === this.audioPumpToken && this.connected && this._isFatalCaptureError(err)) {
-        this._handleFatalCaptureError();
-      }
     });
   }
 
