@@ -96,6 +96,27 @@ async function fetchCurrentGuildCount(rest: GuildListRest): Promise<number | nul
   return guildIds.size;
 }
 
+async function pushFluxerListStats(opts: {
+  apiBase: string;
+  botId: string;
+  apiKey: string;
+  serverCount: number;
+}): Promise<void> {
+  const url = `${opts.apiBase}/api/bots/${encodeURIComponent(opts.botId)}/stats`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${opts.apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ serverCount: opts.serverCount }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) {
+    throw new Error(`FluxerList stats push failed: ${res.status} ${res.statusText}`);
+  }
+}
+
 function createPresenceText(guildCount: number | null, rotationIndex: number): string {
   const safeGuildCount = Number.isFinite(guildCount) && Number(guildCount) >= 0 ? Number(guildCount) : 0;
   const pick = PRESENCE_SLOGANS[rotationIndex % PRESENCE_SLOGANS.length] ?? PRESENCE_SLOGANS[0];
@@ -220,6 +241,7 @@ export async function startApp() {
   const initialGuildCount = await fetchCurrentGuildCount(rest).catch(() => null);
   let presenceRotationIndex = 0;
   let presenceUpdateHandle: NodeJS.Timeout | null = null;
+  let fluxerlistStatsHandle: NodeJS.Timeout | null = null;
   const gatewayPresenceEnabled = Boolean(config.gatewayPresenceEnabled);
   let lastPresenceText = Number.isFinite(initialGuildCount)
     ? createPresenceText(initialGuildCount, presenceRotationIndex)
@@ -442,10 +464,41 @@ export async function startApp() {
 
   setBotUserId(me?.id, 'rest');
 
+  const fluxerlistLogger = logger.child('fluxerlist');
+  const pushFluxerListStatsSafe = async (reason: string): Promise<void> => {
+    if (!config.fluxerlistStatsEnabled || !config.fluxerlistApiKey) return;
+    const botId = config.fluxerlistBotId ?? resolvedBotUserId;
+    if (!botId) {
+      fluxerlistLogger.debug('Skipping FluxerList stats push: bot id not resolved yet', { reason });
+      return;
+    }
+    const serverCount = await fetchCurrentGuildCount(rest).catch(() => null);
+    if (!Number.isFinite(serverCount)) {
+      fluxerlistLogger.debug('Skipping FluxerList stats push: guild count unavailable', { reason });
+      return;
+    }
+    try {
+      await pushFluxerListStats({
+        apiBase: config.fluxerlistApiBase,
+        botId,
+        apiKey: config.fluxerlistApiKey,
+        serverCount: serverCount as number,
+      });
+      fluxerlistLogger.info('FluxerList stats pushed', { reason, botId, serverCount });
+    } catch (err) {
+      fluxerlistLogger.warn('FluxerList stats push failed', {
+        reason,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      errorReporter?.captureException?.(err, { source: 'fluxerlist_stats' });
+    }
+  };
+
   gateway.on('READY', (payload) => {
     setBotUserId(payload?.user?.id, 'gateway_ready');
     const readyGuildCount = Array.isArray(payload?.guilds) ? payload.guilds.length : null;
     applyRotatingPresence('ready', readyGuildCount).catch(() => null);
+    pushFluxerListStatsSafe('ready').catch(() => null);
 
     if (!persistentRestoreStarted) {
       persistentRestoreStarted = true;
@@ -597,6 +650,12 @@ export async function startApp() {
     }, PRESENCE_ROTATION_INTERVAL_MS);
     presenceUpdateHandle.unref?.();
   }
+  if (config.fluxerlistStatsEnabled && config.fluxerlistApiKey) {
+    fluxerlistStatsHandle = setInterval(() => {
+      pushFluxerListStatsSafe('interval').catch(() => null);
+    }, config.fluxerlistStatsIntervalMs);
+    fluxerlistStatsHandle.unref?.();
+  }
 
   const shutdown = async (signal: string) => {
     if (shuttingDown) return;
@@ -615,6 +674,10 @@ export async function startApp() {
     if (presenceUpdateHandle) {
       clearInterval(presenceUpdateHandle);
       presenceUpdateHandle = null;
+    }
+    if (fluxerlistStatsHandle) {
+      clearInterval(fluxerlistStatsHandle);
+      fluxerlistStatsHandle = null;
     }
     if (unhealthyExitHandle) {
       clearInterval(unhealthyExitHandle);

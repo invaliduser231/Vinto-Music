@@ -235,6 +235,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     playbackDiagnosticsEnabled: parseBool(env.PLAYBACK_DIAGNOSTICS_ENABLED, false),
     playbackDiagnosticsIntervalMs: parsePositiveInt(env.PLAYBACK_DIAGNOSTICS_INTERVAL_MS, 1_000),
     auddApiToken: env.AUDD_API_TOKEN?.trim() || null,
+    fluxerlistStatsEnabled: parseBool(env.FLUXERLIST_STATS_ENABLED, false),
+    fluxerlistApiKey: env.FLUXERLIST_API_KEY?.trim() || null,
+    fluxerlistBotId: env.FLUXERLIST_BOT_ID?.trim() || null,
+    fluxerlistApiBase: (env.FLUXERLIST_API_BASE?.trim() || 'https://fluxerlist.com').replace(/\/+$/, ''),
+    fluxerlistStatsIntervalMs: parsePositiveInt(env.FLUXERLIST_STATS_INTERVAL_MS, 600_000),
     memoryTelemetryIntervalMs: parsePositiveInt(env.MEMORY_TELEMETRY_INTERVAL_MS, 15_000),
     memoryTelemetryLogIntervalMs: parseNonNegativeInt(env.MEMORY_TELEMETRY_LOG_INTERVAL_MS, 300_000),
     memoryRssExitMb: parseNonNegativeInt(env.MEMORY_RSS_EXIT_MB, 0),
@@ -280,6 +285,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
 
   if (config.nodeLinkEnabled && !config.nodeLinkBaseUrl) {
     throw new ConfigurationError('NODELINK_BASE_URL is required when NODELINK_ENABLED=1');
+  }
+
+  if (config.fluxerlistStatsEnabled && !config.fluxerlistApiKey) {
+    throw new ConfigurationError('FLUXERLIST_API_KEY is required when FLUXERLIST_STATS_ENABLED=1');
   }
 
   const spotifyFields = [
