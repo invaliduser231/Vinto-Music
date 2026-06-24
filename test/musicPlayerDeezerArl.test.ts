@@ -156,15 +156,10 @@ test('_resolveDeezerStreamUrl recovers the track id from a deezer URL when missi
 
 test('_resolveStartupMirrorFallbackTrack mirrors a failed deezer track to a YouTube result', async () => {
   const player = createPlayer();
-  let capturedSource = '';
-  let capturedTitle = '';
-  let capturedArtist = '';
+  let capturedQuery = '';
 
-  player._resolveCrossSourceToYouTube = async (sourceTracks, requestedBy, source) => {
-    const first = (sourceTracks?.[0] ?? {}) as { title?: string; artist?: string };
-    capturedSource = String(source ?? '');
-    capturedTitle = String(first.title ?? '');
-    capturedArtist = String(first.artist ?? '');
+  player._searchYouTubeTracks = async (query: string, _limit: number, requestedBy: string | null) => {
+    capturedQuery = String(query ?? '');
     return [
       player._buildTrack({
         title: 'Are You That Somebody?',
@@ -186,9 +181,8 @@ test('_resolveStartupMirrorFallbackTrack mirrors a failed deezer track to a YouT
 
   assert.ok(mirror);
   assert.equal(mirror?.url, 'https://www.youtube.com/watch?v=abc123');
-  assert.equal(capturedSource, 'deezer-mirror');
-  assert.equal(capturedTitle, 'Are You That Somebody?');
-  assert.equal(capturedArtist, 'Aaliyah');
+  assert.equal(mirror?.source, 'youtube-search');
+  assert.equal(capturedQuery, 'Aaliyah - Are You That Somebody?');
 });
 
 test('_resolveStartupMirrorFallbackTrack returns null when YouTube search is disabled', async () => {

@@ -106,26 +106,33 @@ export const resolverMethods: LooseMethodMap = {
     const title = String(track?.title ?? '').trim();
     if (!title) return null;
 
-    const durationInSec = this._parseDurationSeconds?.(track?.duration) ?? null;
-    const mirrored = await this._resolveCrossSourceToYouTube(
-      [{
-        title,
-        artist: track?.artist ?? null,
-        durationInSec,
-        isrc: track?.isrc ?? null,
-      }],
-      requestedBy,
-      `${String(track?.source ?? 'nodelink').trim() || 'nodelink'}-mirror`,
-    ).catch((err: unknown) => {
-      this.logger?.debug?.('Mirror fallback resolution failed', {
-        title,
-        source: track?.source ?? null,
+    const artist = String(track?.artist ?? '').trim();
+    const query = artist ? `${artist} - ${title}` : title;
+
+    if (this.nodeLinkEnabled && this.nodeLinkClient?.enabled) {
+      for (const searchIdentifier of ['ytsearch', 'ytmsearch']) {
+        const nodeLinkMatches = await this._resolveNodeLinkTracks(query, requestedBy, 1, { searchIdentifier })
+          .catch((err: unknown) => {
+            this.logger?.debug?.('NodeLink YouTube mirror search failed', {
+              query,
+              searchIdentifier,
+              error: err instanceof Error ? err.message : String(err),
+            });
+            return [];
+          });
+        const match = Array.isArray(nodeLinkMatches) ? (nodeLinkMatches[0] ?? null) : null;
+        if (match) return match;
+      }
+    }
+
+    const localMatches = await this._searchYouTubeTracks(query, 1, requestedBy).catch((err: unknown) => {
+      this.logger?.debug?.('Local YouTube mirror search failed', {
+        query,
         error: err instanceof Error ? err.message : String(err),
       });
       return [];
     });
-
-    return Array.isArray(mirrored) ? (mirrored[0] ?? null) : null;
+    return Array.isArray(localMatches) ? (localMatches[0] ?? null) : null;
   },
 
   _isNodeLinkOnlyModeForSourceTrack(track: Partial<Track> | null | undefined, trackUrl?: string | null) {

@@ -844,7 +844,6 @@ test('_isNodeLinkOnlyModeForSourceTrack gates local playback by routing mode and
     allPlayer._isNodeLinkOnlyModeForSourceTrack({ source: 'soundcloud' }, 'https://soundcloud.com/a/b'),
     true
   );
-  // YouTube, radio, live streams and direct audio URLs stay locally playable.
   assert.equal(
     allPlayer._isNodeLinkOnlyModeForSourceTrack({ source: 'youtube' }, 'https://www.youtube.com/watch?v=abc'),
     false
@@ -862,7 +861,6 @@ test('_isNodeLinkOnlyModeForSourceTrack gates local playback by routing mode and
     false
   );
 
-  // In smart mode the local fallback stays enabled for source tracks.
   const smartPlayer = createPlayer({ nodeLinkRoutingMode: 'smart' });
   assert.equal(
     smartPlayer._isNodeLinkOnlyModeForSourceTrack({ source: 'deezer' }, 'https://www.deezer.com/track/3380594201'),
