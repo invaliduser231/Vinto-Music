@@ -390,6 +390,8 @@ export class SessionManager extends EventEmitter {
           guildId,
           channelId,
           userId,
+          botUserId: this.botUserId,
+          requestedBy: meta?.requestedBy ?? null,
           error: err instanceof Error ? err.message : String(err),
         });
       }
@@ -413,7 +415,7 @@ export class SessionManager extends EventEmitter {
     } else if (permissionError) {
       await this._notifySessionChannel(
         session,
-        'Kick timer fired, but I am missing the **Move Members** permission and could not disconnect anyone.'
+        'Kick timer fired, but the disconnect was rejected (403). This uses the same action as earrape protection — if that can remove someone but this cannot, check that I still have **Move Members** in this channel.'
       );
     } else {
       await this._notifySessionChannel(

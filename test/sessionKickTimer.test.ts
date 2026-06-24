@@ -111,7 +111,7 @@ test('_executeKickTimer reports missing Move Members permission', async () => {
   await manager._executeKickTimer(session as never);
 
   assert.equal(notifications.length, 1);
-  assert.match(String(notifications[0]?.[1] ?? ''), /Move Members/i);
+  assert.match(String(notifications[0]?.[1] ?? ''), /403|role|owner/i);
 });
 
 test('destroy clears a pending kick timer', async () => {
