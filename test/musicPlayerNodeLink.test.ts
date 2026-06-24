@@ -833,3 +833,93 @@ test('NodeLink-resolved tracks skip local YouTube prefetch scheduling', () => {
   assert.equal(player.nextTrackPrefetchPromise, null);
   assert.equal(player.nextTrackPrefetchState, null);
 });
+
+test('_isNodeLinkOnlyModeForSourceTrack gates local playback by routing mode and source', () => {
+  const allPlayer = createPlayer({ nodeLinkRoutingMode: 'all' });
+  assert.equal(
+    allPlayer._isNodeLinkOnlyModeForSourceTrack({ source: 'deezer' }, 'https://www.deezer.com/track/3380594201'),
+    true
+  );
+  assert.equal(
+    allPlayer._isNodeLinkOnlyModeForSourceTrack({ source: 'soundcloud' }, 'https://soundcloud.com/a/b'),
+    true
+  );
+  // YouTube, radio, live streams and direct audio URLs stay locally playable.
+  assert.equal(
+    allPlayer._isNodeLinkOnlyModeForSourceTrack({ source: 'youtube' }, 'https://www.youtube.com/watch?v=abc'),
+    false
+  );
+  assert.equal(
+    allPlayer._isNodeLinkOnlyModeForSourceTrack({ source: 'radio-stream' }, 'https://radio.example/stream'),
+    false
+  );
+  assert.equal(
+    allPlayer._isNodeLinkOnlyModeForSourceTrack({ source: 'deezer', isLive: true }, 'https://www.deezer.com/track/1'),
+    false
+  );
+  assert.equal(
+    allPlayer._isNodeLinkOnlyModeForSourceTrack({ source: 'http-audio' }, 'https://cdn.example/song.mp3'),
+    false
+  );
+
+  // In smart mode the local fallback stays enabled for source tracks.
+  const smartPlayer = createPlayer({ nodeLinkRoutingMode: 'smart' });
+  assert.equal(
+    smartPlayer._isNodeLinkOnlyModeForSourceTrack({ source: 'deezer' }, 'https://www.deezer.com/track/3380594201'),
+    false
+  );
+});
+
+test('NodeLink-only mode (all) skips the local Deezer pipeline and mirrors to YouTube', async () => {
+  const player = createPlayer({ nodeLinkRoutingMode: 'all' });
+  const ffmpeg = {
+    stdout: { pipe() {} },
+    once() {},
+    stderr: null,
+  } as unknown as NonNullable<MusicPlayer['ffmpeg']>;
+
+  let nodeLinkCalls = 0;
+  let deezerPipelineCalls = 0;
+  let youtubePipelineCalls = 0;
+  let mirrorCalls = 0;
+
+  player._startNodeLinkStream = async () => {
+    nodeLinkCalls += 1;
+    throw new Error('NodeLink stream failed: Playback pipeline exited before audio output (code=unknown).');
+  };
+  player.sources.deezer.startPipeline = async () => {
+    deezerPipelineCalls += 1;
+    player.ffmpeg = ffmpeg;
+  };
+  player._resolveStartupMirrorFallbackTrack = async () => {
+    mirrorCalls += 1;
+    return player.createTrackFromData({
+      title: 'Are You That Somebody?',
+      url: 'https://www.youtube.com/watch?v=abc123',
+      duration: '3:00',
+      source: 'deezer-mirror',
+    });
+  };
+  player._startYouTubePipeline = async () => {
+    youtubePipelineCalls += 1;
+    player.ffmpeg = ffmpeg;
+  };
+  player._awaitInitialPlaybackChunk = async () => {};
+
+  player.enqueueResolvedTracks([player.createTrackFromData({
+    title: 'Are You That Somebody?',
+    url: 'https://www.deezer.com/track/3380594201',
+    duration: '3:00',
+    source: 'deezer',
+    nodelinkEncodedTrack: 'encoded-deezer',
+  })]);
+
+  await player.play();
+
+  assert.equal(nodeLinkCalls, 1);
+  assert.equal(deezerPipelineCalls, 0);
+  assert.equal(mirrorCalls, 1);
+  assert.equal(youtubePipelineCalls, 1);
+
+  player.stop();
+});

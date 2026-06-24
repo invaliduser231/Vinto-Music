@@ -21,6 +21,7 @@ import {
   fetchGlobalGuildCount,
   getCachedGlobalGuildAndUserCounts,
   formatUptimeCompact,
+  formatSeconds,
 } from './commandHelpers.ts';
 import { createProgressReporter } from './responseUtils.ts';
 import type { CommandRegistry } from '../commandRegistry.ts';
@@ -669,6 +670,61 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
       const next = session.player.setVolumePercent(volumeArg);
       typedCtx.sessions.markSnapshotDirty?.(session, true);
       await ctx.reply.success(`Volume set to **${next}%**.`);
+    },
+  }));
+
+  registry.register(createCommand({
+    name: 'kicktimer',
+    aliases: ['mentalhealthkicktimer'],
+    description: 'Schedule disconnecting everyone from voice after a delay.',
+    usage: 'kicktimer <seconds|off>',
+    async execute(ctx: CommandContextLike) {
+      const typedCtx = ctx as QueueEffectsContext;
+      ensureGuild(ctx);
+      const session = getSessionOrThrow(ctx);
+      ensureDjAccess(ctx, session, 'manage the kick timer');
+
+      const sessions = typedCtx.sessions as QueueEffectsContext['sessions'] & {
+        scheduleKickTimer?: (session: SessionLike, durationSec: number, options?: { requestedBy?: string | null }) => { durationSec: number };
+        cancelKickTimer?: (session: SessionLike) => boolean;
+        getKickTimerInfo?: (session: SessionLike) => { remainingSec: number; durationSec: number; requestedBy: string | null } | null;
+      };
+
+      const rawArg = String(ctx.args[0] ?? '').trim().toLowerCase();
+
+      if (!rawArg) {
+        const info = sessions.getKickTimerInfo?.(session) ?? null;
+        if (!info) {
+          await ctx.reply.info(`No kick timer is active. Use \`${ctx.prefix}kicktimer <seconds>\` to start one.`);
+          return;
+        }
+        await ctx.reply.info(
+          `Kick timer active: **${formatSeconds(info.remainingSec)}** remaining (set to ${formatSeconds(info.durationSec)}).`
+        );
+        return;
+      }
+
+      if (['off', 'cancel', 'stop', 'clear', '0'].includes(rawArg)) {
+        const cancelled = sessions.cancelKickTimer?.(session) ?? false;
+        await ctx.reply.success(cancelled ? 'Kick timer cancelled.' : 'No kick timer was active.');
+        return;
+      }
+
+      const seconds = parseRequiredInteger(ctx.args[0], 'Seconds');
+      const minSeconds = 5;
+      const maxSeconds = 86_400;
+      if (seconds < minSeconds || seconds > maxSeconds) {
+        throw new ValidationError(`Provide a duration between **${minSeconds}** and **${maxSeconds}** seconds.`);
+      }
+
+      if (typeof sessions.scheduleKickTimer !== 'function') {
+        throw new ValidationError('Kick timer is not available right now.');
+      }
+
+      sessions.scheduleKickTimer(session, seconds, { requestedBy: ctx.authorId });
+      await ctx.reply.success(
+        `Kick timer set. Everyone will be disconnected from voice in **${formatSeconds(seconds)}**. Use \`${ctx.prefix}kicktimer off\` to cancel.`
+      );
     },
   }));
 

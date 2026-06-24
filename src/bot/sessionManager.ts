@@ -302,6 +302,127 @@ export class SessionManager extends EventEmitter {
     }
   }
 
+  _clearKickTimer(session: Session | null | undefined): void {
+    if (!session?.kickTimer) return;
+    clearTimeout(session.kickTimer as NodeJS.Timeout);
+    session.kickTimer = null;
+    session.kickTimerMeta = null;
+  }
+
+  getKickTimerInfo(session: Session | null | undefined): { remainingSec: number; durationSec: number; requestedBy: string | null } | null {
+    const meta = session?.kickTimerMeta;
+    if (!session?.kickTimer || !meta) return null;
+    const remainingMs = Math.max(0, meta.firesAtMs - Date.now());
+    return {
+      remainingSec: Math.ceil(remainingMs / 1000),
+      durationSec: meta.durationSec,
+      requestedBy: meta.requestedBy ?? null,
+    };
+  }
+
+  scheduleKickTimer(session: Session, durationSec: number, options: { requestedBy?: string | null } = {}): { durationSec: number } {
+    this._clearKickTimer(session);
+    const safeDurationSec = Math.max(1, Math.floor(durationSec));
+    session.kickTimerMeta = {
+      firesAtMs: Date.now() + safeDurationSec * 1000,
+      durationSec: safeDurationSec,
+      requestedBy: options.requestedBy ? String(options.requestedBy) : null,
+    };
+    session.kickTimer = setTimeout(() => {
+      void this._executeKickTimer(session);
+    }, safeDurationSec * 1000);
+    (session.kickTimer as NodeJS.Timeout | null)?.unref?.();
+    return { durationSec: safeDurationSec };
+  }
+
+  cancelKickTimer(session: Session | null | undefined): boolean {
+    if (!session?.kickTimer) return false;
+    this._clearKickTimer(session);
+    return true;
+  }
+
+  async _executeKickTimer(session: Session): Promise<void> {
+    const meta = session.kickTimerMeta;
+    session.kickTimer = null;
+    session.kickTimerMeta = null;
+
+    const guildId = String(session?.guildId ?? '').trim();
+    const channelId = String(session?.connection?.channelId ?? '').trim();
+    if (!guildId || !channelId) return;
+
+    const rest = this.rest;
+    if (!rest || typeof rest.disconnectMemberFromVoice !== 'function') {
+      await this._notifySessionChannel(
+        session,
+        'Kick timer fired, but I cannot disconnect members because the voice moderation API is unavailable.'
+      );
+      return;
+    }
+
+    const store = this.voiceStateStore;
+    const members = typeof store?.getUsersInChannel === 'function'
+      ? store.getUsersInChannel(guildId, channelId)
+      : [];
+    const targets = members.filter((userId) => Boolean(userId) && (!this.botUserId || userId !== this.botUserId));
+
+    if (!targets.length) {
+      await this._notifySessionChannel(
+        session,
+        'Kick timer fired, but nobody was left in the voice channel to disconnect.'
+      );
+      return;
+    }
+
+    let disconnected = 0;
+    let permissionError = false;
+    let otherError = false;
+    for (const userId of targets) {
+      try {
+        await rest.disconnectMemberFromVoice(guildId, userId);
+        disconnected += 1;
+      } catch (err) {
+        if (this._isVoiceModerationPermissionError(err)) {
+          permissionError = true;
+        } else {
+          otherError = true;
+        }
+        this.logger?.warn?.('Failed to disconnect member during kick timer', {
+          guildId,
+          channelId,
+          userId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    this.logger?.info?.('Kick timer executed', {
+      guildId,
+      channelId,
+      durationSec: meta?.durationSec ?? null,
+      requestedBy: meta?.requestedBy ?? null,
+      targets: targets.length,
+      disconnected,
+    });
+
+    if (disconnected > 0) {
+      const suffix = permissionError || otherError ? ' Some members could not be disconnected.' : '';
+      await this._notifySessionChannel(
+        session,
+        `Kick timer fired: disconnected **${disconnected}** member${disconnected === 1 ? '' : 's'} from voice.${suffix}`
+      );
+    } else if (permissionError) {
+      await this._notifySessionChannel(
+        session,
+        'Kick timer fired, but I am missing the **Move Members** permission and could not disconnect anyone.'
+      );
+    } else {
+      await this._notifySessionChannel(
+        session,
+        'Kick timer fired, but disconnecting members failed due to an API error.'
+      );
+    }
+  }
+
   setBotUserId(botUserId: string | null | undefined): void {
     this.botUserId = botUserId ? String(botUserId) : null;
     for (const session of this.sessions.values()) {
@@ -802,6 +923,7 @@ export class SessionManager extends EventEmitter {
       this.sessions.delete(session.sessionId!);
       this._stopPlaybackDiagnostics(session);
       this._clearIdleTimer(session);
+      this._clearKickTimer(session);
 
       try {
         session.player.stop?.();

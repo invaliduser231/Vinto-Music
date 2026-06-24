@@ -200,10 +200,18 @@ export interface Session {
   lastActivityAt?: number;
   textChannelId?: string | null;
   idleTimer?: unknown;
+  kickTimer?: unknown;
+  kickTimerMeta?: SessionKickTimerMeta | null;
   idleTimeoutIgnoreListeners?: boolean;
   diagnostics?: SessionDiagnosticsState;
   snapshot?: SessionSnapshotState;
   restoreState?: SessionRestoreState;
+}
+
+export interface SessionKickTimerMeta {
+  firesAtMs: number;
+  durationSec: number;
+  requestedBy: string | null;
 }
 
 export interface SessionManagerConfigLike extends Partial<AppConfig> {
@@ -292,6 +300,7 @@ export interface RestAdapterLike {
 
 export interface VoiceStateStoreLike {
   countUsersInChannel?: (guildId: string, channelId: string, excludedUserIds?: string[]) => number;
+  getUsersInChannel?: (guildId: string, channelId: string) => string[];
 }
 
 export interface PipelineProcess {

@@ -286,6 +286,8 @@ export class MusicPlayer extends EventEmitter {
     options?: { searchIdentifier?: string | null }
   ) => Promise<Track[]>;
   declare _resolveYouTubeTrackViaNodeLink: (track: Partial<Track> | null | undefined) => Promise<Track | null>;
+  declare _resolveStartupMirrorFallbackTrack: (track: Partial<Track> | null | undefined, requestedBy: string | null) => Promise<Track | null>;
+  declare _isNodeLinkOnlyModeForSourceTrack: (track: Partial<Track> | null | undefined, trackUrl?: string | null) => boolean;
   declare isNodeLinkStreamingEnabled: () => boolean;
   declare _nodeLinkLoadResultToTracks: (result: unknown, requestedBy: string | null, limit?: number | null) => Track[];
   declare _nodeLinkTrackDataToTrack: (data: unknown, requestedBy: string | null) => Track | null;
@@ -910,6 +912,16 @@ export class MusicPlayer extends EventEmitter {
             throw nodeLinkErr;
           }
 
+          if (this._isNodeLinkOnlyModeForSourceTrack(track, trackUrl)) {
+            this.logger?.warn?.('NodeLink stream startup failed; local playback disabled in NODELINK_ROUTING_MODE=all, will attempt NodeLink mirror', {
+              title: track.title,
+              source: track.source,
+              url: trackUrl,
+              error: nodeLinkErr instanceof Error ? nodeLinkErr.message : String(nodeLinkErr),
+            });
+            throw nodeLinkErr;
+          }
+
           this.logger?.warn?.('NodeLink stream startup failed, falling back to local playback pipeline', {
             title: track.title,
             source: track.source,
@@ -950,6 +962,10 @@ export class MusicPlayer extends EventEmitter {
         }
       }
 
+      if (this._isNodeLinkOnlyModeForSourceTrack(track, trackUrl)) {
+        throw new ValidationError('NodeLink-only mode (NODELINK_ROUTING_MODE=all): local playback is disabled for source tracks.');
+      }
+
       if (isYouTubeUrl(trackUrl)) {
         const seekStartSec = Math.max(0, Number.parseInt(String(track.seekStartSec ?? 0), 10) || 0);
         const startupFallbackPipeline = getStartupFallbackPipeline(track);
@@ -984,7 +1000,7 @@ export class MusicPlayer extends EventEmitter {
         await this._startHttpUrlPipeline(trackUrl, 0, { isLive: true });
       } else if (String(track.source ?? '').startsWith('audius')) {
         await this.sources.audius.startPipeline(track, track.seekStartSec ?? 0);
-      } else if (track?.deezerTrackId || String(track.source ?? '').startsWith('deezer-direct')) {
+      } else if (track?.deezerTrackId || isDeezerUrl(trackUrl) || String(track.source ?? '').startsWith('deezer-direct')) {
         await this.sources.deezer.startPipeline(track, track.seekStartSec ?? 0);
       } else if (String(track.source ?? '').startsWith('soundcloud')) {
         await this.sources.soundcloud.startPipeline(track, track.seekStartSec ?? 0);
@@ -1095,6 +1111,37 @@ export class MusicPlayer extends EventEmitter {
             (retryStartupTrack as Track & { startupFallbackPipeline?: 'ytdlp-proxy' }).startupFallbackPipeline = 'ytdlp-proxy';
           } else if (!String(retryStartupTrack.nodelinkEncodedTrack ?? '').trim() && shouldFallbackToYtDlpUrl) {
             (retryStartupTrack as Track & { startupFallbackPipeline?: 'ytdlp-url' }).startupFallbackPipeline = 'ytdlp-url';
+          }
+        }
+        const mirrorSourceLabel = String(track?.source ?? '').toLowerCase();
+        const isMirrorableSource = (
+          !track?.isLive
+          && !mirrorSourceLabel.startsWith('radio')
+          && mirrorSourceLabel !== 'http-audio'
+          && mirrorSourceLabel !== 'url'
+        );
+        const shouldMirrorNonYouTubeStartup = (
+          !retryStartupTrack
+          && !mirrorSourceLabel.startsWith('youtube')
+          && !isYouTubeUrl(String(track?.url ?? ''))
+          && isMirrorableSource
+          && !normalizedMessage.includes('not connected')
+          && startupRetryAttempt < 1
+          && this.enableYtSearch
+          && this.enableYtPlayback
+        );
+        if (shouldMirrorNonYouTubeStartup) {
+          const requestedBy = String(track?.requestedBy ?? '').trim() || null;
+          const mirrorTrack = await this._resolveStartupMirrorFallbackTrack(track, requestedBy).catch(() => null);
+          if (mirrorTrack) {
+            retryStartupTrack = this._cloneTrack(mirrorTrack, { seekStartSec: track?.seekStartSec ?? 0 });
+            (retryStartupTrack as Track & { startupRetryCount?: number }).startupRetryCount = startupRetryAttempt + 1;
+            this.logger?.warn?.('Resolved YouTube/SoundCloud mirror after source stream failure', {
+              title: track?.title ?? null,
+              source: track?.source ?? null,
+              mirrorSource: retryStartupTrack.source ?? null,
+              mirrorUrl: retryStartupTrack.url ?? null,
+            });
           }
         }
         const setupFailureLogPayload = {

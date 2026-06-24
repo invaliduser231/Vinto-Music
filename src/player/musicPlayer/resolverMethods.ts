@@ -100,6 +100,49 @@ export const resolverMethods: LooseMethodMap = {
     return Array.isArray(nodeLinkResolved) ? (nodeLinkResolved[0] ?? null) : null;
   },
 
+  async _resolveStartupMirrorFallbackTrack(track: Partial<Track> | null | undefined, requestedBy: string | null) {
+    if (!this.enableYtSearch || !this.enableYtPlayback) return null;
+
+    const title = String(track?.title ?? '').trim();
+    if (!title) return null;
+
+    const durationInSec = this._parseDurationSeconds?.(track?.duration) ?? null;
+    const mirrored = await this._resolveCrossSourceToYouTube(
+      [{
+        title,
+        artist: track?.artist ?? null,
+        durationInSec,
+        isrc: track?.isrc ?? null,
+      }],
+      requestedBy,
+      `${String(track?.source ?? 'nodelink').trim() || 'nodelink'}-mirror`,
+    ).catch((err: unknown) => {
+      this.logger?.debug?.('Mirror fallback resolution failed', {
+        title,
+        source: track?.source ?? null,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return [];
+    });
+
+    return Array.isArray(mirrored) ? (mirrored[0] ?? null) : null;
+  },
+
+  _isNodeLinkOnlyModeForSourceTrack(track: Partial<Track> | null | undefined, trackUrl?: string | null) {
+    if (!this.nodeLinkEnabled || !this.nodeLinkClient?.enabled) return false;
+    if (getNodeLinkRoutingMode(this.nodeLinkRoutingMode) !== 'all') return false;
+    if (track?.isLive) return false;
+
+    const source = String(track?.source ?? '').toLowerCase();
+    if (source.startsWith('radio')) return false;
+    if (source === 'http-audio' || source === 'url') return false;
+
+    const url = String(trackUrl ?? track?.url ?? '');
+    if (isYouTubeUrl(url)) return false;
+
+    return true;
+  },
+
   async _resolveTracks(query: string, requestedBy: string | null, limit?: number | null) {
     const raw = String(query ?? '').trim();
     if (!raw) {
