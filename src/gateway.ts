@@ -25,6 +25,7 @@ const NON_RECOVERABLE_CLOSE_CODES = new Set([
 const MIN_HEARTBEAT_INTERVAL_MS = 100;
 const MAX_HEARTBEAT_INTERVAL_MS = 60_000;
 const SEQUENCE_ACK_HEARTBEAT_INTERVAL_MS = 750;
+const MAX_MISSED_HEARTBEAT_ACKS = 2;
 
 type GatewayOptions = {
   url: string;
@@ -131,6 +132,7 @@ export class Gateway extends EventEmitter {
   sequence: number | null;
   sessionId: string | null;
   awaitingHeartbeatAck;
+  missedHeartbeatAcks: number;
   lastHeartbeatSentAt: number | null;
   heartbeatLatencyMs: number | null;
   lastSequenceAckSentAt: number;
@@ -165,6 +167,7 @@ export class Gateway extends EventEmitter {
     this.sessionId = null;
 
     this.awaitingHeartbeatAck = false;
+    this.missedHeartbeatAcks = 0;
     this.lastHeartbeatSentAt = null;
     this.heartbeatLatencyMs = null;
     this.lastSequenceAckSentAt = 0;
@@ -357,6 +360,7 @@ export class Gateway extends EventEmitter {
         }
         this.emit('heartbeat_ack', { latencyMs: this.heartbeatLatencyMs });
         this.awaitingHeartbeatAck = false;
+        this.missedHeartbeatAcks = 0;
         this._scheduleSequenceAckHeartbeat();
         break;
 
@@ -462,6 +466,8 @@ export class Gateway extends EventEmitter {
       this.heartbeatIntervalHandle = null;
     }
 
+    this.missedHeartbeatAcks = 0;
+
     // Clamp the gateway-provided heartbeat so malformed remote values cannot pin local timers indefinitely.
     const heartbeatIntervalMs = normalizeHeartbeatIntervalMs(this.heartbeatIntervalMs);
     if (!heartbeatIntervalMs) return;
@@ -474,11 +480,21 @@ export class Gateway extends EventEmitter {
 
       this.heartbeatIntervalHandle = setInterval(() => {
         if (this.awaitingHeartbeatAck) {
-          this.logger?.warn?.('Gateway heartbeat ACK timeout, terminating socket');
-          this.ws?.terminate();
+          this.missedHeartbeatAcks += 1;
+          if (this.missedHeartbeatAcks >= MAX_MISSED_HEARTBEAT_ACKS) {
+            this.logger?.warn?.('Gateway heartbeat ACK timeout, terminating socket', {
+              missedAcks: this.missedHeartbeatAcks,
+            });
+            this.missedHeartbeatAcks = 0;
+            this.ws?.terminate();
+            return;
+          }
+
+          this._sendHeartbeat();
           return;
         }
 
+        this.missedHeartbeatAcks = 0;
         this._sendHeartbeat();
       }, heartbeatIntervalMs);
     }, initialDelay);

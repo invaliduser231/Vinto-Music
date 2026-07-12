@@ -24,6 +24,8 @@ const MAX_QUEUE_MS = 1200;
 const STARTUP_PREFILL_MS = 240;
 const CONCEALMENT_MAX_FRAMES = 12;
 const PUMP_IDLE_WAIT_MS = 5;
+const CAPTURE_FRAME_MAX_RETRIES = 12;
+const CAPTURE_FRAME_RETRY_DELAY_MS = 20;
 const EARRAPE_WARMUP_MS = 1_100;
 const EARRAPE_CONFIDENCE_TRIGGER = 1.05;
 const EARRAPE_CONFIDENCE_MAX = 2.5;
@@ -1195,6 +1197,31 @@ export class VoiceConnection {
     }
   }
 
+  async _captureFrameWithRetry(source: AudioSource, frame: AudioFrame, token: number) {
+    let attempt = 0;
+    while (true) {
+      try {
+        return await this._awaitPumpOperation(() => source.captureFrame(frame), token);
+      } catch (err) {
+        if (
+          token !== this.audioPumpToken
+          || !this.connected
+          || !this._isFatalCaptureError(err)
+          || attempt >= CAPTURE_FRAME_MAX_RETRIES
+        ) {
+          throw err;
+        }
+
+        attempt += 1;
+        this.logger?.debug?.('Retrying audio frame capture after invalid state', {
+          guildId: this.guildId,
+          attempt,
+        });
+        await new Promise<void>((resolve) => setTimeout(resolve, CAPTURE_FRAME_RETRY_DELAY_MS));
+      }
+    }
+  }
+
   _isExpectedPumpError(err: unknown, token: number) {
     if (token !== this.audioPumpToken) return true;
     if (!this.connected) return true;
@@ -1447,7 +1474,7 @@ export class VoiceConnection {
             stats.maxQueuedDurationMs = Math.max(stats.maxQueuedDurationMs, Number(source.queuedDuration));
           }
 
-          await this._awaitPumpOperation(() => source.captureFrame(frame), token);
+          await this._captureFrameWithRetry(source, frame, token);
           stats.framesCaptured += 1;
           stats.pendingBufferBytes = pending.length;
           if (inputPaused && pending.length <= targetPendingBytes && Number(source.queuedDuration) <= TARGET_QUEUE_MS) {
@@ -1462,7 +1489,7 @@ export class VoiceConnection {
 
         const samples = new Int16Array(padded.buffer, padded.byteOffset, SAMPLES_PER_FRAME);
         const frame = new AudioFrame(new Int16Array(samples), SAMPLE_RATE, CHANNELS, SAMPLES_PER_CHANNEL);
-        await this._awaitPumpOperation(() => source.captureFrame(frame), token);
+        await this._captureFrameWithRetry(source, frame, token);
         stats.framesCaptured += 1;
         stats.pendingBufferBytes = 0;
       }
