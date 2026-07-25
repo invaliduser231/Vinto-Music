@@ -4,6 +4,8 @@ import { isHttpUrl, isYouTubeUrl } from './trackUtils.ts';
 import type { MusicPlayer } from '../MusicPlayer.ts';
 import type { Track } from '../../types/domain.ts';
 
+const EARLY_CLOSE_MIN_REMAINING_SEC = 10;
+
 type QueueLifecycleMethods = {
   clearQueue(): number;
   shuffleQueue(): number;
@@ -287,7 +289,7 @@ export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecy
       && elapsedSeconds != null
       && expectedDurationSeconds >= 45
       && elapsedSeconds >= 5
-      && elapsedSeconds < Math.max(10, expectedDurationSeconds * 0.7)
+      && elapsedSeconds < expectedDurationSeconds - EARLY_CLOSE_MIN_REMAINING_SEC
     );
     const sourceEndedUnexpectedly = (
       !wasSkip
