@@ -5,6 +5,9 @@ const EMBED_LINKS = 1n << 14n;
 const CONNECT = 1n << 20n;
 const SPEAK = 1n << 21n;
 const MOVE_MEMBERS = 1n << 24n;
+const ALL_PERMISSIONS = 0xffffffffffffffffn;
+const OVERWRITE_TYPE_ROLE = 0;
+const OVERWRITE_TYPE_MEMBER = 1;
 
 function toBigInt(value: unknown): bigint | null {
   if (value == null) return null;
@@ -32,9 +35,21 @@ function getOverwrites(channel: ChannelPayload): ChannelOverwrite[] {
   return [];
 }
 
-function findOverwrite(overwrites: ChannelOverwrite[], id: unknown): ChannelOverwrite | null {
-  const key = String(id);
-  return overwrites.find((entry: ChannelOverwrite) => String(entry?.id ?? '') === key) ?? null;
+function overwriteType(entry: ChannelOverwrite): number | null {
+  const raw = entry?.type;
+  if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+  if (typeof raw === 'string' && /^\d+$/.test(raw.trim())) return Number.parseInt(raw.trim(), 10);
+  return null;
+}
+
+function matchingOverwrites(overwrites: ChannelOverwrite[], id: unknown, type: number): ChannelOverwrite[] {
+  const key = String(id ?? '').trim();
+  if (!key) return [];
+  return overwrites.filter((entry: ChannelOverwrite) => {
+    if (String(entry?.id ?? '') !== key) return false;
+    const entryType = overwriteType(entry);
+    return entryType == null || entryType === type;
+  });
 }
 
 type CachedEntry<T> = {
@@ -54,6 +69,8 @@ type GuildRole = PermissionBitsCarrier & {
 type GuildPayload = {
   id?: unknown;
   guild_id?: unknown;
+  owner_id?: unknown;
+  ownerId?: unknown;
   roles?: GuildRole[];
 };
 
@@ -64,6 +81,7 @@ type GuildMemberPayload = {
 
 type ChannelOverwrite = {
   id?: unknown;
+  type?: unknown;
   deny?: unknown;
   allow?: unknown;
 };
@@ -89,6 +107,7 @@ type PermissionServiceOptions = {
     getChannel: (channelId: string) => Promise<unknown>;
     getGuildMember: (guildId: string, userId: string) => Promise<unknown>;
     getGuild: (guildId: string) => Promise<unknown>;
+    listGuildRoles?: (guildId: string) => Promise<unknown>;
   };
   botUserId?: string | null;
   logger?: {
@@ -174,7 +193,16 @@ export class PermissionService {
         this.rest.getChannel(safeChannelId),
       ]);
 
-      const basePerms = this._computeBaseRolePerms(member as GuildMemberPayload, guild as GuildPayload);
+      const guildPayload = (guild ?? {}) as GuildPayload;
+      const ownerId = String(guildPayload.owner_id ?? guildPayload.ownerId ?? '').trim();
+      if (ownerId && ownerId === this.botUserId) {
+        const owned = this._fromBits(ALL_PERMISSIONS);
+        this._setCached(this.channelPermCache, cacheKey, owned, this.maxChannelPermCacheSize);
+        return owned;
+      }
+
+      const resolvedGuild = await this._withGuildRoles(safeGuildId, guildPayload);
+      const basePerms = this._computeBaseRolePerms(member as GuildMemberPayload, resolvedGuild);
       if (basePerms == null) {
         return this._cacheAndReturnUnknown(cacheKey);
       }
@@ -182,7 +210,7 @@ export class PermissionService {
       const effectivePerms = this._applyChannelOverwrites(
         basePerms,
         member as GuildMemberPayload,
-        guild as GuildPayload,
+        resolvedGuild,
         channel as ChannelPayload
       );
       const result = this._fromBits(effectivePerms);
@@ -198,6 +226,26 @@ export class PermissionService {
     }
   }
 
+  async _withGuildRoles(guildId: string, guild: GuildPayload): Promise<GuildPayload> {
+    const resolved: GuildPayload = { ...guild, id: guild?.id ?? guildId };
+    if (Array.isArray(resolved.roles) && resolved.roles.length) return resolved;
+    if (!this.rest?.listGuildRoles) return resolved;
+
+    try {
+      const listed = await this.rest.listGuildRoles(guildId);
+      if (Array.isArray(listed) && listed.length) {
+        resolved.roles = listed as GuildRole[];
+      }
+    } catch (err) {
+      this.logger?.debug?.('Guild role listing failed', {
+        guildId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    return resolved;
+  }
+
   _computeBaseRolePerms(member: GuildMemberPayload, guild: GuildPayload): bigint | null {
     const roles = Array.isArray(guild?.roles) ? guild.roles : [];
     if (!roles.length) return null;
@@ -209,13 +257,24 @@ export class PermissionService {
       map.set(id, role);
     }
 
-    const roleIds = roleIdsFromMember(member);
-    if (!roleIds.length) return null;
+    const everyoneId = String(guild?.id ?? guild?.guild_id ?? '');
 
     let perms = 0n;
     let matched = false;
-    for (const roleId of roleIds) {
-      const role = map.get(String(roleId));
+
+    const everyoneRole = everyoneId ? map.get(everyoneId) : null;
+    if (everyoneRole) {
+      const bits = toBigInt(everyoneRole.permissions ?? everyoneRole.permission);
+      if (bits != null) {
+        perms |= bits;
+        matched = true;
+      }
+    }
+
+    for (const roleId of roleIdsFromMember(member)) {
+      const id = String(roleId);
+      if (id === everyoneId) continue;
+      const role = map.get(id);
       if (!role) continue;
       const bits = toBigInt(role.permissions ?? role.permission);
       if (bits == null) continue;
@@ -238,26 +297,25 @@ export class PermissionService {
 
     let perms = basePerms;
     const overwrites = getOverwrites(channel);
+    const everyoneId = String(guild?.id ?? guild?.guild_id ?? '').trim();
 
-    const everyone = findOverwrite(overwrites, guild?.id ?? guild?.guild_id);
-    if (everyone) {
+    for (const everyone of matchingOverwrites(overwrites, everyoneId, OVERWRITE_TYPE_ROLE)) {
       perms = this._applyOverwrite(perms, everyone);
     }
 
-    const roleIds = roleIdsFromMember(member);
     let roleDeny = 0n;
     let roleAllow = 0n;
-    for (const roleId of roleIds) {
-      const ow = findOverwrite(overwrites, roleId);
-      if (!ow) continue;
-      roleDeny |= toBigInt(ow.deny) ?? 0n;
-      roleAllow |= toBigInt(ow.allow) ?? 0n;
+    for (const roleId of roleIdsFromMember(member)) {
+      if (String(roleId) === everyoneId) continue;
+      for (const ow of matchingOverwrites(overwrites, roleId, OVERWRITE_TYPE_ROLE)) {
+        roleDeny |= toBigInt(ow.deny) ?? 0n;
+        roleAllow |= toBigInt(ow.allow) ?? 0n;
+      }
     }
     perms &= ~roleDeny;
     perms |= roleAllow;
 
-    const memberOw = findOverwrite(overwrites, this.botUserId);
-    if (memberOw) {
+    for (const memberOw of matchingOverwrites(overwrites, this.botUserId, OVERWRITE_TYPE_MEMBER)) {
       perms = this._applyOverwrite(perms, memberOw);
     }
 
@@ -274,16 +332,18 @@ export class PermissionService {
   }
 
   _fromBits(bits: bigint): PermissionResolution {
-    const canViewChannel = (bits & VIEW_CHANNEL) !== 0n;
+    const isAdmin = (bits & ADMINISTRATOR) !== 0n;
+    const canViewChannel = isAdmin || (bits & VIEW_CHANNEL) !== 0n;
+    const has = (flag: bigint) => canViewChannel && (isAdmin || (bits & flag) !== 0n);
     return {
       known: true,
       bits,
       canViewChannel,
-      canSendMessages: canViewChannel && (bits & SEND_MESSAGES) !== 0n,
-      canEmbedLinks: canViewChannel && (bits & EMBED_LINKS) !== 0n,
-      canConnect: canViewChannel && (bits & CONNECT) !== 0n,
-      canSpeak: canViewChannel && (bits & SPEAK) !== 0n,
-      canMoveMembers: canViewChannel && (bits & MOVE_MEMBERS) !== 0n,
+      canSendMessages: has(SEND_MESSAGES),
+      canEmbedLinks: has(EMBED_LINKS),
+      canConnect: has(CONNECT),
+      canSpeak: has(SPEAK),
+      canMoveMembers: has(MOVE_MEMBERS),
     };
   }
 
