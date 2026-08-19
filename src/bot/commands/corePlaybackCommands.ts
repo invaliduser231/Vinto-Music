@@ -18,6 +18,7 @@ import {
   resolveQueueGuard,
   trackLabel,
   trackLabelWithLink,
+  buildTrackAuthor,
   saveSearchSelection,
   normalizeIndex,
   consumeSearchSelection,
@@ -34,7 +35,7 @@ import {
   formatHistoryPage,
   requireLibrary,
 } from './commandHelpers.ts';
-import { buildEmbed } from '../messageFormatter.ts';
+import { buildEmbed, sourceColor } from '../messageFormatter.ts';
 import {
   buildInfoPayload,
   createProgressReporter,
@@ -1434,6 +1435,9 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
           thumbnailUrl: current.thumbnailUrl ?? null,
           imageUrl: current.thumbnailUrl ?? null,
           footer: sessionFooter,
+          url: current.url ?? null,
+          author: buildTrackAuthor(current),
+          color: sourceColor(current.source),
         }
       );
 

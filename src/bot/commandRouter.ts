@@ -1,6 +1,7 @@
 import { ValidationError } from '../core/errors.ts';
 import { parseCommand } from '../utils/commandParser.ts';
-import { makeResponder } from './messageFormatter.ts';
+import { buildEmbed, makeResponder, sourceColor } from './messageFormatter.ts';
+import { buildTrackAuthor } from './commands/helpers/formatting.ts';
 import { CommandRegistry } from './commandRegistry.ts';
 import { registerCommands } from './commands/index.ts';
 import { CommandRateLimiter } from './services/commandRateLimiter.ts';
@@ -226,6 +227,7 @@ export class CommandRouter {
   guildOpLocks: Map<string, number>;
   helpPaginations: Map<string, HelpPaginationState>;
   searchReactionSelections: Map<string, SearchReactionState>;
+  nowPlayingMessages: Map<string, { channelId: string; messageId: string }>;
   weeklySweepHandle: NodeJS.Timeout | null;
   ephemeralCleanupHandle: NodeJS.Timeout | null;
   commandRateLimiter: CommandRateLimiter;
@@ -250,6 +252,7 @@ export class CommandRouter {
     this.guildOpLocks = new Map();
     this.helpPaginations = new Map();
     this.searchReactionSelections = new Map();
+    this.nowPlayingMessages = new Map();
     this.weeklySweepHandle = null;
     this.ephemeralCleanupHandle = null;
     const rateLimiterOptions = {
@@ -579,14 +582,17 @@ export class CommandRouter {
         }
       }
 
-      await this._safeReply(
-        channelId,
-        'info',
-        `Now playing${voiceChannelTag}: **${track.title}** (${track.duration})`,
-        null,
-        null,
-        session?.settings?.minimalMode ? { minimalMode: true } : undefined
-      );
+      const published = await this._publishNowPlaying(session, track, channelId, voiceChannelTag);
+      if (!published) {
+        await this._safeReply(
+          channelId,
+          'info',
+          `Now playing${voiceChannelTag}: **${track.title}** (${track.duration})`,
+          null,
+          null,
+          session?.settings?.minimalMode ? { minimalMode: true } : undefined
+        );
+      }
       await this._emitWebhookEvent(session, 'track_start', `Now playing${voiceChannelTag}: ${summarizeTrack(track)}`);
     });
 
@@ -608,6 +614,7 @@ export class CommandRouter {
     this.sessions.on('queueEmpty', async (payload?: SessionEventPayload) => {
       const { session, reason = null } = payload ?? {};
       if (!session?.guildId) return;
+      this.nowPlayingMessages.delete(String(session.guildId));
       const activeSession = this.sessions.get(session.guildId, { sessionId: session?.sessionId });
       if (activeSession && activeSession !== session) return;
       const player = session?.player ?? null;
@@ -693,6 +700,62 @@ export class CommandRouter {
     const ratio = Number.isFinite(session?.settings?.voteSkipRatio) ? Number(session?.settings?.voteSkipRatio) : 0.5;
     const minVotes = Number.isFinite(session?.settings?.voteSkipMinVotes) ? Number(session?.settings?.voteSkipMinVotes) : 2;
     return Math.max(minVotes, Math.ceil(listeners * ratio));
+  }
+
+  async _publishNowPlaying(
+    session: SessionLookup | null | undefined,
+    track: Record<string, unknown>,
+    channelId: string,
+    voiceChannelTag: string,
+  ): Promise<boolean> {
+    if (session?.settings?.minimalMode === true) return false;
+    if (this.config.enableEmbeds === false) return false;
+
+    const guildId = String(session?.guildId ?? '').trim();
+    if (!guildId) return false;
+
+    const title = String(track?.title ?? '').trim() || 'Unknown';
+    const duration = String(track?.duration ?? '').trim() || 'Unknown';
+    const url = String(track?.url ?? '').trim();
+    const requestedBy = String(track?.requestedBy ?? '').trim();
+
+    const descriptionParts = [`**${title}**`, `\`${duration}\``];
+    if (requestedBy) descriptionParts.push(`• <@${requestedBy}>`);
+
+    const embed = buildEmbed({
+      title: `Now playing${voiceChannelTag}`,
+      description: descriptionParts.join(' '),
+      color: sourceColor(track?.source as string | null | undefined),
+      thumbnailUrl: (track?.thumbnailUrl as string | null | undefined) ?? null,
+      author: buildTrackAuthor(track as never),
+      url: url || null,
+    });
+
+    const payload: MessagePayload = {
+      embeds: [embed],
+      allowed_mentions: { parse: [], users: [], roles: [], replied_user: false },
+    };
+
+    const existing = this.nowPlayingMessages.get(guildId);
+    if (existing && existing.channelId === channelId) {
+      const edited = await this.rest.editMessage(channelId, existing.messageId, payload).catch(() => null);
+      if (edited) return true;
+      this.nowPlayingMessages.delete(guildId);
+    }
+
+    const sent = await this.rest.sendMessage(channelId, payload).catch((error: unknown) => {
+      this.logger?.debug?.('Failed to publish now playing message', {
+        guildId,
+        channelId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    });
+    if (!sent) return false;
+
+    const messageId = String((sent as { id?: unknown })?.id ?? '').trim();
+    if (messageId) this.nowPlayingMessages.set(guildId, { channelId, messageId });
+    return true;
   }
 
   async _emitWebhookEvent(session: SessionLookup | null | undefined, type: string, text: string) {

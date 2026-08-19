@@ -1,5 +1,6 @@
 import type {
   AllowedMentions,
+  EmbedAuthor,
   EmbedField,
   EmbedPayload,
   MessagePayload,
@@ -12,11 +13,52 @@ import type {
 const COLORS = {
   brand: 0xff2d78,
   info: 0xff2d78,
-  success: 0xff2d78,
-  warning: 0xff2d78,
-  error: 0xff2d78,
+  success: 0x2dd4a7,
+  warning: 0xffb020,
+  error: 0xff4d5e,
 };
+
+const SOURCE_COLORS: Record<string, number> = {
+  deezer: 0xa238ff,
+  spotify: 0x1db954,
+  youtube: 0xff0033,
+  'youtube-search': 0xff0033,
+  soundcloud: 0xff5500,
+  applemusic: 0xfa243c,
+  tidal: 0x00cfff,
+  bandcamp: 0x1da0c3,
+  vkmusic: 0x0077ff,
+  jiosaavn: 0x2bc5b4,
+  'radio-stream': 0xff2d78,
+};
+
+const SOURCE_LABELS: Record<string, string> = {
+  deezer: 'Deezer',
+  spotify: 'Spotify',
+  youtube: 'YouTube',
+  'youtube-search': 'YouTube',
+  soundcloud: 'SoundCloud',
+  applemusic: 'Apple Music',
+  tidal: 'Tidal',
+  bandcamp: 'Bandcamp',
+  vkmusic: 'VK Music',
+  jiosaavn: 'JioSaavn',
+  'radio-stream': 'Radio',
+};
+
 const BOT_BRAND = 'Vinto';
+
+export function sourceColor(source: string | null | undefined, fallback: number = COLORS.brand): number {
+  const key = String(source ?? '').trim().toLowerCase();
+  return SOURCE_COLORS[key] ?? fallback;
+}
+
+export function sourceLabel(source: string | null | undefined): string {
+  const key = String(source ?? '').trim().toLowerCase();
+  if (SOURCE_LABELS[key]) return SOURCE_LABELS[key];
+  if (!key) return 'Unknown';
+  return key.charAt(0).toUpperCase() + key.slice(1);
+}
 
 interface BuildEmbedOptions {
   title?: string | null;
@@ -26,6 +68,9 @@ interface BuildEmbedOptions {
   thumbnailUrl?: string | null;
   imageUrl?: string | null;
   footer?: string | null;
+  url?: string | null;
+  author?: EmbedAuthor | null;
+  footerIconUrl?: string | null;
 }
 
 interface ResponderOptions {
@@ -114,6 +159,9 @@ export function buildEmbed({
   thumbnailUrl,
   imageUrl,
   footer,
+  url,
+  author,
+  footerIconUrl,
 }: BuildEmbedOptions): EmbedPayload {
   const embed: EmbedPayload = {
     color,
@@ -122,6 +170,19 @@ export function buildEmbed({
 
   if (title) embed.title = truncate(String(title), 256);
   if (description) embed.description = truncate(String(description), 4096);
+
+  const safeUrl = String(url ?? '').trim();
+  if (/^https?:\/\//i.test(safeUrl)) embed.url = truncate(safeUrl, 2048);
+
+  const authorName = String(author?.name ?? '').trim();
+  if (authorName) {
+    const authorPayload: EmbedAuthor = { name: truncate(authorName, 256) };
+    const authorUrl = String(author?.url ?? '').trim();
+    const authorIcon = String(author?.icon_url ?? '').trim();
+    if (/^https?:\/\//i.test(authorUrl)) authorPayload.url = truncate(authorUrl, 2048);
+    if (/^https?:\/\//i.test(authorIcon)) authorPayload.icon_url = truncate(authorIcon, 2048);
+    embed.author = authorPayload;
+  }
 
   if (Array.isArray(fields) && fields.length) {
     embed.fields = fields.slice(0, 25).map((field) => ({
@@ -143,6 +204,11 @@ export function buildEmbed({
 
   const footerText = footer ? `${BOT_BRAND} | ${String(footer)}` : BOT_BRAND;
   embed.footer = { text: truncate(String(footerText), 2048) };
+
+  const safeFooterIcon = String(footerIconUrl ?? '').trim();
+  if (/^https?:\/\//i.test(safeFooterIcon)) {
+    embed.footer.icon_url = truncate(safeFooterIcon, 2048);
+  }
 
   return embed;
 }
@@ -191,10 +257,13 @@ export function makeResponder(rest: RestLike, options: ResponderOptions = {}): R
         buildEmbed({
           title,
           description: text,
-          color,
+          color: embedOptions?.color ?? color,
           fields: details,
           thumbnailUrl: embedOptions?.thumbnailUrl ?? null,
           imageUrl: embedOptions?.imageUrl ?? null,
+          url: embedOptions?.url ?? null,
+          author: embedOptions?.author ?? null,
+          footerIconUrl: embedOptions?.footerIconUrl ?? null,
         }),
         useEmbeds,
         minimalMode,

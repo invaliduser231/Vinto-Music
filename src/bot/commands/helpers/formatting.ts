@@ -1,6 +1,6 @@
 import { ValidationError } from '../../../core/errors.ts';
-import { buildEmbed } from '../../messageFormatter.ts';
-import type { CommandDefinition, MessagePayload } from '../../../types/core.ts';
+import { buildEmbed, sourceLabel } from '../../messageFormatter.ts';
+import type { CommandDefinition, EmbedAuthor, MessagePayload } from '../../../types/core.ts';
 import {
   EMBED_FIELD_TEXT_LIMIT,
   HISTORY_PAGE_SIZE,
@@ -16,6 +16,8 @@ type TrackLike = {
   title?: string | null;
   isLive?: boolean | null;
   url?: string | null;
+  artist?: string | null;
+  source?: string | null;
 };
 
 type SessionLike = {
@@ -129,6 +131,18 @@ export function trackLabelWithLink(track: TrackLike) {
     : `**${title}**`;
   const by = track?.requestedBy ? ` • requested by <@${track.requestedBy}>` : '';
   return `${linkedTitle} (${duration})${by}`;
+}
+
+export function buildTrackAuthor(track: TrackLike): EmbedAuthor | null {
+  const label = sourceLabel(track?.source);
+  const artist = String(track?.artist ?? '').trim();
+  const name = artist ? `${label} · ${artist}` : label;
+  if (!name) return null;
+
+  const author: EmbedAuthor = { name };
+  const url = String(track?.url ?? '').trim();
+  if (/^https?:\/\//i.test(url)) author.url = url;
+  return author;
 }
 
 export function parseDurationToSeconds(value: unknown) {
