@@ -493,4 +493,12 @@ export const en = {
   'voteskipcfg.usage': 'Usage: `voteskipcfg [ratio <0..1>|min <number>]`',
 
   'language.profilesUnavailable': 'User profiles are not available.',
+
+  'events.nowPlaying': 'Now playing{channel}: **{title}** ({duration})',
+  'events.trackError': 'Playback error on **{title}**: {error}',
+  'events.queueEmpty': 'Queue is empty. {suffix}',
+  'events.queueEmptyStay': '24/7 mode is enabled, so I will stay connected.',
+  'events.queueEmptyDisconnect': 'I will disconnect after {seconds}s of inactivity.',
+  'events.sessionClosedIdle': 'Session closed due to inactivity.',
+  'events.sessionClosed': 'Session closed ({reason}).',
 } as const;

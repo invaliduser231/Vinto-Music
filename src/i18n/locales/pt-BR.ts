@@ -495,4 +495,12 @@ export const ptBR: Catalog = {
   'voteskipcfg.usage': 'Uso: `voteskipcfg [ratio <0..1>|min <número>]`',
 
   'language.profilesUnavailable': 'Os perfis de usuário não estão disponíveis.',
+
+  'events.nowPlaying': 'Tocando agora{channel}: **{title}** ({duration})',
+  'events.trackError': 'Erro de reprodução em **{title}**: {error}',
+  'events.queueEmpty': 'A fila está vazia. {suffix}',
+  'events.queueEmptyStay': 'O modo 24/7 está ativo, então vou continuar conectado.',
+  'events.queueEmptyDisconnect': 'Vou desconectar após {seconds}s de inatividade.',
+  'events.sessionClosedIdle': 'Sessão encerrada por inatividade.',
+  'events.sessionClosed': 'Sessão encerrada ({reason}).',
 };

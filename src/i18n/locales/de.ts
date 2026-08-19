@@ -495,4 +495,12 @@ export const de: Catalog = {
   'voteskipcfg.usage': 'Verwendung: `voteskipcfg [ratio <0..1>|min <Zahl>]`',
 
   'language.profilesUnavailable': 'Nutzerprofile sind nicht verfügbar.',
+
+  'events.nowPlaying': 'Läuft jetzt{channel}: **{title}** ({duration})',
+  'events.trackError': 'Wiedergabefehler bei **{title}**: {error}',
+  'events.queueEmpty': 'Die Warteschlange ist leer. {suffix}',
+  'events.queueEmptyStay': 'Der 24/7-Modus ist aktiv, ich bleibe also verbunden.',
+  'events.queueEmptyDisconnect': 'Ich trenne die Verbindung nach {seconds}s Inaktivität.',
+  'events.sessionClosedIdle': 'Sitzung wegen Inaktivität beendet.',
+  'events.sessionClosed': 'Sitzung beendet ({reason}).',
 };

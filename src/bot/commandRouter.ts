@@ -625,12 +625,13 @@ export class CommandRouter {
         }
       }
 
+      const eventT = createTranslator(await this._resolveGuildLocale(session?.guildId ?? null));
       const published = await this._publishNowPlaying(session, track, channelId, voiceChannelTag);
       if (!published) {
         await this._safeReply(
           channelId,
           'info',
-          `Now playing${voiceChannelTag}: **${track.title}** (${track.duration})`,
+          eventT('events.nowPlaying', { channel: voiceChannelTag, title: String(track.title), duration: String(track.duration) }),
           null,
           null,
           session?.settings?.minimalMode ? { minimalMode: true } : undefined
@@ -643,10 +644,11 @@ export class CommandRouter {
       const { session, track, error } = payload ?? {};
       const channelId = this._resolveEventChannelId(session);
       if (!channelId) return;
+      const eventT = createTranslator(await this._resolveGuildLocale(session?.guildId ?? null));
       await this._safeReply(
         channelId,
         'error',
-        `Playback error on **${track?.title ?? 'unknown'}**: ${error?.message ?? 'unknown error'}`,
+        eventT('events.trackError', { title: String(track?.title ?? eventT('common.unknown')), error: String(error?.message ?? eventT('errors.unknown')) }),
         null,
         null,
         session?.settings?.minimalMode ? { minimalMode: true } : undefined
@@ -681,13 +683,14 @@ export class CommandRouter {
       if (!channelId) return;
 
       const idleSeconds = Math.floor(this.config.sessionIdleMs / 1000);
+      const eventT = createTranslator(await this._resolveGuildLocale(session?.guildId ?? null));
       const suffix = session.settings?.stayInVoiceEnabled
-        ? '24/7 mode is enabled, so I will stay connected.'
-        : `I will disconnect after ${idleSeconds}s of inactivity.`;
+        ? eventT('events.queueEmptyStay')
+        : eventT('events.queueEmptyDisconnect', { seconds: idleSeconds });
       await this._safeReply(
         channelId,
         'info',
-        `Queue is empty. ${suffix}`,
+        eventT('events.queueEmpty', { suffix }),
         null,
         null,
         session?.settings?.minimalMode ? { minimalMode: true } : undefined
@@ -701,9 +704,10 @@ export class CommandRouter {
       if (!channelId) return;
       if (reason === 'manual_command') return;
 
+      const eventT = createTranslator(await this._resolveGuildLocale(session?.guildId ?? null));
       const reasonText = reason === 'idle_timeout'
-        ? 'Session closed due to inactivity.'
-        : `Session closed (${reason}).`;
+        ? eventT('events.sessionClosedIdle')
+        : eventT('events.sessionClosed', { reason: String(reason) });
 
       await this._safeReply(channelId, 'warning', reasonText, null, null, session?.settings?.minimalMode ? { minimalMode: true } : undefined);
       await this._emitWebhookEvent(session, 'session_closed', reasonText);
