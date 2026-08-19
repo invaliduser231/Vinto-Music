@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { registerCommands } from '../src/bot/commands/index.ts';
 import { CommandRegistry } from '../src/bot/commandRegistry.ts';
+import { createTranslator } from '../src/i18n/index.ts';
 
 type MessagePayload = {
   embeds?: Array<{
@@ -91,6 +92,7 @@ test('now command shows simplified radio embed fields', async () => {
           return { id: 'msg-final' };
         },
       },
+      t: createTranslator('en'),
       reply: {
         async warning() {
           throw new Error('warning should not be called');
@@ -151,6 +153,7 @@ test('now command omits source for standard tracks too', async () => {
         return { id: 'msg-1' };
       },
     },
+    t: createTranslator('en'),
     reply: {
       async warning() {
         throw new Error('warning should not be called');

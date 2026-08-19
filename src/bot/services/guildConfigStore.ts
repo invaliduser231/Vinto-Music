@@ -1,4 +1,5 @@
 import { ValidationError } from '../../core/errors.ts';
+import { normalizeLocale } from '../../i18n/index.ts';
 
 function toBool(value: unknown, fallback: boolean) {
   if (typeof value === 'boolean') return value;
@@ -50,6 +51,23 @@ function normalizeRoleIds(values: unknown) {
   return [...set].sort();
 }
 
+function normalizeLanguage(value: unknown) {
+  if (value == null) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  const locale = normalizeLocale(raw);
+  if (!locale) {
+    throw new ValidationError(`Unsupported language "${raw}".`);
+  }
+  return locale;
+}
+
+function normalizeStoredLanguage(value: unknown) {
+  if (value == null) return null;
+  return normalizeLocale(value);
+}
+
 function normalizeChannelId(value: unknown) {
   if (value == null) return null;
   const normalized = String(value).trim();
@@ -76,6 +94,7 @@ function cloneConfig(config: GuildConfigDocument) {
       voteSkipMinVotes: config.settings.voteSkipMinVotes,
       djRoleIds: [...config.settings.djRoleIds],
       musicLogChannelId: config.settings.musicLogChannelId,
+      language: config.settings.language,
     },
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
@@ -100,6 +119,7 @@ type GuildConfigPatch = {
     voteSkipMinVotes?: unknown;
     djRoleIds?: unknown;
     musicLogChannelId?: unknown;
+    language?: unknown;
   } | null;
 };
 
@@ -115,6 +135,7 @@ type GuildConfigDocLike = {
     voteSkipMinVotes?: unknown;
     djRoleIds?: unknown;
     musicLogChannelId?: unknown;
+    language?: unknown;
   } | null;
   createdAt?: unknown;
   updatedAt?: unknown;
@@ -159,6 +180,7 @@ export class GuildConfigStore {
         voteSkipMinVotes: toPositiveInt(options.defaults?.settings?.voteSkipMinVotes, 2),
         djRoleIds: normalizeRoleIds(options.defaults?.settings?.djRoleIds ?? []) as string[],
         musicLogChannelId: normalizeChannelId(options.defaults?.settings?.musicLogChannelId),
+        language: normalizeStoredLanguage(options.defaults?.settings?.language),
       },
     };
 
@@ -244,6 +266,7 @@ export class GuildConfigStore {
             voteSkipMinVotes: next.settings.voteSkipMinVotes,
             djRoleIds: [...next.settings.djRoleIds],
             musicLogChannelId: next.settings.musicLogChannelId,
+            language: next.settings.language,
           },
           updatedAt: now,
         },
@@ -320,6 +343,10 @@ export class GuildConfigStore {
       if (settingsPatch.musicLogChannelId !== undefined) {
         next.settings.musicLogChannelId = normalizeChannelId(settingsPatch.musicLogChannelId);
       }
+
+      if (settingsPatch.language !== undefined) {
+        next.settings.language = normalizeLanguage(settingsPatch.language);
+      }
     }
 
     return next;
@@ -346,6 +373,7 @@ export class GuildConfigStore {
         voteSkipMinVotes: toPositiveInt(settings.voteSkipMinVotes, this.defaults.settings.voteSkipMinVotes),
         djRoleIds: normalizeRoleIds(settings.djRoleIds),
         musicLogChannelId: normalizeChannelId(settings.musicLogChannelId),
+        language: normalizeStoredLanguage(settings.language) ?? this.defaults.settings.language ?? null,
       },
       createdAt,
       updatedAt,
@@ -366,6 +394,7 @@ export class GuildConfigStore {
     if (as.voteSkipRatio !== bs.voteSkipRatio) return false;
     if (as.voteSkipMinVotes !== bs.voteSkipMinVotes) return false;
     if (as.musicLogChannelId !== bs.musicLogChannelId) return false;
+    if (as.language !== bs.language) return false;
 
     if (as.djRoleIds.length !== bs.djRoleIds.length) return false;
     for (let i = 0; i < as.djRoleIds.length; i += 1) {
@@ -415,6 +444,7 @@ type GuildConfigSettings = {
   voteSkipMinVotes: number;
   djRoleIds: string[];
   musicLogChannelId?: string | null | undefined;
+  language?: string | null | undefined;
 };
 
 type GuildConfigDocument = {

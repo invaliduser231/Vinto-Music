@@ -263,6 +263,7 @@ export function makeResponder(rest: RestLike, options: ResponderOptions = {}): R
           imageUrl: embedOptions?.imageUrl ?? null,
           url: embedOptions?.url ?? null,
           author: embedOptions?.author ?? null,
+          footer: embedOptions?.footer ?? null,
           footerIconUrl: embedOptions?.footerIconUrl ?? null,
         }),
         useEmbeds,

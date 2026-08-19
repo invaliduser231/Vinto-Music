@@ -78,6 +78,7 @@ export interface MessagePayload {
 
 export interface ResponderEmbedOptions {
   minimalMode?: boolean;
+  footer?: string | null;
   thumbnailUrl?: string | null;
   imageUrl?: string | null;
   author?: EmbedAuthor | null;

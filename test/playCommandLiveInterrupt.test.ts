@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { registerCommands } from '../src/bot/commands/index.ts';
 import { CommandRegistry } from '../src/bot/commandRegistry.ts';
+import { createTranslator } from '../src/i18n/index.ts';
 
 type PlayExecute = NonNullable<NonNullable<ReturnType<CommandRegistry['resolve']>>['execute']>;
 
@@ -105,6 +106,7 @@ function createBaseContext(sessionPlayer: SessionPlayer, calls: string[], option
         return { id: 'progress-1' };
       },
     },
+    t: createTranslator('en'),
     reply: {
       async info(text: string) {
         calls.push(`reply:info:${text}`);

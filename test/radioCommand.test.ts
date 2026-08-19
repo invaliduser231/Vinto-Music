@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { registerCommands } from '../src/bot/commands/index.ts';
 import { CommandRegistry } from '../src/bot/commandRegistry.ts';
 import { listAvailableRadioStations } from '../src/bot/commands/helpers/radioStations.ts';
+import { createTranslator } from '../src/i18n/index.ts';
 
 type Execute = NonNullable<NonNullable<ReturnType<CommandRegistry['resolve']>>['execute']>;
 
@@ -143,6 +144,7 @@ test('radio command resolves a built-in station preset and starts playback', asy
         return { id: 'progress-1' };
       },
     },
+    t: createTranslator('en'),
     reply: {
       async info(text: string) {
         calls.push(`reply:info:${text}`);
@@ -291,6 +293,7 @@ test('radio command accepts a numeric index from the visible station order', asy
         return { id: 'progress-1' };
       },
     },
+    t: createTranslator('en'),
     reply: {
       async info() {},
       async success() {},
@@ -422,6 +425,7 @@ test('radio command resolves keyword searches to the best matching station', asy
         return { id: 'progress-1' };
       },
     },
+    t: createTranslator('en'),
     reply: {
       async info() {},
       async success() {},
@@ -567,6 +571,7 @@ test('radio command does not restart the same station when it is already playing
         return { id: 'progress-1' };
       },
     },
+    t: createTranslator('en'),
     reply: {
       async info() {},
       async success() {},
@@ -721,6 +726,7 @@ test('radio command does not queue the same station twice when it is already pen
         return { id: 'progress-1' };
       },
     },
+    t: createTranslator('en'),
     reply: {
       async info() {},
       async success() {},
@@ -821,6 +827,7 @@ test('station save requires manage server when no DJ roles are configured', asyn
         },
         bindTextChannel() {},
       },
+      t: createTranslator('en'),
       reply: {
         async info() {},
         async success() {},
@@ -917,6 +924,7 @@ test('station save still allows manage server without configured DJ roles', asyn
       },
       bindTextChannel() {},
     },
+    t: createTranslator('en'),
     reply: {
       async info() {},
       async success(text: string) {

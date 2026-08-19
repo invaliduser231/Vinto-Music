@@ -1,4 +1,12 @@
 import { ValidationError } from '../../core/errors.ts';
+import {
+  localeFlag,
+  localeLabel,
+  normalizeLocale,
+  SUPPORTED_LOCALES,
+  translate,
+  type Locale,
+} from '../../i18n/index.ts';
 import type { CommandContextLike, CommandHelperBundle } from './helpers/types.ts';
 
 type RegistryLike = {
@@ -417,6 +425,90 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
         { name: 'Music Log Channel', value: guildConfig.settings.musicLogChannelId ? `<#${guildConfig.settings.musicLogChannelId}>` : 'disabled' },
         { name: 'Session Active', value: session ? 'yes' : 'no', inline: true },
       ]);
+    },
+  }));
+
+  registry.register(createCommand({
+    name: 'language',
+    aliases: ['lang', 'sprache', 'idioma'],
+    description: 'Show or change the language used for bot replies.',
+    usage: 'language [en|de|pt-BR|server <code>|reset]',
+    async execute(ctx: CommandContextLike) {
+      const localeList = SUPPORTED_LOCALES.join(', ');
+      const library = requireLibrary(ctx);
+
+      const describe = (locale: Locale) => ({ flag: localeFlag(locale), label: localeLabel(locale) });
+
+      const availableField = {
+        name: ctx.t('language.available'),
+        value: SUPPORTED_LOCALES
+          .map((locale) => `${localeFlag(locale)} \`${locale}\` — ${localeLabel(locale)}`)
+          .join('\n'),
+      };
+
+      const [first, ...rest] = ctx.args;
+      const action = String(first ?? '').trim().toLowerCase();
+
+      if (!action) {
+        const guildLocale = normalizeLocale(ctx.guildConfig?.settings?.language);
+        const userLocale = typeof library.getUserLocale === 'function'
+          ? normalizeLocale(await library.getUserLocale(ctx.authorId))
+          : null;
+
+        const message = userLocale
+          ? ctx.t('language.current', describe(userLocale))
+          : ctx.t('language.currentInherited', describe(guildLocale ?? ctx.locale));
+
+        await ctx.reply.info(message, [availableField], {
+          footer: ctx.t('language.hint', { prefix: ctx.prefix }),
+        });
+        return;
+      }
+
+      if (action === 'reset' || action === 'clear') {
+        if (typeof library.setUserLocale !== 'function') {
+          throw new ValidationError('User profiles are not available.');
+        }
+        await library.setUserLocale(ctx.authorId, null);
+        const guildLocale = normalizeLocale(ctx.guildConfig?.settings?.language) ?? ctx.locale;
+        await ctx.reply.success(ctx.t('language.reset', describe(guildLocale)));
+        return;
+      }
+
+      if (action === 'server' || action === 'guild') {
+        ensureGuild(ctx);
+        const guildConfig = await getGuildConfigOrThrow(ctx);
+
+        const requested = String(rest[0] ?? '').trim();
+        if (!requested) {
+          const current = normalizeLocale(guildConfig.settings.language) ?? ctx.locale;
+          await ctx.reply.info(ctx.t('language.serverCurrent', describe(current)), [availableField]);
+          return;
+        }
+
+        await ensureManageGuildAccess(ctx, 'change the server language');
+
+        const locale = normalizeLocale(requested);
+        if (!locale) {
+          throw new ValidationError(ctx.t('language.unsupported', { value: requested, locales: localeList }));
+        }
+
+        await updateGuildConfig(ctx, { settings: { language: locale } });
+        await ctx.reply.success(translate('language.serverUpdated', locale, describe(locale)));
+        return;
+      }
+
+      const locale = normalizeLocale(action);
+      if (!locale) {
+        throw new ValidationError(ctx.t('language.unsupported', { value: action, locales: localeList }));
+      }
+
+      if (typeof library.setUserLocale !== 'function') {
+        throw new ValidationError('User profiles are not available.');
+      }
+
+      await library.setUserLocale(ctx.authorId, locale);
+      await ctx.reply.success(translate('language.updated', locale, describe(locale)));
     },
   }));
 }

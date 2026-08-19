@@ -1,4 +1,5 @@
 import { ConfigurationError } from './core/errors.ts';
+import { DEFAULT_LOCALE, normalizeLocale } from './i18n/index.ts';
 
 function parsePositiveInt(value: unknown, fallback: number): number {
   const parsed = Number.parseInt(String(value ?? ''), 10);
@@ -212,6 +213,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     ytdlpProxyUrl: env.YTDLP_PROXY_URL?.trim() || null,
     youtubePlaylistResolver: normalizeYouTubePlaylistResolver(env.YOUTUBE_PLAYLIST_RESOLVER),
 
+    defaultLanguage: normalizeLocale(env.DEFAULT_LANGUAGE) ?? DEFAULT_LOCALE,
     defaultDedupeEnabled: parseBool(env.DEFAULT_DEDUPE_ENABLED, false),
     defaultStayInVoiceEnabled: parseBool(env.DEFAULT_247_ENABLED, false),
     voteSkipRatio: parseRatio(env.VOTE_SKIP_RATIO, 0.5),

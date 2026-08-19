@@ -133,10 +133,14 @@ interface TasteRow {
   count: number;
 }
 
+const USER_LOCALE_CACHE_TTL_MS = 5 * 60 * 1000;
+const USER_LOCALE_CACHE_MAX = 5000;
+
 interface UserProfileDoc {
   userId: string;
   guildStats?: UserGuildStats[];
   taste?: TasteRow[];
+  locale?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
   [key: string]: unknown;
@@ -224,6 +228,7 @@ export class MusicLibraryStore {
   maxFavoritesPerUser: number;
   maxHistoryTracks: number;
   _rmwChains: Map<string, Promise<unknown>>;
+  userLocaleCache: Map<string, { locale: string | null; expiresAt: number }>;
 
   constructor(options: MusicLibraryStoreOptions) {
     this.guildPlaylists = options.guildPlaylistsCollection;
@@ -243,6 +248,7 @@ export class MusicLibraryStore {
     this.maxFavoritesPerUser = toPositiveInt(options.maxFavoritesPerUser, 500);
     this.maxHistoryTracks = toPositiveInt(options.maxHistoryTracks, 200);
     this._rmwChains = new Map();
+    this.userLocaleCache = new Map();
   }
 
   async _serialize<T>(key: string, fn: () => Promise<T>): Promise<T> {
@@ -665,6 +671,60 @@ export class MusicLibraryStore {
       guildStats,
       taste: Array.isArray(doc.taste) ? doc.taste : [],
     };
+  }
+
+  async getUserLocale(userId: unknown): Promise<string | null> {
+    const normalizedUserId = normalizeUserId(userId);
+    if (!normalizedUserId || !this.userProfiles) return null;
+
+    const cached = this.userLocaleCache.get(normalizedUserId);
+    if (cached && cached.expiresAt > Date.now()) return cached.locale;
+
+    let locale: string | null = null;
+    try {
+      const doc = await this.userProfiles.findOne(
+        { userId: normalizedUserId },
+        { projection: { _id: 0, locale: 1 } }
+      );
+      locale = doc?.locale != null ? String(doc.locale) : null;
+    } catch (err) {
+      this.logger?.warn?.('Failed to read user locale', {
+        userId: normalizedUserId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    }
+
+    this._cacheUserLocale(normalizedUserId, locale);
+    return locale;
+  }
+
+  async setUserLocale(userId: unknown, locale: unknown): Promise<string | null> {
+    const normalizedUserId = normalizeUserId(userId);
+    const collection = this._ensureFeatureCollection(this.userProfiles, 'User profiles');
+    const nextLocale = locale == null ? null : String(locale).trim() || null;
+    const now = new Date();
+
+    await collection.updateOne(
+      { userId: normalizedUserId },
+      {
+        $set: { locale: nextLocale, updatedAt: now },
+        $setOnInsert: { userId: normalizedUserId, createdAt: now },
+      },
+      { upsert: true }
+    );
+
+    this._cacheUserLocale(normalizedUserId, nextLocale);
+    return nextLocale;
+  }
+
+  _cacheUserLocale(userId: string, locale: string | null) {
+    if (this.userLocaleCache.size >= USER_LOCALE_CACHE_MAX && !this.userLocaleCache.has(userId)) {
+      const oldest = this.userLocaleCache.keys().next().value;
+      if (oldest !== undefined) this.userLocaleCache.delete(oldest);
+    }
+    this.userLocaleCache.delete(userId);
+    this.userLocaleCache.set(userId, { locale, expiresAt: Date.now() + USER_LOCALE_CACHE_TTL_MS });
   }
 
   async getGuildTopTracks(guildId: unknown, days: number = 7, limit: number = 10) {

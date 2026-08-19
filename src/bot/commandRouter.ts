@@ -1,4 +1,5 @@
 import { ValidationError } from '../core/errors.ts';
+import { createTranslator, DEFAULT_LOCALE, resolveLocale, type Locale } from '../i18n/index.ts';
 import { parseCommand } from '../utils/commandParser.ts';
 import { buildEmbed, makeResponder, sourceColor } from './messageFormatter.ts';
 import { buildTrackAuthor } from './commands/helpers/formatting.ts';
@@ -30,7 +31,8 @@ import type { BivariantCallback, CommandDefinition, MessagePayload, ReplyOptions
 
 type RouterContextOptions = {
   prefix?: string;
-  guildConfig?: { prefix?: string; settings?: { minimalMode?: boolean } } | null;
+  guildConfig?: { prefix?: string; settings?: { minimalMode?: boolean; language?: string | null } } | null;
+  locale?: Locale;
 };
 
 type RouterConfig = {
@@ -49,7 +51,7 @@ type RouterConfig = {
 };
 
 type GuildConfigResolver = {
-  get: (guildId: string) => Promise<{ prefix?: string; settings?: { minimalMode?: boolean } } | null>;
+  get: (guildId: string) => Promise<{ prefix?: string; settings?: { minimalMode?: boolean; language?: string | null } } | null>;
 };
 
 type RouterRest = {
@@ -317,9 +319,15 @@ export class CommandRouter {
       return;
     }
 
+    const locale = await this._resolveLocale(
+      message.author?.id ?? message.user_id ?? message.member?.user?.id ?? null,
+      guildConfig
+    );
+
     const context = this._buildContext(message, parsed, command, {
       prefix: configuredPrefix,
       guildConfig,
+      locale,
     });
     try {
       if (
@@ -453,6 +461,8 @@ export class CommandRouter {
       guildConfigs: this.guildConfigs,
 
       guildConfig: options.guildConfig ?? null,
+      locale: options.locale ?? DEFAULT_LOCALE,
+      t: createTranslator(options.locale ?? DEFAULT_LOCALE),
       voiceStateStore: this.voiceStateStore,
       lyrics: this.lyrics,
       library: this.library,
@@ -537,6 +547,39 @@ export class CommandRouter {
     } finally {
       this.guildOpLocks.delete(lockKey);
     }
+  }
+
+  async _resolveLocale(
+    userId: string | null,
+    guildConfig?: { settings?: { language?: string | null } } | null
+  ): Promise<Locale> {
+    let userLocale: string | null = null;
+
+    const library = this.library as { getUserLocale?: (userId: string) => Promise<string | null> } | null;
+    if (userId && typeof library?.getUserLocale === 'function') {
+      try {
+        userLocale = await library.getUserLocale(userId);
+      } catch (err) {
+        this.logger?.debug?.('Failed to resolve user locale', {
+          userId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    return resolveLocale({
+      userLocale,
+      guildLocale: guildConfig?.settings?.language ?? null,
+      fallbackLocale: this.config.defaultLanguage,
+    });
+  }
+
+  async _resolveGuildLocale(guildId: string | null): Promise<Locale> {
+    const guildConfig = await this._resolveGuildConfig(guildId);
+    return resolveLocale({
+      guildLocale: guildConfig?.settings?.language ?? null,
+      fallbackLocale: this.config.defaultLanguage,
+    });
   }
 
   async _resolveGuildConfig(guildId: string | null) {

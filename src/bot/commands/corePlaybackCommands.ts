@@ -36,6 +36,7 @@ import {
   requireLibrary,
 } from './commandHelpers.ts';
 import { buildEmbed, sourceColor } from '../messageFormatter.ts';
+import type { Translator } from '../../i18n/index.ts';
 import {
   buildInfoPayload,
   createProgressReporter,
@@ -192,7 +193,7 @@ function isDeferredTrackMetadata(track: TrackDataLike | null | undefined) {
   return track?.metadataDeferred === true;
 }
 
-function buildDeferredPlaybackStatusText(options: {
+function buildDeferredPlaybackStatusText(t: Translator, options: {
   shouldInterruptLivePlayback: boolean;
   addedCount: number;
   isPlaylistLoad: boolean;
@@ -200,31 +201,31 @@ function buildDeferredPlaybackStatusText(options: {
   const { shouldInterruptLivePlayback, addedCount, isPlaylistLoad } = options;
   if (isPlaylistLoad && addedCount > 1) {
     return shouldInterruptLivePlayback
-      ? 'Stopped live stream and started playlist playback. Resolving track metadata...'
-      : 'Started playlist playback. Resolving track metadata...';
+      ? t('play.status.deferredPlaylistInterrupted')
+      : t('play.status.deferredPlaylist');
   }
 
   return shouldInterruptLivePlayback
-    ? 'Stopped live stream. Starting playback and resolving track metadata...'
-    : 'Starting playback and resolving track metadata...';
+    ? t('play.status.deferredInterrupted')
+    : t('play.status.deferred');
 }
 
-function buildResolvedPlaybackStatusText(options: {
+function buildResolvedPlaybackStatusText(t: Translator, options: {
   shouldInterruptLivePlayback: boolean;
   addedCount: number;
   firstTrack: TrackDataLike;
 }) {
   const { shouldInterruptLivePlayback, addedCount, firstTrack } = options;
   if (shouldInterruptLivePlayback && addedCount === 1) {
-    return `Stopped live stream. Playing now: ${trackLabel(firstTrack)}`;
+    return t('play.status.interruptedNowPlaying', { track: trackLabel(firstTrack) });
   }
   if (shouldInterruptLivePlayback) {
-    return `Stopped live stream and queued **${addedCount}** tracks to start now.`;
+    return t('play.status.interruptedQueued', { count: addedCount });
   }
   if (addedCount === 1) {
-    return `Added to queue: ${trackLabel(firstTrack)}`;
+    return t('play.status.added', { track: trackLabel(firstTrack) });
   }
-  return `Added **${addedCount}** tracks from playlist.`;
+  return t('play.status.addedPlaylist', { count: addedCount });
 }
 
 function wait(ms: number) {
@@ -246,6 +247,7 @@ async function waitForDeferredTrackMessageMetadata(
 }
 
 async function finalizeDeferredPlaybackStatus(
+  t: Translator,
   progress: {
     success: (text: string, fields?: EmbedField[] | null) => Promise<unknown>;
   },
@@ -256,15 +258,10 @@ async function finalizeDeferredPlaybackStatus(
   },
 ) {
   const { shouldInterruptLivePlayback, addedCount, firstTrack } = options;
-  const text = buildResolvedPlaybackStatusText({ shouldInterruptLivePlayback, addedCount, firstTrack });
+  const text = buildResolvedPlaybackStatusText(t, { shouldInterruptLivePlayback, addedCount, firstTrack });
 
-  if (shouldInterruptLivePlayback && addedCount > 1) {
-    await progress.success(text, [{ name: 'First Track', value: trackLabel(firstTrack) }]);
-    return;
-  }
-
-  if (!shouldInterruptLivePlayback && addedCount > 1) {
-    await progress.success(text, [{ name: 'First Track', value: trackLabel(firstTrack) }]);
+  if (addedCount > 1) {
+    await progress.success(text, [{ name: t('play.field.firstTrack'), value: trackLabel(firstTrack) }]);
     return;
   }
 
@@ -524,7 +521,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
     usage: 'help [command|page_number]',
     async execute(ctx: PlaybackCommandContext) {
       if (!ctx.rest?.sendMessage) {
-        throw new ValidationError('REST adapter is not available.');
+        throw new ValidationError(ctx.t('errors.restUnavailable'));
       }
 
       const { args } = ctx;
@@ -559,14 +556,14 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
           }
         }
 
-        await ctx.reply.error(`Unknown page number \`${arg}\`. Please specify a number between \`1\` and \`${pages.length}\`.`);
+        await ctx.reply.error(ctx.t('help.unknownPage', { page: arg, max: pages.length }));
         return;
       }
 
       // will only acknowledge the first argument
       const command = registry.list().find(cmd => [cmd.name, ...(cmd.aliases ?? Array<string>())].includes(arg));
       if (!command) {
-        await ctx.reply.error(`Unknown command \`${arg}\`.`);
+        await ctx.reply.error(ctx.t('help.unknownCommand', { command: arg }));
         return;
       }
 
@@ -575,7 +572,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
         withCommandReplyReference(
           ctx,
           buildHelpPayload({
-            title: 'Help',
+            title: ctx.t('help.title'),
             description: buildCommandUsage({ prefix: ctx.prefix, command }),
           })
         )
@@ -589,8 +586,8 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
     description: 'Get the support server invite link.',
     usage: 'support',
     async execute(ctx: PlaybackCommandContext) {
-      await ctx.reply.info('Support server', [
-        { name: 'Invite', value: SUPPORT_SERVER_URL },
+      await ctx.reply.info(ctx.t('support.title'), [
+        { name: ctx.t('support.invite'), value: SUPPORT_SERVER_URL },
       ]);
     },
   }));
@@ -602,7 +599,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
     async execute(ctx: PlaybackCommandContext) {
       const rest = ctx.rest;
       if (!rest?.sendMessage || !rest?.editMessage) {
-        throw new ValidationError('REST adapter is not available.');
+        throw new ValidationError(ctx.t('errors.restUnavailable'));
       }
 
       const canMeasure =
@@ -612,9 +609,9 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
 
       if (!canMeasure) {
         const gatewayLatencyMs = resolveGatewayLatencyMs(ctx.gateway);
-        await ctx.reply.success('Pong!', [
-          { name: 'Round-trip', value: 'n/a', inline: true },
-          { name: 'Gateway', value: gatewayLatencyMs == null ? 'n/a' : `${gatewayLatencyMs}ms`, inline: true },
+        await ctx.reply.success(ctx.t('ping.pong'), [
+          { name: ctx.t('ping.roundTrip'), value: ctx.t('common.notAvailable'), inline: true },
+          { name: ctx.t('ping.gateway'), value: gatewayLatencyMs == null ? ctx.t('common.notAvailable') : `${gatewayLatencyMs}ms`, inline: true },
         ]);
         return;
       }
@@ -631,14 +628,14 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       const roundTripStartedAt = Date.now();
       const probeMessage = await rest.sendMessage(
         ctx.channelId,
-        withCommandReplyReference(ctx, { content: 'Pinging...' })
+        withCommandReplyReference(ctx, { content: ctx.t('ping.pinging') })
       ) as SentMessageLike | null;
       const roundTripMs = Math.max(0, Date.now() - roundTripStartedAt);
       const gatewayLatencyMs = await gatewayLatencyPromise;
 
       const fields = [
-        { name: 'Round-trip', value: `${roundTripMs}ms`, inline: true },
-        { name: 'Gateway', value: gatewayLatencyMs == null ? 'n/a' : `${Math.round(gatewayLatencyMs)}ms`, inline: true },
+        { name: ctx.t('ping.roundTrip'), value: `${roundTripMs}ms`, inline: true },
+        { name: ctx.t('ping.gateway'), value: gatewayLatencyMs == null ? ctx.t('common.notAvailable') : `${Math.round(gatewayLatencyMs)}ms`, inline: true },
       ];
       const payload = buildPingPayload(ctx, fields);
       const messageId = probeMessage?.id ?? probeMessage?.message?.id ?? null;
@@ -652,7 +649,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
         }
       }
 
-      await ctx.reply.success('Pong!', fields);
+      await ctx.reply.success(ctx.t('ping.pong'), fields);
     },
   }));
 
@@ -670,8 +667,8 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
 
       await ctx.reply.success(
         connectedChannelId
-          ? `Connected to voice in <#${connectedChannelId}>.`
-          : 'Connected to voice.'
+          ? ctx.t('join.connectedTo', { channel: `<#${connectedChannelId}>` })
+          : ctx.t('join.connected')
       );
     },
   }));
@@ -695,11 +692,11 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
         voiceChannelId: existing?.connection?.channelId ?? ctx.activeVoiceChannelId,
       });
       if (!removed) {
-        await ctx.reply.warning('No active player in this channel.');
+        await ctx.reply.warning(ctx.t('errors.noActivePlayer'));
         return;
       }
 
-      await ctx.reply.success('Disconnected from voice and cleared session.');
+      await ctx.reply.success(ctx.t('leave.disconnected'));
     },
   }));
 
@@ -715,15 +712,15 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       if (!rawQuery) {
         const featured = listAvailableRadioStations(guildStations).slice(0, 12);
         if (!featured.length) {
-          await ctx.reply.info('No radio presets are available yet.', [
-            { name: 'Usage', value: `\`${ctx.prefix}radio <number|station|random|url>\`\n\`${ctx.prefix}stations [filter] [page]\`` },
+          await ctx.reply.info(ctx.t('radio.noPresets'), [
+            { name: ctx.t('common.usage'), value: `\`${ctx.prefix}radio <number|station|random|url>\`\n\`${ctx.prefix}stations [filter] [page]\`` },
           ]);
           return;
         }
 
-        await ctx.reply.info('Radio presets', [
-          { name: 'Try one of these', value: featured.map((station, idx) => formatRadioStationSummary(station, idx + 1)).join('\n') },
-          { name: 'Usage', value: `\`${ctx.prefix}radio <number|station|random|url>\`\n\`${ctx.prefix}stations [filter] [page]\`` },
+        await ctx.reply.info(ctx.t('radio.presets'), [
+          { name: ctx.t('radio.tryOne'), value: featured.map((station, idx) => formatRadioStationSummary(station, idx + 1)).join('\n') },
+          { name: ctx.t('common.usage'), value: `\`${ctx.prefix}radio <number|station|random|url>\`\n\`${ctx.prefix}stations [filter] [page]\`` },
         ]);
         return;
       }
@@ -738,8 +735,8 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
           if (!randomStation) {
             await ctx.reply.warning(
               filter
-                ? `No radio stations matched **${filter}** for random selection.`
-                : 'No radio stations are available for random selection.'
+                ? ctx.t('radio.noRandomMatch', { filter })
+                : ctx.t('radio.noRandomAvailable')
             );
             return;
           }
@@ -751,8 +748,8 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
           if (!indexed.station) {
             await ctx.reply.warning(
               indexed.total > 0
-                ? `Radio station index out of range. Choose **1-${indexed.total}** or use \`${ctx.prefix}stations\`.`
-                : 'No radio stations are available yet.'
+                ? ctx.t('radio.indexOutOfRange', { total: indexed.total, prefix: ctx.prefix })
+                : ctx.t('radio.noneAvailable')
             );
             return;
           }
@@ -764,12 +761,12 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
           const selection = resolveRadioStationSelection(guildStations, rawQuery);
           if (!selection.station) {
             if (selection.matches.length) {
-              await ctx.reply.info(`Multiple stations matched **${rawQuery}**.`, [
-                { name: 'Matches', value: selection.matches.map((station, idx) => formatRadioStationSummary(station, idx + 1)).join('\n') },
+              await ctx.reply.info(ctx.t('radio.multipleMatches', { query: rawQuery }), [
+                { name: ctx.t('radio.matches'), value: selection.matches.map((station, idx) => formatRadioStationSummary(station, idx + 1)).join('\n') },
               ]);
               return;
             }
-            await ctx.reply.warning(`No radio station matched **${rawQuery}**.`);
+            await ctx.reply.warning(ctx.t('radio.noMatch', { query: rawQuery }));
             return;
           }
 
@@ -780,7 +777,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       }
 
       await ctx.withGuildOpLock('radio', async () => {
-        const progress = await createProgressReporter(ctx, `Tuning in: **${targetLabel}**`, null, null, { replyReference: true });
+        const progress = await createProgressReporter(ctx, ctx.t('radio.tuningIn', { station: targetLabel }), null, null, { replyReference: true });
         await ctx.safeTyping();
 
         const preparedSession = await prepareSessionConnection(ctx);
@@ -793,12 +790,12 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
         const resolved = preview[0] ?? null;
 
         if (!resolved) {
-          await progress.warning('No playable radio stream found for that selection.');
+          await progress.warning(ctx.t('radio.noPlayableStream'));
           return;
         }
 
         if (String(resolved.source ?? '').trim().toLowerCase() !== 'radio-stream') {
-          await progress.warning('That selection did not resolve to a live radio stream.');
+          await progress.warning(ctx.t('radio.notLiveStream'));
           return;
         }
 
@@ -814,11 +811,11 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
           ? session.player.pendingTracks.find((track) => isSameRadioSelection(track, resolvedStation))
           : null;
         if (isSameRadioSelection(activeTrack, resolvedStation)) {
-          await progress.info(`Already tuned into ${trackLabel(activeTrack ?? resolved)}.`);
+          await progress.info(ctx.t('radio.alreadyTuned', { track: trackLabel(activeTrack ?? resolved) }));
           return;
         }
         if (queuedRadioDuplicate) {
-          await progress.info(`That station is already queued next: ${trackLabel(queuedRadioDuplicate)}.`);
+          await progress.info(ctx.t('radio.alreadyQueued', { track: trackLabel(queuedRadioDuplicate) }));
           return;
         }
         const shouldInterruptLivePlayback = Boolean(
@@ -836,18 +833,18 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
           playNext: shouldInterruptLivePlayback,
         });
         if (!added.length) {
-          await progress.warning('The station could not be queued.');
+          await progress.warning(ctx.t('radio.queueFailed'));
           return;
         }
 
         if (shouldInterruptLivePlayback) {
           session.player.skip();
-          await progress.success(`Stopped live stream. Tuning into ${trackLabel(added[0] ?? track)}.`);
+          await progress.success(ctx.t('radio.interruptedTuning', { track: trackLabel(added[0] ?? track) }));
         } else if (!session.player.playing) {
           await session.player.play();
-          await progress.success(`Tuning into ${trackLabel(added[0] ?? track)}.`);
+          await progress.success(ctx.t('radio.tuning', { track: trackLabel(added[0] ?? track) }));
         } else {
-          await progress.success(`Queued station: ${trackLabel(added[0] ?? track)}.`);
+          await progress.success(ctx.t('radio.queued', { track: trackLabel(added[0] ?? track) }));
         }
 
         ctx.sessions.markSnapshotDirty?.(session, true);
@@ -866,7 +863,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       const { channelId: explicitChannelId, rest } = parseVoiceChannelArgument(ctx.args);
       const rawQuery = rest.join(' ').trim();
       if (!rawQuery) {
-        throw new ValidationError(`Usage: ${ctx.prefix}play <query>`);
+        throw new ValidationError(ctx.t('play.usage', { prefix: ctx.prefix }));
       }
       enforcePlayCooldown(ctx);
       const multiUrlQuery = splitMultiUrlQuery(rawQuery);
@@ -953,7 +950,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
 
         const firstAdded = added[0];
         if (!firstAdded) {
-          await progress.warning('No tracks were added.');
+          await progress.warning(ctx.t('play.noTracksAdded'));
           return;
         }
 
@@ -964,7 +961,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
           void directTrackHydrationPromise.then(async (hydrated) => {
             const resolvedTrack = await hydrateDeferredTrackMetadata(firstAdded, hydrated);
             if (!resolvedTrack || !shouldDelayFinalPlaybackMessage || shouldLoadPlaylistInBackground) return;
-            await finalizeDeferredPlaybackStatus(progress, {
+            await finalizeDeferredPlaybackStatus(ctx.t, progress, {
               shouldInterruptLivePlayback,
               addedCount: added.length,
               firstTrack: resolvedTrack,
@@ -976,13 +973,13 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
 
         if (!shouldLoadPlaylistInBackground) {
           if (shouldDelayFinalPlaybackMessage) {
-            await progress.info(buildDeferredPlaybackStatusText({
+            await progress.info(buildDeferredPlaybackStatusText(ctx.t, {
               shouldInterruptLivePlayback,
               addedCount: added.length,
               isPlaylistLoad: added.length > 1,
             }));
           } else {
-            await finalizeDeferredPlaybackStatus(progress, {
+            await finalizeDeferredPlaybackStatus(ctx.t, progress, {
               shouldInterruptLivePlayback,
               addedCount: added.length,
               firstTrack: firstAdded,
@@ -1076,7 +1073,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
                 startedPlaylistPlaybackNow
                   ? `Playing now: ${firstTrackLabel}`
                   : `Added to queue: ${firstTrackLabel}`,
-                [{ name: 'Playlist Load', value: 'No additional tracks were queued.' }]
+                [{ name: ctx.t('play.field.playlistLoad'), value: ctx.t('play.playlistNoneQueued') }]
               );
               return;
             }
@@ -1095,7 +1092,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
             await progress.success(
               playlistLoadText,
               backgroundResult.queueLimitReached
-                ? [{ name: 'Queue Limit', value: 'Remaining playlist tracks were skipped.' }]
+                ? [{ name: ctx.t('play.field.queueLimit'), value: ctx.t('play.playlistTruncated') }]
                 : null
             );
           } catch (err) {
@@ -1103,7 +1100,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
               startedPlaylistPlaybackNow
                 ? `Playing now: ${firstTrackLabel}\nBackground playlist loading failed.`
                 : `Added to queue: ${firstTrackLabel}\nBackground playlist loading failed.`,
-              [{ name: 'Error', value: String(err instanceof Error ? err.message : err).slice(0, 1000) || 'Unknown error' }]
+              [{ name: ctx.t('common.error'), value: String(err instanceof Error ? err.message : err).slice(0, 1000) || ctx.t('errors.unknown') }]
             );
           } finally {
             resolved = null;
@@ -1125,7 +1122,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
 
       const query = ctx.args.join(' ').trim();
       if (!query) {
-        throw new ValidationError(`Usage: ${ctx.prefix}playnext <query>`);
+        throw new ValidationError(ctx.t('playnext.usage', { prefix: ctx.prefix }));
       }
       enforcePlayCooldown(ctx);
 
@@ -1163,13 +1160,13 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
 
         const firstAdded = added[0];
         if (!firstAdded) {
-          await progress.warning('No tracks were added.');
+          await progress.warning(ctx.t('play.noTracksAdded'));
           return;
         }
         if (added.length === 1) {
-          await progress.success(`Queued next: ${trackLabel(firstAdded)}`);
+          await progress.success(ctx.t('playnext.queuedNext', { track: trackLabel(firstAdded) }));
         } else {
-          await progress.success(`Queued **${added.length}** playlist tracks at the front.`);
+          await progress.success(ctx.t('playnext.queuedPlaylist', { count: added.length }));
         }
       });
     },
@@ -1184,7 +1181,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       ensureGuild(ctx);
       const query = ctx.args.join(' ').trim();
       if (!query) {
-        throw new ValidationError(`Usage: ${ctx.prefix}search <query>`);
+        throw new ValidationError(ctx.t('search.usage', { prefix: ctx.prefix }));
       }
 
       enforcePlayCooldown(ctx);
@@ -1202,7 +1199,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
           requestedBy: ctx.authorId,
         });
         if (!results.length) {
-          await progress.warning('No search results found.');
+          await progress.warning(ctx.t('search.noResults'));
           return;
         }
 
@@ -1221,15 +1218,15 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
           `Search results for ${query}`,
           '',
           [
-            { name: 'Results', value: lines.join('\n').slice(0, 1000) || '-' },
-            { name: 'Pick', value: `React with 1-${results.length} within ${Math.ceil(ttlMs / 1000)}s.` },
+            { name: ctx.t('search.results'), value: lines.join('\n').slice(0, 1000) || '-' },
+            { name: ctx.t('search.pick'), value: ctx.t('search.pickHint', { max: results.length, seconds: Math.ceil(ttlMs / 1000) }) },
           ],
           { thumbnailUrl: results[0]?.thumbnailUrl ?? null }
         );
         let messageId = await progress.replace(payload);
         if (!messageId) {
           if (!ctx.rest.sendMessage) {
-            throw new ValidationError('REST adapter is not available.');
+            throw new ValidationError(ctx.t('errors.restUnavailable'));
           }
           const sent = await ctx.rest.sendMessage(ctx.channelId, withCommandReplyReference(ctx, payload)) as SentMessageLike | null;
           messageId = sent?.id ?? sent?.message?.id ?? null;
@@ -1252,12 +1249,12 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
 
       const selection = consumeSearchSelection(toSearchSelectionContext(ctx));
       if (!selection) {
-        throw new ValidationError(`No active search selection. Use \`${ctx.prefix}search <query>\` first.`);
+        throw new ValidationError(ctx.t('pick.noSelection', { prefix: ctx.prefix }));
       }
 
       const selected = selection[index - 1];
       if (!selected) {
-        throw new ValidationError(`Index out of range. Choose 1-${selection.length}.`);
+        throw new ValidationError(ctx.t('pick.outOfRange', { max: selection.length }));
       }
 
       await ctx.withGuildOpLock('pick', async () => {
@@ -1274,7 +1271,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
         });
 
         if (!added.length) {
-          await ctx.reply.warning('Track already exists in queue (dedupe enabled).');
+          await ctx.reply.warning(ctx.t('play.duplicate'));
           return;
         }
 
@@ -1285,10 +1282,10 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
         clearSearchSelection(toSearchSelectionContext(ctx));
         const firstAdded = added[0];
         if (!firstAdded) {
-          await ctx.reply.warning('No tracks were added.');
+          await ctx.reply.warning(ctx.t('play.noTracksAdded'));
           return;
         }
-        await ctx.reply.success(`Added to queue: ${trackLabel(firstAdded)}`);
+        await ctx.reply.success(ctx.t('play.status.added', { track: trackLabel(firstAdded) }));
       });
     },
   }));
@@ -1303,25 +1300,25 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       const session = getSessionOrThrow(ctx);
       ensureSessionTrack(ctx, session);
       if (!isUserInPlaybackChannel(ctx, session)) {
-        throw new ValidationError('You must be in the same voice channel as the bot to vote-skip.');
+        throw new ValidationError(ctx.t('skip.sameChannelRequired'));
       }
 
       if (userHasDjAccess(ctx, session)) {
         session.player.skip();
         ctx.sessions.markSnapshotDirty?.(session, true);
-        await ctx.reply.success('Skipped current track.');
+        await ctx.reply.success(ctx.t('skip.skipped'));
         return;
       }
 
       const sessionSelector = session.sessionId != null ? { sessionId: session.sessionId } : null;
       const voteState = ctx.sessions.registerVoteSkip?.(ctx.guildId, ctx.authorId, sessionSelector);
       if (!voteState) {
-        await ctx.reply.warning('Could not register vote-skip right now.');
+        await ctx.reply.warning(ctx.t('skip.voteFailed'));
         return;
       }
 
       if (!voteState.added) {
-        await ctx.reply.info('You already voted to skip this track.');
+        await ctx.reply.info(ctx.t('skip.alreadyVoted'));
         return;
       }
 
@@ -1329,11 +1326,11 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       if (voteState.votes >= requiredVotes) {
         session.player.skip();
         ctx.sessions.clearVoteSkips?.(ctx.guildId, sessionSelector);
-        await ctx.reply.success(`Vote-skip passed (${voteState.votes}/${requiredVotes}). Skipping track.`);
+        await ctx.reply.success(ctx.t('skip.votePassed', { votes: voteState.votes, required: requiredVotes }));
         return;
       }
 
-      await ctx.reply.info(`Vote registered: **${voteState.votes}/${requiredVotes}** needed to skip.`);
+      await ctx.reply.info(ctx.t('skip.voteRegistered', { votes: voteState.votes, required: requiredVotes }));
     },
   }));
 
@@ -1347,12 +1344,12 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       ensureDjAccess(ctx, session, 'pause playback');
 
       if (!session.player.pause()) {
-        await ctx.reply.warning('Cannot pause right now.');
+        await ctx.reply.warning(ctx.t('pause.cannot'));
         return;
       }
 
       ctx.sessions.markSnapshotDirty?.(session, true);
-      await ctx.reply.success('Playback paused.');
+      await ctx.reply.success(ctx.t('pause.paused'));
     },
   }));
 
@@ -1367,12 +1364,12 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       ensureDjAccess(ctx, session, 'resume playback');
 
       if (!session.player.resume()) {
-        await ctx.reply.warning('Cannot resume right now.');
+        await ctx.reply.warning(ctx.t('resume.cannot'));
         return;
       }
 
       ctx.sessions.markSnapshotDirty?.(session, true);
-      await ctx.reply.success('Playback resumed.');
+      await ctx.reply.success(ctx.t('resume.resumed'));
     },
   }));
 
@@ -1387,7 +1384,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       const current = session.player.displayTrack ?? session.player.currentTrack;
 
       if (!current) {
-        await ctx.reply.warning('Nothing is currently playing.');
+        await ctx.reply.warning(ctx.t('errors.nothingPlaying'));
         return;
       }
 
@@ -1397,7 +1394,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       const pendingTracks = session.player.pendingTracks ?? [];
       const fields: EmbedField[] = isRadio
         ? [
-            { name: 'Progress', value: buildProgressBar(progressSec, totalSec ?? Number.NaN, 16, { isLive: true }) },
+            { name: ctx.t('now.progress'), value: buildProgressBar(progressSec, totalSec ?? Number.NaN, 16, { isLive: true }) },
             {
               name: 'Station',
               value: current.url
@@ -1407,10 +1404,10 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
             },
           ]
         : [
-            { name: 'Progress', value: buildProgressBar(progressSec, totalSec ?? Number.NaN, 16, { isLive: Boolean(current?.isLive) }) },
-            { name: 'Loop', value: String(session.player.loopMode ?? 'off'), inline: true },
-            { name: 'Volume', value: `${session.player.volumePercent ?? 100}%`, inline: true },
-            { name: 'Queued', value: String(pendingTracks.length), inline: true },
+            { name: ctx.t('now.progress'), value: buildProgressBar(progressSec, totalSec ?? Number.NaN, 16, { isLive: Boolean(current?.isLive) }) },
+            { name: ctx.t('now.loop'), value: String(session.player.loopMode ?? 'off'), inline: true },
+            { name: ctx.t('common.volume'), value: `${session.player.volumePercent ?? 100}%`, inline: true },
+            { name: ctx.t('now.queued'), value: String(pendingTracks.length), inline: true },
           ];
 
       const pendingDurationSec = pendingTracks.reduce((sum, track) => {
@@ -1444,7 +1441,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       if (isRadio && current.url) {
         const pendingFields = [
           ...fields,
-          { name: 'Song', value: 'Detecting...', inline: true },
+          { name: ctx.t('now.song'), value: ctx.t('now.detecting'), inline: true },
         ];
         const pendingPayload = buildNowPlayingPayload(pendingFields);
         const pendingMessage = await ctx.rest.sendMessage?.(
@@ -1509,7 +1506,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       ensureDjAccess(ctx, session, 'seek');
 
       if (!ctx.args.length) {
-        throw new ValidationError(`Usage: ${ctx.prefix}seek <seconds|mm:ss|hh:mm:ss>`);
+        throw new ValidationError(ctx.t('seek.usage', { prefix: ctx.prefix }));
       }
 
       const raw = String(ctx.args[0]).trim();
@@ -1522,12 +1519,12 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       }
 
       if (targetSec == null || targetSec < 0) {
-        throw new ValidationError('Invalid seek position.');
+        throw new ValidationError(ctx.t('seek.invalid'));
       }
 
       const finalTarget = session.player.seekTo(targetSec);
       ctx.sessions.markSnapshotDirty?.(session, true);
-      await ctx.reply.success(`Seeking to **${formatSeconds(finalTarget)}**...`);
+      await ctx.reply.success(ctx.t('seek.seeking', { position: formatSeconds(finalTarget) }));
     },
   }));
 
@@ -1543,7 +1540,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
 
       const previous = session.player.queuePreviousTrack();
       if (!previous) {
-        await ctx.reply.warning('No previous track found in history.');
+        await ctx.reply.warning(ctx.t('previous.notFound'));
         return;
       }
 
@@ -1552,7 +1549,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       }
 
       ctx.sessions.markSnapshotDirty?.(session, true);
-      await ctx.reply.success(`Queued previous track: ${trackLabel(previous)}`);
+      await ctx.reply.success(ctx.t('previous.queued', { track: trackLabel(previous) }));
     },
   }));
 
@@ -1568,7 +1565,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
 
       if (session.player.replayCurrentTrack()) {
         ctx.sessions.markSnapshotDirty?.(session, true);
-        await ctx.reply.success('Restarting current track...');
+        await ctx.reply.success(ctx.t('replay.restarting'));
         return;
       }
 
@@ -1588,11 +1585,11 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
             await session.player.play();
           }
           ctx.sessions.markSnapshotDirty?.(session, true);
-          await ctx.reply.success(`Replaying from persistent history: ${trackLabel(replayTrack)}`);
+          await ctx.reply.success(ctx.t('replay.fromHistory', { track: trackLabel(replayTrack) }));
           return;
         }
 
-        await ctx.reply.warning('No track available to replay.');
+        await ctx.reply.warning(ctx.t('replay.noTrack'));
         return;
       }
 
@@ -1601,7 +1598,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       }
 
       ctx.sessions.markSnapshotDirty?.(session, true);
-      await ctx.reply.success(`Replaying: ${trackLabel(previous)}`);
+      await ctx.reply.success(ctx.t('replay.replaying', { track: trackLabel(previous) }));
     },
   }));
 
@@ -1659,7 +1656,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       const library = requireLibrary(ctx);
       const persisted = await library.listGuildHistory(ctx.guildId, page, HISTORY_PAGE_SIZE);
       if (!persisted.items.length) {
-        await ctx.reply.warning('No playback history yet.');
+        await ctx.reply.warning(ctx.t('history.empty'));
         return;
       }
 
@@ -1670,7 +1667,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       if (linePages.length === 1) {
         await ctx.reply.info(
           `Persistent history page **${persisted.page}/${persisted.totalPages}** • Total tracks: **${persisted.total}**`,
-          [{ name: 'Recently Played', value: linePages[0] ?? '-' }]
+          [{ name: ctx.t('history.recentlyPlayed'), value: linePages[0] ?? '-' }]
         );
         return;
       }
@@ -1679,7 +1676,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
         ctx,
         `Persistent history ${idx + 1}/${linePages.length}`,
         `Page **${persisted.page}/${persisted.totalPages}** • Total tracks: **${persisted.total}**`,
-        [{ name: 'Recently Played', value }]
+        [{ name: ctx.t('history.recentlyPlayed'), value }]
       ));
       await ctx.sendPaginated(pages);
     },

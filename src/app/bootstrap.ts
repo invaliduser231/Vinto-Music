@@ -209,6 +209,7 @@ export async function startApp() {
         voteSkipMinVotes: config.voteSkipMinVotes,
         djRoleIds: [],
         musicLogChannelId: null,
+        language: config.defaultLanguage,
       },
     },
   });

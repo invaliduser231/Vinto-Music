@@ -1,3 +1,4 @@
+import type { Locale, Translator } from '../../../i18n/index.ts';
 import type { BivariantCallback, CommandDefinition, MessagePayload } from '../../../types/core.ts';
 
 export type GuildConfigLike = {
@@ -13,6 +14,7 @@ export type GuildConfigLike = {
     voteSkipMinVotes: number;
     djRoleIds: string[];
     musicLogChannelId: string | null;
+    language?: string | null;
   };
 };
 
@@ -142,6 +144,8 @@ export type LibraryLike = {
     [key: string]: unknown;
   }>;
   patchGuildFeatureConfig: (guildId: string, patch: Record<string, unknown>) => Promise<unknown>;
+  getUserLocale?: (userId: string) => Promise<string | null>;
+  setUserLocale?: (userId: string, locale: string | null) => Promise<string | null>;
   getVoiceProfile: (guildId: string, channelId: string) => Promise<{ moodPreset?: string | null; stayInVoiceEnabled?: boolean | null } | null>;
   setVoiceProfile: (guildId: string, channelId: string, patch: Record<string, unknown>) => Promise<unknown>;
   listGuildStations?: (guildId: string) => Promise<RadioStationDataLike[]>;
@@ -200,6 +204,8 @@ export type CommandContextLike = {
     searchResultLimit?: number;
     [key: string]: unknown;
   };
+  locale: Locale;
+  t: Translator;
   guildConfig?: GuildConfigLike | null;
   guildConfigs?: {
     get: (guildId: string) => Promise<GuildConfigLike>;
