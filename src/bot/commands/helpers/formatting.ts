@@ -310,13 +310,20 @@ export function createCommand<T extends CommandDefinition>(definition: T): Reado
 type CommandUsageContext = {
   prefix: string;
   command: CommandDefinition;
+  t?: Translator;
 };
 
-export function buildCommandUsage(ctx: CommandUsageContext) {
-  const { command: cmd, prefix } = ctx;
+export function commandDescription(command: CommandDefinition, t?: Translator): string {
+  const translated = t?.optional(`cmd.${String(command.name)}.description`);
+  return translated ?? String(command.description ?? '');
+}
 
-  const aliases = cmd.aliases?.length ? ` (aliases: \`${cmd.aliases.join('`, `')}\`)` : '';
-  return `\`${prefix}${cmd.usage}\` - ${cmd.description}${aliases}`;
+export function buildCommandUsage(ctx: CommandUsageContext) {
+  const { command: cmd, prefix, t } = ctx;
+
+  const aliasLabel = t ? t('help.aliases') : 'aliases';
+  const aliases = cmd.aliases?.length ? ` (${aliasLabel}: \`${cmd.aliases.join('`, `')}\`)` : '';
+  return `\`${prefix}${cmd.usage}\` - ${commandDescription(cmd, t)}${aliases}`;
 }
 
 type HelpPayloadContext = {
@@ -347,10 +354,15 @@ type HelpPageContext = {
   registry: {
     list(): CommandDefinition[];
   };
+  t?: Translator;
 };
 
 export function buildHelpPages(ctx: HelpPageContext): MessagePayload[] {
-  const lines = ctx.registry.list().map((cmd) => buildCommandUsage({ prefix: ctx.prefix, command: cmd }));
+  const lines = ctx.registry.list().map((cmd) => buildCommandUsage({
+    prefix: ctx.prefix,
+    command: cmd,
+    ...(ctx.t ? { t: ctx.t } : {}),
+  }));
 
   const pageSize = 12;
   const pages: MessagePayload[] = [];
@@ -360,7 +372,7 @@ export function buildHelpPages(ctx: HelpPageContext): MessagePayload[] {
     const slice = lines.slice(i * pageSize, (i + 1) * pageSize);
     pages.push(
       buildHelpPayload({
-        title: `Help ${i + 1}/${totalPages}`,
+        title: ctx.t ? ctx.t('help.titlePaged', { current: i + 1, total: totalPages }) : `Help ${i + 1}/${totalPages}`,
         description: slice.join('\n').slice(0, 3900),
       })
     );

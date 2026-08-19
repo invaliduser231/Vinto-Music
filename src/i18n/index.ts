@@ -123,13 +123,28 @@ export function translate(key: TranslationKey, locale: Locale = DEFAULT_LOCALE, 
   return interpolate(form, params);
 }
 
+export function hasTranslation(key: string): key is TranslationKey {
+  return Object.prototype.hasOwnProperty.call(CATALOGS[DEFAULT_LOCALE], key);
+}
+
+export function translateOptional(
+  key: string,
+  locale: Locale = DEFAULT_LOCALE,
+  params?: TranslationParams
+): string | null {
+  if (!hasTranslation(key)) return null;
+  return translate(key, locale, params);
+}
+
 export type Translator = {
   (key: TranslationKey, params?: TranslationParams): string;
+  optional: (key: string, params?: TranslationParams) => string | null;
   locale: Locale;
 };
 
 export function createTranslator(locale: Locale = DEFAULT_LOCALE): Translator {
   const translator = ((key: TranslationKey, params?: TranslationParams) => translate(key, locale, params)) as Translator;
+  translator.optional = (key: string, params?: TranslationParams) => translateOptional(key, locale, params);
   translator.locale = locale;
   return translator;
 }

@@ -527,7 +527,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       const { args } = ctx;
       if (args.length === 0) {
         // if no arguments specified, print all pages
-        const pages = buildHelpPages({ prefix: ctx.prefix, registry });
+        const pages = buildHelpPages({ prefix: ctx.prefix, registry, t: ctx.t });
         const first = await ctx.rest.sendMessage(ctx.channelId, withCommandReplyReference(ctx, pages[0]!)) as SentMessageLike | null;
         const messageId = first?.id ?? first?.message?.id ?? null;
         if (messageId && ctx.registerHelpPagination) {
@@ -540,7 +540,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       const arg = args[0]!.toLowerCase();
 
       if (/^\d+$/.test(arg)) {
-        const pages = buildHelpPages({ prefix: ctx.prefix, registry });
+        const pages = buildHelpPages({ prefix: ctx.prefix, registry, t: ctx.t });
 
         // `- 1` as help pages are one-indexed
         const pageIndex = parseInt(arg) - 1;
@@ -573,7 +573,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
           ctx,
           buildHelpPayload({
             title: ctx.t('help.title'),
-            description: buildCommandUsage({ prefix: ctx.prefix, command }),
+            description: buildCommandUsage({ prefix: ctx.prefix, command, t: ctx.t }),
           })
         )
       );
