@@ -296,3 +296,12 @@ test('listPermissions reports exactly the flags contained in a bitfield', () => 
 test('formatPermissionList renders labels rather than raw flags', () => {
   assert.equal(formatPermissionList(t, ['CONNECT', 'SPEAK']), '**Connect**, **Speak**');
 });
+
+test('legacy permission constants stay derived from the Fluxer flag table', async () => {
+  const { ADMINISTRATOR_PERMISSION, MANAGE_GUILD_PERMISSION } = await import(
+    '../src/bot/commands/helpers/constants.ts'
+  );
+
+  assert.equal(ADMINISTRATOR_PERMISSION, PERMISSION_FLAGS.ADMINISTRATOR);
+  assert.equal(MANAGE_GUILD_PERMISSION, PERMISSION_FLAGS.MANAGE_GUILD);
+});
