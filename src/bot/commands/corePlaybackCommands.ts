@@ -582,7 +582,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
 
   registry.register(createCommand({
     name: 'support',
-    aliases: ['discord', 'server'],
+    aliases: ['fluxer', 'server'],
     description: 'Get the support server invite link.',
     usage: 'support',
     async execute(ctx: PlaybackCommandContext) {
