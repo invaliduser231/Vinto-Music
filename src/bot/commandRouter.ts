@@ -1,5 +1,6 @@
 import { ValidationError } from '../core/errors.ts';
 import { createTranslator, DEFAULT_LOCALE, resolveLocale, type Locale } from '../i18n/index.ts';
+import { resolveLimits } from './services/votePerks.ts';
 import { parseCommand } from '../utils/commandParser.ts';
 import { buildEmbed, makeResponder, sourceColor } from './messageFormatter.ts';
 import { buildTrackAuthor } from './commands/helpers/formatting.ts';
@@ -31,12 +32,17 @@ import type { BivariantCallback, CommandDefinition, MessagePayload, ReplyOptions
 
 type RouterContextOptions = {
   prefix?: string;
+  hasVoted?: boolean;
   guildConfig?: { prefix?: string; settings?: { minimalMode?: boolean; language?: string | null } } | null;
   locale?: Locale;
 };
 
 type RouterConfig = {
   prefix: string;
+  maxPlaylistTracks?: number | null;
+  searchResultLimit?: number;
+  playCommandCooldownMs?: number;
+  maxFavoritesPerUser?: number;
   allowDefaultPrefixFallback?: boolean;
   commandRateLimitEnabled?: boolean;
   commandUserWindowMs?: number;
@@ -208,6 +214,7 @@ type CommandRouterOptions = {
   metrics?: MetricsLike | null;
   errorReporter?: ErrorReporterLike | null;
   commandRateLimiter?: CommandRateLimiter | null;
+  voteService?: { hasVoted: (userId: string) => boolean } | null;
 };
 
 export class CommandRouter {
@@ -233,6 +240,7 @@ export class CommandRouter {
   weeklySweepHandle: NodeJS.Timeout | null;
   ephemeralCleanupHandle: NodeJS.Timeout | null;
   commandRateLimiter: CommandRateLimiter;
+  voteService: { hasVoted: (userId: string) => boolean } | null;
   responder: ReturnType<typeof makeResponder>;
   registry: CommandRegistry;
   constructor(options: CommandRouterOptions) {
@@ -267,6 +275,7 @@ export class CommandRouter {
       ...(this.config.commandRateLimitBypass !== undefined ? { bypassCommands: this.config.commandRateLimitBypass } : {}),
     };
     this.commandRateLimiter = options.commandRateLimiter ?? new CommandRateLimiter(rateLimiterOptions);
+    this.voteService = options.voteService ?? null;
 
     this.responder = makeResponder(this.rest, this.config.enableEmbeds !== undefined
       ? { enableEmbeds: this.config.enableEmbeds }
@@ -324,10 +333,12 @@ export class CommandRouter {
       guildConfig
     );
 
+    const authorId = message.author?.id ?? message.user_id ?? message.member?.user?.id ?? null;
     const context = this._buildContext(message, parsed, command, {
       prefix: configuredPrefix,
       guildConfig,
       locale,
+      hasVoted: authorId ? Boolean(this.voteService?.hasVoted(authorId)) : false,
     });
     try {
       if (
@@ -455,6 +466,7 @@ export class CommandRouter {
       config: {
         ...this.config,
         ...(options.guildConfig?.settings?.minimalMode === true ? { minimalMode: true } : {}),
+        ...resolveLimits(this.config, options.hasVoted === true),
       },
       prefix: options.prefix ?? this.config.prefix,
       logger: this.logger,

@@ -2,6 +2,7 @@ import { ValidationError } from '../../core/errors.ts';
 import { describePermissionFailure, ensurePermissionCheck, permissionCheckFields } from '../permissions/require.ts';
 import type { PermissionFlag } from '../permissions/flags.ts';
 import { parseVoiceChannelArgument } from './helpers/formatting.ts';
+import { describePerkDelta } from '../services/votePerks.ts';
 import {
   localeFlag,
   localeLabel,
@@ -9,6 +10,7 @@ import {
   SUPPORTED_LOCALES,
   translate,
   type Locale,
+  type TranslationKey,
 } from '../../i18n/index.ts';
 import type { CommandContextLike, CommandHelperBundle } from './helpers/types.ts';
 
@@ -517,6 +519,46 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
 
       await library.setUserLocale(ctx.authorId, locale);
       await ctx.reply.success(translate('language.updated', locale, describe(locale)));
+    },
+  }));
+
+  registry.register(createCommand({
+    name: 'vote',
+    aliases: ['perks'],
+    description: 'Show voter perks and whether they are active for you.',
+    usage: 'vote',
+    async execute(ctx: CommandContextLike) {
+      const voteService = ctx.voteService ?? null;
+      const hasVoted = Boolean(voteService?.hasVoted?.(ctx.authorId));
+      const available = Boolean(voteService?.enabled);
+
+      const formatValue = (key: string, value: number | null): string => {
+        if (value == null) return ctx.t('common.unknown');
+        if (key === 'playCooldown') {
+          return value <= 0 ? ctx.t('vote.value.none') : ctx.t('vote.value.seconds', { value: (value / 1000).toFixed(1) });
+        }
+        if (key === 'searchResults') return ctx.t('vote.value.results', { value });
+        return ctx.t('vote.value.tracks', { value });
+      };
+
+      const fields = describePerkDelta(ctx.config).map((perk) => ({
+        name: ctx.t(`vote.perk.${perk.key}` as TranslationKey),
+        value: `${formatValue(perk.key, perk.base)} → **${formatValue(perk.key, perk.voter)}**`,
+        inline: true,
+      }));
+
+      let summary: string;
+      if (!available) summary = ctx.t('vote.unavailable');
+      else if (hasVoted) summary = ctx.t('vote.alreadyVoted');
+      else summary = ctx.t('vote.notVoted');
+
+      const voteUrl = ctx.config.voteUrl ? String(ctx.config.voteUrl) : null;
+      if (voteUrl && !hasVoted) {
+        fields.push({ name: ctx.t('vote.link'), value: voteUrl, inline: false });
+      }
+
+      const reply = hasVoted ? ctx.reply.success : ctx.reply.info;
+      await reply(summary, fields, { footer: ctx.t('vote.perksTitle') });
     },
   }));
 

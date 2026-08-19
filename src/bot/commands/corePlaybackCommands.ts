@@ -37,6 +37,7 @@ import {
 } from './commandHelpers.ts';
 import { buildEmbed, sourceColor } from '../messageFormatter.ts';
 import type { Translator } from '../../i18n/index.ts';
+import { buildExportFilename, buildQueueCsv } from './helpers/csvExport.ts';
 import {
   buildInfoPayload,
   createProgressReporter,
@@ -1632,6 +1633,54 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
         pages.push(buildInfoPayload(ctx, 'Queue', queueData.description, queueData.fields, { footer: queueData.footer ?? null }));
       }
       await ctx.sendPaginated(pages);
+    },
+  }));
+
+  registry.register(createCommand({
+    name: 'export',
+    aliases: ['csv', 'queueexport'],
+    description: 'Export the current queue as a CSV file.',
+    usage: 'export',
+    async execute(ctx: PlaybackCommandContext) {
+      ensureGuild(ctx);
+      const session = getSessionOrThrow(ctx);
+
+      const current = session.player.displayTrack ?? session.player.currentTrack ?? null;
+      const pending = Array.isArray(session.player.pendingTracks) ? session.player.pendingTracks : [];
+      if (!current && !pending.length) {
+        await ctx.reply.warning(ctx.t('queue.empty'));
+        return;
+      }
+
+      const csv = buildQueueCsv({ current, pending });
+      const data = new TextEncoder().encode(`﻿${csv}`);
+      const filename = buildExportFilename(ctx.guildId, new Date());
+      const trackCount = (current ? 1 : 0) + pending.length;
+
+      if (typeof ctx.rest.sendFile !== 'function') {
+        throw new ValidationError(ctx.t('export.unsupported'));
+      }
+
+      try {
+        await ctx.rest.sendFile(
+          ctx.channelId,
+          {
+            filename,
+            contentType: 'text/csv',
+            data,
+            description: ctx.t('export.fileDescription', { count: trackCount }),
+          },
+          withCommandReplyReference(ctx, {
+            content: ctx.t('export.ready', { count: trackCount }),
+          })
+        );
+      } catch (err) {
+        ctx.logger?.debug?.('Queue CSV export failed', {
+          guildId: ctx.guildId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        throw new ValidationError(ctx.t('export.failed'));
+      }
     },
   }));
 

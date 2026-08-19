@@ -14,6 +14,7 @@ import { MongoService } from '../storage/mongo.ts';
 import { initializePlayDlAuth } from '../integrations/playDlAuth.ts';
 import { MusicLibraryStore } from '../bot/services/musicLibraryStore.ts';
 import { PermissionService } from '../bot/services/permissionService.ts';
+import { VoteService } from '../bot/services/voteService.ts';
 import { GuildStateCache } from '../bot/services/guildStateCache.ts';
 import { EarrapeProfileStore } from '../bot/services/earrapeProfileStore.ts';
 import { MonitoringServer } from '../monitoring/server.ts';
@@ -427,8 +428,17 @@ export async function startApp() {
   } satisfies PermissionServiceCtorOptions;
   const permissions = new PermissionService(permissionOptions);
 
+  const voteService = new VoteService({
+    apiBase: config.fluxerlistApiBase,
+    apiKey: config.voteRewardsEnabled ? config.fluxerlistApiKey : null,
+    botId: config.fluxerlistBotId,
+    logger: logger.child('votes'),
+    refreshIntervalMs: config.voteRefreshIntervalMs,
+  });
+
   const routerOptions = {
     config,
+    voteService,
     logger: logger.child('commands'),
     rest: rest as CommandRouterCtorOptions['rest'],
     gateway,
@@ -460,6 +470,8 @@ export async function startApp() {
     sessions.setBotUserId(normalized);
     permissions.setBotUserId(normalized);
     router.setBotUserId(normalized);
+    voteService.setBotId(config.fluxerlistBotId ?? normalized);
+    voteService.start();
     logger.info('Bot user id resolved', { source, botUserId: normalized });
   };
 

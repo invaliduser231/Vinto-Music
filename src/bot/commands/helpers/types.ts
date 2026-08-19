@@ -201,6 +201,7 @@ export type CommandContextLike = {
     maxConcurrentVoiceChannelsPerGuild?: number;
     maxPlaylistTracks?: number;
     playCommandCooldownMs?: number;
+    voteUrl?: string | null;
     voteSkipRatio?: number;
     voteSkipMinVotes?: number;
     searchResultLimit?: number;
@@ -208,6 +209,7 @@ export type CommandContextLike = {
   };
   locale: Locale;
   t: Translator;
+  voteService?: { hasVoted?: (userId: string) => boolean; enabled?: boolean } | null;
   guildConfig?: GuildConfigLike | null;
   guildConfigs?: {
     get: (guildId: string) => Promise<GuildConfigLike>;
@@ -248,6 +250,11 @@ export type CommandContextLike = {
   } | null;
   rest?: {
     sendMessage?: (channelId: string, payload: MessagePayload) => Promise<unknown>;
+    sendFile?: (
+      channelId: string,
+      file: { filename: string; contentType: string; data: Uint8Array; description?: string | null },
+      payload?: MessagePayload | string
+    ) => Promise<unknown>;
     editMessage?: (channelId: string, messageId: string, payload: MessagePayload) => Promise<unknown>;
     getGuildMember?: (guildId: string, userId: string) => Promise<unknown>;
     getGuild?: (guildId: string) => Promise<unknown>;

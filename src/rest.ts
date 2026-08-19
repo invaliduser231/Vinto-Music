@@ -492,6 +492,89 @@ export class RestClient {
     }
   }
 
+  async requestAttachmentUpload(channelId: string, file: {
+    filename: string;
+    size: number;
+    contentType: string;
+  }) {
+    const response = await this.request('POST', `/channels/${channelId}/attachments`, {
+      body: {
+        files: [{
+          id: 0,
+          filename: file.filename,
+          file_size: file.size,
+          content_type: file.contentType,
+        }],
+      },
+      retryUnsafe: false,
+    }) as { attachments?: Array<Record<string, unknown>> } | null;
+
+    const slot = response?.attachments?.[0];
+    if (!slot) {
+      throw new RestError('Attachment upload slot missing in response', { status: null });
+    }
+
+    const uploadUrl = String(slot.upload_url ?? '');
+    const uploadFilename = String(slot.upload_filename ?? '');
+    const uploadMode = String(slot.upload_mode ?? 'singlepart');
+
+    if (!uploadUrl || !uploadFilename) {
+      throw new RestError('Attachment upload slot is incomplete', { status: null });
+    }
+    if (uploadMode !== 'singlepart') {
+      throw new RestError(`Unsupported attachment upload mode: ${uploadMode}`, { status: null });
+    }
+
+    return { uploadUrl, uploadFilename };
+  }
+
+  async uploadAttachmentData(uploadUrl: string, data: Uint8Array, contentType: string) {
+    const res = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': contentType },
+      body: data,
+      signal: AbortSignal.timeout(Math.max(this.timeoutMs, 30_000)),
+    });
+
+    if (!res.ok) {
+      throw new RestError(`Attachment upload failed: ${res.status} ${res.statusText}`, {
+        status: res.status,
+      });
+    }
+  }
+
+  async sendFile(channelId: string, file: {
+    filename: string;
+    contentType: string;
+    data: Uint8Array;
+    description?: string | null;
+  }, payload: MessagePayload | string = {}) {
+    const slot = await this.requestAttachmentUpload(channelId, {
+      filename: file.filename,
+      size: file.data.byteLength,
+      contentType: file.contentType,
+    });
+
+    await this.uploadAttachmentData(slot.uploadUrl, file.data, file.contentType);
+
+    const rawPayload: MessagePayload = typeof payload === 'string' ? { content: payload } : { ...(payload ?? {}) };
+    const body: MessagePayload = (rawPayload.content || Array.isArray(rawPayload.embeds))
+      ? normalizeMessagePayload(rawPayload)
+      : { ...rawPayload, nonce: rawPayload.nonce ?? buildMessageNonce() };
+    return this.request('POST', `/channels/${channelId}/messages`, {
+      body: {
+        ...body,
+        attachments: [{
+          id: 0,
+          filename: file.filename,
+          uploaded_filename: slot.uploadFilename,
+          ...(file.description ? { description: file.description } : {}),
+        }],
+      },
+      retryUnsafe: false,
+    });
+  }
+
   async editMessage(channelId: string, messageId: string, payload: MessagePayload | string) {
     const body = normalizeMessageEditPayload(payload);
     return this.request('PATCH', `/channels/${channelId}/messages/${messageId}`, {
