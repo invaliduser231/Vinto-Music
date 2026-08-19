@@ -576,9 +576,9 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
       const typedCtx = ctx as QueueEffectsContext;
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
-      ensureDjAccess(ctx, session, 'remove tracks');
+      ensureDjAccess(ctx, session, 'access.removeTracks');
 
-      const index = parseRequiredInteger(ctx.args[0], 'Index');
+      const index = parseRequiredInteger(ctx.args[0], 'field.index', ctx.t);
       const removed = session.player.removeFromQueue(index);
 
       if (!removed) {
@@ -600,7 +600,7 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
       const typedCtx = ctx as QueueEffectsContext;
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
-      ensureDjAccess(ctx, session, 'clear the queue');
+      ensureDjAccess(ctx, session, 'access.clearQueue');
 
       const removed = session.player.pendingTracks.length;
       session.player.clearQueue();
@@ -619,7 +619,7 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
       const typedCtx = ctx as QueueEffectsContext;
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
-      ensureDjAccess(ctx, session, 'shuffle the queue');
+      ensureDjAccess(ctx, session, 'access.shuffleQueue');
 
       const count = session.player.shuffleQueue();
       typedCtx.sessions.markSnapshotDirty?.(session, true);
@@ -636,7 +636,7 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
       const typedCtx = ctx as QueueEffectsContext;
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
-      ensureDjAccess(ctx, session, 'change loop mode');
+      ensureDjAccess(ctx, session, 'access.changeLoop');
 
       if (!ctx.args.length) {
         await ctx.reply.info(ctx.t('loop.current', { mode: String(session.player.loopMode ?? 'off') }));
@@ -659,14 +659,14 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
       const typedCtx = ctx as QueueEffectsContext;
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
-      ensureDjAccess(ctx, session, 'change volume');
+      ensureDjAccess(ctx, session, 'access.changeVolume');
 
       if (!ctx.args.length) {
         await ctx.reply.info(ctx.t('volume.current', { percent: Number(session.player.volumePercent ?? 100) }));
         return;
       }
 
-      const volumeArg = parseRequiredInteger(ctx.args[0], 'Volume');
+      const volumeArg = parseRequiredInteger(ctx.args[0], 'field.volume', ctx.t);
       const next = session.player.setVolumePercent(volumeArg);
       typedCtx.sessions.markSnapshotDirty?.(session, true);
       await ctx.reply.success(ctx.t('volume.set', { percent: next }));
@@ -682,7 +682,7 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
       const typedCtx = ctx as QueueEffectsContext;
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
-      ensureDjAccess(ctx, session, 'manage the kick timer');
+      ensureDjAccess(ctx, session, 'access.manageKickTimer');
 
       const sessions = typedCtx.sessions as QueueEffectsContext['sessions'] & {
         scheduleKickTimer?: (session: SessionLike, durationSec: number, options?: { requestedBy?: string | null }) => { durationSec: number };
@@ -710,7 +710,7 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
         return;
       }
 
-      const seconds = parseRequiredInteger(ctx.args[0], 'Seconds');
+      const seconds = parseRequiredInteger(ctx.args[0], 'field.seconds', ctx.t);
       const minSeconds = 5;
       const maxSeconds = 86_400;
       if (seconds < minSeconds || seconds > maxSeconds) {
@@ -736,7 +736,7 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
-      ensureDjAccess(ctx, session, 'change audio filters');
+      ensureDjAccess(ctx, session, 'access.changeFilters');
 
       if (!ctx.args.length) {
         await ctx.reply.info(
@@ -765,7 +765,7 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
-      ensureDjAccess(ctx, session, 'change EQ');
+      ensureDjAccess(ctx, session, 'access.changeEq');
 
       if (!ctx.args.length) {
         await ctx.reply.info(
@@ -793,7 +793,7 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
-      ensureDjAccess(ctx, session, 'change tempo');
+      ensureDjAccess(ctx, session, 'access.changeTempo');
 
       const tempoArg = Number.parseFloat(String(ctx.args[0] ?? ''));
       if (!Number.isFinite(tempoArg)) {
@@ -814,9 +814,9 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
-      ensureDjAccess(ctx, session, 'change pitch');
+      ensureDjAccess(ctx, session, 'access.changePitch');
 
-      const pitchArg = parseRequiredInteger(ctx.args[0], 'Pitch');
+      const pitchArg = parseRequiredInteger(ctx.args[0], 'field.pitch', ctx.t);
       const pitch = session.player.setPitchSemitones(pitchArg);
       const restarted = session.player.refreshCurrentTrackProcessing();
       const signed = pitch >= 0 ? `+${pitch}` : String(pitch);

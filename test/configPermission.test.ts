@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { registerCommands } from '../src/bot/commands/index.ts';
 import { CommandRegistry } from '../src/bot/commandRegistry.ts';
+import { createTranslator } from '../src/i18n/index.ts';
 
 function buildDedupeCommand() {
   const registry = new CommandRegistry();
@@ -51,6 +52,7 @@ test('config command allows users with manage guild permission', async () => {
     sessions: {
       applyGuildConfig() {},
     },
+    t: createTranslator('en'),
     reply: {
       async info() {
         replied = true;
@@ -83,6 +85,7 @@ test('config command rejects users without manage guild permission', async () =>
       sessions: {
         applyGuildConfig() {},
       },
+      t: createTranslator('en'),
       reply: {
         async info() {},
       },
@@ -124,6 +127,7 @@ test('config command allows REST role-based manage guild fallback', async () => 
     sessions: {
       applyGuildConfig() {},
     },
+    t: createTranslator('en'),
     reply: {
       async info() {
         replied = true;
@@ -168,6 +172,7 @@ test('config command rejects REST role fallback without manage guild bit', async
       sessions: {
         applyGuildConfig() {},
       },
+      t: createTranslator('en'),
       reply: {
         async info() {},
       },
@@ -209,6 +214,7 @@ test('config command allows message-role fallback when getGuildMember fails', as
     sessions: {
       applyGuildConfig() {},
     },
+    t: createTranslator('en'),
     reply: {
       async info() {
         replied = true;
@@ -266,6 +272,7 @@ test('config command allows gateway guild-state cache fallback without REST role
     sessions: {
       applyGuildConfig() {},
     },
+    t: createTranslator('en'),
     reply: {
       async info() {
         replied = true;
@@ -313,6 +320,7 @@ test('config command reports role-list access problems clearly', async () => {
       sessions: {
         applyGuildConfig() {},
       },
+      t: createTranslator('en'),
       reply: {
         async info() {},
       },

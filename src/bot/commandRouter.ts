@@ -354,12 +354,12 @@ export class CommandRouter {
       });
       if (!rateCheck.allowed) {
         const retrySec = Math.max(0.1, (rateCheck.retryAfterMs ?? 1_000) / 1000).toFixed(1);
-        throw new ValidationError(`Rate limit hit (${rateCheck.scope}). Please retry in ${retrySec}s.`);
+        throw new ValidationError(context.t('errors.rateLimit', { scope: String(rateCheck.scope), seconds: retrySec }));
       }
 
       const commandName = String(command.name ?? '').trim();
       if (!command.execute || !commandName) {
-        throw new ValidationError(`Command "${command.name}" is not executable.`);
+        throw new ValidationError(context.t('errors.notExecutable', { command: String(command.name) }));
       }
       await command.execute(context);
       this.metrics?.commandsTotal?.inc?.(1, { command: commandName, outcome: 'success' });
@@ -385,7 +385,7 @@ export class CommandRouter {
         channelId: context.channelId,
       });
 
-      await context.reply.error('Command failed unexpectedly. Please try again.');
+      await context.reply.error(context.t('errors.unexpected'));
     }
   }
 

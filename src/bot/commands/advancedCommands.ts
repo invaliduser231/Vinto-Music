@@ -159,7 +159,7 @@ export function registerAdvancedCommands(registry: RegistryLike, h: AdvancedComm
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
-      ensureDjAccess(ctx, session, 'apply mood presets');
+      ensureDjAccess(ctx, session, 'access.applyMoodPresets');
 
       const presetName = String(ctx.args[0] ?? '').trim().toLowerCase();
       if (!presetName) {
@@ -198,7 +198,7 @@ export function registerAdvancedCommands(registry: RegistryLike, h: AdvancedComm
         return;
       }
 
-      await ensureManageGuildAccess(ctx, 'configure music webhooks');
+      await ensureManageGuildAccess(ctx, 'access.configureWebhooks');
       if (action === 'off') {
         await library.patchGuildFeatureConfig(ctx.guildId, { webhookUrl: null });
         await ctx.reply.success(ctx.t('webhook.turnedOff'));
@@ -240,13 +240,13 @@ export function registerAdvancedCommands(registry: RegistryLike, h: AdvancedComm
         return;
       }
 
-      await ensureManageGuildAccess(ctx, 'configure queue guard');
+      await ensureManageGuildAccess(ctx, 'access.configureQueueGuard');
       const next = { ...(cfg.queueGuard ?? {}) };
       if (action === 'on') next.enabled = true;
       else if (action === 'off') next.enabled = false;
-      else if (action === 'maxperwindow') next.maxPerRequesterWindow = parseRequiredInteger(ctx.args[1], 'Value');
-      else if (action === 'window') next.windowSize = parseRequiredInteger(ctx.args[1], 'Value');
-      else if (action === 'maxartiststreak') next.maxArtistStreak = parseRequiredInteger(ctx.args[1], 'Value');
+      else if (action === 'maxperwindow') next.maxPerRequesterWindow = parseRequiredInteger(ctx.args[1], 'field.value', ctx.t);
+      else if (action === 'window') next.windowSize = parseRequiredInteger(ctx.args[1], 'field.value', ctx.t);
+      else if (action === 'maxartiststreak') next.maxArtistStreak = parseRequiredInteger(ctx.args[1], 'field.value', ctx.t);
       else throw new ValidationError(ctx.t('queueguard.usage', { prefix: ctx.prefix }));
 
       await library.patchGuildFeatureConfig(ctx.guildId, { queueGuard: next });
@@ -288,7 +288,7 @@ export function registerAdvancedCommands(registry: RegistryLike, h: AdvancedComm
 
       if (action === 'save') {
         const session = getSessionOrThrow(ctx);
-        ensureDjAccess(ctx, session, 'save queue templates');
+        ensureDjAccess(ctx, session, 'access.saveTemplates');
         const name = ctx.args.slice(1).join(' ').trim();
         if (!name) throw new ValidationError(ctx.t('template.usageSave', { prefix: ctx.prefix }));
         const tracks = [session.player.currentTrack, ...session.player.pendingTracks].filter(Boolean);
@@ -299,7 +299,7 @@ export function registerAdvancedCommands(registry: RegistryLike, h: AdvancedComm
       }
 
       if (action === 'delete') {
-        await ensureManageGuildAccess(ctx, 'delete queue templates');
+        await ensureManageGuildAccess(ctx, 'access.deleteTemplates');
         const name = ctx.args.slice(1).join(' ').trim();
         if (!name) throw new ValidationError(ctx.t('template.usageDelete', { prefix: ctx.prefix }));
         const removed = await library.deleteQueueTemplate(ctx.guildId, name);
@@ -368,7 +368,7 @@ export function registerAdvancedCommands(registry: RegistryLike, h: AdvancedComm
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
       const library = requireLibrary(ctx);
-      const days = ctx.args[0] ? parseRequiredInteger(ctx.args[0], 'Days') : 7;
+      const days = ctx.args[0] ? parseRequiredInteger(ctx.args[0], 'field.days', ctx.t) : 7;
       const top = await library.getGuildTopTracks(ctx.guildId, days, 10);
       if (!top.length) {
         await ctx.reply.warning(ctx.t('charts.empty'));
@@ -428,7 +428,7 @@ export function registerAdvancedCommands(registry: RegistryLike, h: AdvancedComm
         return;
       }
 
-      await ensureManageGuildAccess(ctx, 'configure weekly recap');
+      await ensureManageGuildAccess(ctx, 'access.configureRecap');
       if (action === 'off') {
         await library.patchGuildFeatureConfig(ctx.guildId, { recapChannelId: null });
         await ctx.reply.success(ctx.t('recap.disabled'));
@@ -470,7 +470,7 @@ export function registerAdvancedCommands(registry: RegistryLike, h: AdvancedComm
         return;
       }
 
-      await ensureManageGuildAccess(ctx, 'configure voice profiles');
+      await ensureManageGuildAccess(ctx, 'access.configureVoiceProfiles');
       const targetChannel = channelId ?? ctx.voiceStateStore.resolveMemberVoiceChannel(ctx.message);
       if (!targetChannel) throw new ValidationError(ctx.t('errors.provideOrJoinChannel'));
 
@@ -537,7 +537,7 @@ export function registerAdvancedCommands(registry: RegistryLike, h: AdvancedComm
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
-      await ensureManageGuildAccess(ctx, 'configure DJ handoff');
+      await ensureManageGuildAccess(ctx, 'access.configureHandoff');
 
       const mode = String(ctx.args[0] ?? 'show').trim().toLowerCase();
       if (mode === 'show') {
@@ -560,7 +560,7 @@ export function registerAdvancedCommands(registry: RegistryLike, h: AdvancedComm
 
       const userId = parseUserId(mode, null);
       if (!userId) throw new ValidationError(ctx.t('handoff.usage'));
-      const minutes = ctx.args[1] ? parseRequiredInteger(ctx.args[1], 'Minutes') : 15;
+      const minutes = ctx.args[1] ? parseRequiredInteger(ctx.args[1], 'field.minutes', ctx.t) : 15;
       session.tempDjHandoff = {
         userId,
         expiresAt: Date.now() + (minutes * 60 * 1000),

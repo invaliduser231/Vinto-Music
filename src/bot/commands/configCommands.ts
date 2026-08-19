@@ -48,22 +48,22 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
       const guildConfig = await getGuildConfigOrThrow(ctx);
-      await ensureManageGuildAccess(ctx, 'change dedupe mode');
+      await ensureManageGuildAccess(ctx, 'access.changeDedupe');
 
       if (!ctx.args.length) {
-        await ctx.reply.info(`Dedupe is currently **${guildConfig.settings.dedupeEnabled ? 'on' : 'off'}**.`);
+        await ctx.reply.info(ctx.t('config.dedupeCurrent', { state: ctx.t(guildConfig.settings.dedupeEnabled ? 'common.on' : 'common.off') }));
         return;
       }
 
       const value = parseOnOff(ctx.args[0], null);
       if (value == null) {
-        throw new ValidationError('Use `on` or `off`.');
+        throw new ValidationError(ctx.t('config.useOnOff'));
       }
 
       await updateGuildConfig(ctx, {
         settings: { dedupeEnabled: value },
       });
-      await ctx.reply.success(`Dedupe is now **${value ? 'on' : 'off'}**.`);
+      await ctx.reply.success(ctx.t('config.dedupeSet', { state: ctx.t(value ? 'common.on' : 'common.off') }));
     },
   }));
 
@@ -75,17 +75,17 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
       const guildConfig = await getGuildConfigOrThrow(ctx);
-      await ensureManageGuildAccess(ctx, 'change earrape protection');
+      await ensureManageGuildAccess(ctx, 'access.changeEarrape');
       const current = Boolean(guildConfig.settings.earrapeProtectionEnabled);
 
       if (!ctx.args.length) {
-        await ctx.reply.info(`Earrape protection is currently **${current ? 'on' : 'off'}**.`);
+        await ctx.reply.info(ctx.t('config.earrapeCurrent', { state: ctx.t(current ? 'common.on' : 'common.off') }));
         return;
       }
 
       const value = parseOnOff(ctx.args[0], null);
       if (value == null) {
-        throw new ValidationError('Use `on` or `off`.');
+        throw new ValidationError(ctx.t('config.useOnOff'));
       }
 
       if (value && ctx.permissionService?.canBotMoveMembers) {
@@ -114,7 +114,7 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
           const canMove = await ctx.permissionService.canBotMoveMembers(ctx.guildId, channelId);
           if (canMove === false) {
             throw new ValidationError(
-              `I need the "Move Members" permission in <#${channelId}> before earrape protection can disconnect users.`
+              ctx.t('config.earrapeNeedsMovePerm', { channel: `<#${channelId}>` })
             );
           }
         }
@@ -123,7 +123,7 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
       await updateGuildConfig(ctx, {
         settings: { earrapeProtectionEnabled: value },
       });
-      await ctx.reply.success(`Earrape protection is now **${value ? 'on' : 'off'}**.`);
+      await ctx.reply.success(ctx.t('config.earrapeSet', { state: ctx.t(value ? 'common.on' : 'common.off') }));
     },
   }));
 
@@ -135,22 +135,22 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
       const guildConfig = await getGuildConfigOrThrow(ctx);
-      await ensureManageGuildAccess(ctx, 'change minimal mode');
+      await ensureManageGuildAccess(ctx, 'access.changeMinimal');
 
       if (!ctx.args.length) {
-        await ctx.reply.info(`Minimal mode is currently **${guildConfig.settings.minimalMode ? 'on' : 'off'}**.`);
+        await ctx.reply.info(ctx.t('config.minimalCurrent', { state: ctx.t(guildConfig.settings.minimalMode ? 'common.on' : 'common.off') }));
         return;
       }
 
       const value = parseOnOff(ctx.args[0], null);
       if (value == null) {
-        throw new ValidationError('Use `on` or `off`.');
+        throw new ValidationError(ctx.t('config.useOnOff'));
       }
 
       await updateGuildConfig(ctx, {
         settings: { minimalMode: value },
       });
-      await ctx.reply.success(`Minimal mode is now **${value ? 'on' : 'off'}**.`);
+      await ctx.reply.success(ctx.t('config.minimalSet', { state: ctx.t(value ? 'common.on' : 'common.off') }));
     },
   }));
 
@@ -162,22 +162,22 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
       const guildConfig = await getGuildConfigOrThrow(ctx);
-      await ensureManageGuildAccess(ctx, 'change the default volume');
+      await ensureManageGuildAccess(ctx, 'access.changeDefaultVolume');
 
       if (!ctx.args.length) {
-        await ctx.reply.info(`Default volume for new sessions is **${guildConfig.settings.volumePercent}%**.`);
+        await ctx.reply.info(ctx.t('config.defaultVolumeCurrent', { percent: guildConfig.settings.volumePercent }));
         return;
       }
 
       const next = Number.parseInt(String(ctx.args[0] ?? ''), 10);
       if (!Number.isFinite(next) || next < 0 || next > 200) {
-        throw new ValidationError('Volume must be an integer between 0 and 200.');
+        throw new ValidationError(ctx.t('config.volumeRange'));
       }
 
       const updated = await updateGuildConfig(ctx, {
         settings: { volumePercent: next },
       });
-      await ctx.reply.success(`Default volume for new sessions set to **${updated.settings.volumePercent}%**.`);
+      await ctx.reply.success(ctx.t('config.defaultVolumeSet', { percent: updated.settings.volumePercent }));
     },
   }));
 
@@ -189,7 +189,7 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
       const library = requireLibrary(ctx);
-      await ensureManageGuildAccess(ctx, 'change 24/7 mode');
+      await ensureManageGuildAccess(ctx, 'access.change247');
       const voiceChannelId = await resolveActiveVoiceChannelOrThrow(ctx, { fallbackCommand: '247' });
       const profile = await library.getVoiceProfile(ctx.guildId, voiceChannelId).catch(() => null);
       const current = typeof profile?.stayInVoiceEnabled === 'boolean'
@@ -197,18 +197,18 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
         : Boolean(ctx.config.defaultStayInVoiceEnabled);
 
       if (!ctx.args.length) {
-        await ctx.reply.info(`24/7 mode for <#${voiceChannelId}> is currently **${current ? 'on' : 'off'}**.`);
+        await ctx.reply.info(ctx.t('config.stayCurrent', { channel: `<#${voiceChannelId}>`, state: ctx.t(current ? 'common.on' : 'common.off') }));
         return;
       }
 
       const value = parseOnOff(ctx.args[0], null);
       if (value == null) {
-        throw new ValidationError('Use `on` or `off`.');
+        throw new ValidationError(ctx.t('config.useOnOff'));
       }
 
       await library.setVoiceProfile(ctx.guildId, voiceChannelId, { stayInVoiceEnabled: value });
       await ctx.sessions.refreshVoiceProfileSettings?.(ctx.guildId, { voiceChannelId });
-      await ctx.reply.success(`24/7 mode for <#${voiceChannelId}> is now **${value ? 'on' : 'off'}**.`);
+      await ctx.reply.success(ctx.t('config.staySet', { channel: `<#${voiceChannelId}>`, state: ctx.t(value ? 'common.on' : 'common.off') }));
     },
   }));
 
@@ -220,18 +220,18 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
       const guildConfig = await getGuildConfigOrThrow(ctx);
-      await ensureManageGuildAccess(ctx, 'manage DJ roles');
+      await ensureManageGuildAccess(ctx, 'access.manageDjRoles');
 
       const action = String(ctx.args[0] ?? 'list').toLowerCase();
       if (action === 'list') {
         const roles = [...guildConfig.settings.djRoleIds];
         if (!roles.length) {
-          await ctx.reply.info('DJ role restriction is disabled (everyone can control playback).');
+          await ctx.reply.info(ctx.t('djrole.disabled'));
           return;
         }
 
-        await ctx.reply.info('Configured DJ roles', [
-          { name: 'Roles', value: roles.map((id) => `<@&${id}>`).join(', ') },
+        await ctx.reply.info(ctx.t('djrole.title'), [
+          { name: ctx.t('djrole.roles'), value: roles.map((id) => `<@&${id}>`).join(', ') },
         ]);
         return;
       }
@@ -240,17 +240,17 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
         await updateGuildConfig(ctx, {
           settings: { djRoleIds: [] },
         });
-        await ctx.reply.success('Cleared all DJ role restrictions.');
+        await ctx.reply.success(ctx.t('djrole.cleared'));
         return;
       }
 
       if (!['add', 'remove'].includes(action)) {
-        throw new ValidationError('Usage: `djrole [add|remove|clear|list] [@role|roleId]`');
+        throw new ValidationError(ctx.t('djrole.usage'));
       }
 
       const roleId = parseRoleId(ctx.args[1]);
       if (!roleId) {
-        throw new ValidationError('Provide a role mention or role ID.');
+        throw new ValidationError(ctx.t('djrole.provideRole'));
       }
 
       const next = new Set(guildConfig.settings.djRoleIds);
@@ -278,16 +278,16 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
       const guildConfig = await getGuildConfigOrThrow(ctx);
-      await ensureManageGuildAccess(ctx, 'change the command prefix');
+      await ensureManageGuildAccess(ctx, 'access.changePrefix');
 
       if (!ctx.args.length) {
-        await ctx.reply.info(`Current prefix is **${guildConfig.prefix}**.`);
+        await ctx.reply.info(ctx.t('config.prefixCurrent', { prefix: guildConfig.prefix }));
         return;
       }
 
       const nextPrefix = String(ctx.args[0] ?? '').trim();
       const updated = await updateGuildConfig(ctx, { prefix: nextPrefix });
-      await ctx.reply.success(`Prefix updated to **${updated.prefix}**.`);
+      await ctx.reply.success(ctx.t('config.prefixSet', { prefix: updated.prefix }));
     },
   }));
 
@@ -299,14 +299,14 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
       const guildConfig = await getGuildConfigOrThrow(ctx);
-      await ensureManageGuildAccess(ctx, 'change music log channel');
+      await ensureManageGuildAccess(ctx, 'access.changeMusicLog');
 
       if (!ctx.args.length) {
         const current = guildConfig.settings.musicLogChannelId;
         await ctx.reply.info(
           current
-            ? `Music log channel is <#${current}>.`
-            : 'Music log channel is disabled (events are sent to the active command channel).'
+            ? ctx.t('musiclog.current', { channel: `<#${current}>` })
+            : ctx.t('musiclog.currentDisabled')
         );
         return;
       }
@@ -316,19 +316,19 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
         await updateGuildConfig(ctx, {
           settings: { musicLogChannelId: null },
         });
-        await ctx.reply.success('Music log channel disabled.');
+        await ctx.reply.success(ctx.t('musiclog.disabled'));
         return;
       }
 
       const channelId = parseTextChannelId(ctx.args[0]);
       if (!channelId) {
-        throw new ValidationError('Provide `off`, a channel mention, or a channel id.');
+        throw new ValidationError(ctx.t('musiclog.provideChannel'));
       }
 
       await updateGuildConfig(ctx, {
         settings: { musicLogChannelId: channelId },
       });
-      await ctx.reply.success(`Music log channel set to <#${channelId}>.`);
+      await ctx.reply.success(ctx.t('musiclog.set', { channel: `<#${channelId}>` }));
     },
   }));
 
@@ -340,12 +340,12 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
       const guildConfig = await getGuildConfigOrThrow(ctx);
-      await ensureManageGuildAccess(ctx, 'configure vote-skip');
+      await ensureManageGuildAccess(ctx, 'access.configureVoteSkip');
 
       if (!ctx.args.length) {
-        await ctx.reply.info('Vote-skip configuration', [
-          { name: 'Ratio', value: String(guildConfig.settings.voteSkipRatio), inline: true },
-          { name: 'Minimum Votes', value: String(guildConfig.settings.voteSkipMinVotes), inline: true },
+        await ctx.reply.info(ctx.t('voteskipcfg.title'), [
+          { name: ctx.t('voteskipcfg.ratio'), value: String(guildConfig.settings.voteSkipRatio), inline: true },
+          { name: ctx.t('voteskipcfg.minVotes'), value: String(guildConfig.settings.voteSkipMinVotes), inline: true },
         ]);
         return;
       }
@@ -354,30 +354,30 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
       if (mode === 'ratio') {
         const raw = Number.parseFloat(String(ctx.args[1] ?? ''));
         if (!Number.isFinite(raw) || raw <= 0 || raw > 1) {
-          throw new ValidationError('Ratio must be a number between 0 and 1.');
+          throw new ValidationError(ctx.t('voteskipcfg.ratioRange'));
         }
 
         const updated = await updateGuildConfig(ctx, {
           settings: { voteSkipRatio: raw },
         });
-        await ctx.reply.success(`Vote-skip ratio updated to **${updated.settings.voteSkipRatio}**.`);
+        await ctx.reply.success(ctx.t('voteskipcfg.ratioSet', { value: String(updated.settings.voteSkipRatio) }));
         return;
       }
 
       if (mode === 'min') {
         const raw = Number.parseInt(String(ctx.args[1] ?? ''), 10);
         if (!Number.isFinite(raw) || raw <= 0 || raw > 100) {
-          throw new ValidationError('Minimum votes must be an integer between 1 and 100.');
+          throw new ValidationError(ctx.t('voteskipcfg.minRange'));
         }
 
         const updated = await updateGuildConfig(ctx, {
           settings: { voteSkipMinVotes: raw },
         });
-        await ctx.reply.success(`Vote-skip minimum updated to **${updated.settings.voteSkipMinVotes}**.`);
+        await ctx.reply.success(ctx.t('voteskipcfg.minSet', { value: String(updated.settings.voteSkipMinVotes) }));
         return;
       }
 
-      throw new ValidationError('Usage: `voteskipcfg [ratio <0..1>|min <number>]`');
+      throw new ValidationError(ctx.t('voteskipcfg.usage'));
     },
   }));
 
@@ -402,28 +402,28 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
         ? profile.stayInVoiceEnabled
         : (session?.settings?.stayInVoiceEnabled ?? Boolean(ctx.config.defaultStayInVoiceEnabled));
       const stayInVoiceLabel = activeVoiceChannelId
-        ? `<#${activeVoiceChannelId}>: ${stayInVoiceEnabled ? 'on' : 'off'}`
-        : `${stayInVoiceEnabled ? 'on' : 'off'} (no active voice channel)`;
+        ? `<#${activeVoiceChannelId}>: ${ctx.t(stayInVoiceEnabled ? 'common.on' : 'common.off')}`
+        : ctx.t('config.stayNoChannel', { state: ctx.t(stayInVoiceEnabled ? 'common.on' : 'common.off') });
       const roles = guildConfig.settings.djRoleIds.length
         ? guildConfig.settings.djRoleIds.map((id) => `<@&${id}>`).join(', ')
-        : 'none';
+        : ctx.t('common.noneLower');
 
-      await ctx.reply.info('Guild configuration', [
-        { name: 'Prefix', value: guildConfig.prefix, inline: true },
-        { name: 'Dedupe', value: guildConfig.settings.dedupeEnabled ? 'on' : 'off', inline: true },
-        { name: 'Minimal Mode', value: guildConfig.settings.minimalMode ? 'on' : 'off', inline: true },
-        { name: 'Default Volume', value: `${guildConfig.settings.volumePercent}%`, inline: true },
-        { name: '24/7', value: stayInVoiceLabel, inline: true },
+      await ctx.reply.info(ctx.t('config.title'), [
+        { name: ctx.t('config.prefix'), value: guildConfig.prefix, inline: true },
+        { name: ctx.t('config.dedupe'), value: ctx.t(guildConfig.settings.dedupeEnabled ? 'common.on' : 'common.off'), inline: true },
+        { name: ctx.t('config.minimalMode'), value: ctx.t(guildConfig.settings.minimalMode ? 'common.on' : 'common.off'), inline: true },
+        { name: ctx.t('config.defaultVolume'), value: `${guildConfig.settings.volumePercent}%`, inline: true },
+        { name: ctx.t('config.stay'), value: stayInVoiceLabel, inline: true },
         {
-          name: 'Earrape Protection',
-          value: guildConfig.settings.earrapeProtectionEnabled ? 'on (bot undeafens)' : 'off (bot joins deafened)',
+          name: ctx.t('config.earrape'),
+          value: ctx.t(guildConfig.settings.earrapeProtectionEnabled ? 'config.earrapeOn' : 'config.earrapeOff'),
           inline: true,
         },
-        { name: 'Vote Ratio', value: String(guildConfig.settings.voteSkipRatio), inline: true },
-        { name: 'Vote Min', value: String(guildConfig.settings.voteSkipMinVotes), inline: true },
-        { name: 'DJ Roles', value: roles },
-        { name: 'Music Log Channel', value: guildConfig.settings.musicLogChannelId ? `<#${guildConfig.settings.musicLogChannelId}>` : 'disabled' },
-        { name: 'Session Active', value: session ? 'yes' : 'no', inline: true },
+        { name: ctx.t('config.voteRatio'), value: String(guildConfig.settings.voteSkipRatio), inline: true },
+        { name: ctx.t('config.voteMin'), value: String(guildConfig.settings.voteSkipMinVotes), inline: true },
+        { name: ctx.t('config.djRoles'), value: roles },
+        { name: ctx.t('config.musicLogChannel'), value: guildConfig.settings.musicLogChannelId ? `<#${guildConfig.settings.musicLogChannelId}>` : ctx.t('common.disabledLower') },
+        { name: ctx.t('config.sessionActive'), value: ctx.t(session ? 'common.yes' : 'common.no'), inline: true },
       ]);
     },
   }));
@@ -467,7 +467,7 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
 
       if (action === 'reset' || action === 'clear') {
         if (typeof library.setUserLocale !== 'function') {
-          throw new ValidationError('User profiles are not available.');
+          throw new ValidationError(ctx.t('language.profilesUnavailable'));
         }
         await library.setUserLocale(ctx.authorId, null);
         const guildLocale = normalizeLocale(ctx.guildConfig?.settings?.language) ?? ctx.locale;
@@ -486,7 +486,7 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
           return;
         }
 
-        await ensureManageGuildAccess(ctx, 'change the server language');
+        await ensureManageGuildAccess(ctx, 'access.changeServerLanguage');
 
         const locale = normalizeLocale(requested);
         if (!locale) {
@@ -504,7 +504,7 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
       }
 
       if (typeof library.setUserLocale !== 'function') {
-        throw new ValidationError('User profiles are not available.');
+        throw new ValidationError(ctx.t('language.profilesUnavailable'));
       }
 
       await library.setUserLocale(ctx.authorId, locale);

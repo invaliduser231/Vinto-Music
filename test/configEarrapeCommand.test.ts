@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { CommandRegistry } from '../src/bot/commandRegistry.ts';
 import { registerCommands } from '../src/bot/commands/index.ts';
+import { createTranslator } from '../src/i18n/index.ts';
 
 type EarrapeExecute = NonNullable<NonNullable<ReturnType<CommandRegistry['resolve']>>['execute']>;
 
@@ -56,6 +57,7 @@ test('earrape command toggles guild protection and applies the update to active 
         calls.push(['apply', guildId, config.settings?.earrapeProtectionEnabled ?? null]);
       },
     },
+    t: createTranslator('en'),
     reply: {
       async success(message: string) {
         calls.push(['reply', message]);
@@ -96,6 +98,7 @@ test('earrape command reports the current state when no value is provided', asyn
     sessions: {
       applyGuildConfig() {},
     },
+    t: createTranslator('en'),
     reply: {
       async info(message: string) {
         replyMessage = message;
@@ -149,6 +152,7 @@ test('earrape command rejects enabling when bot lacks move members in active voi
           }];
         },
       },
+      t: createTranslator('en'),
       reply: {
         async success() {},
       },

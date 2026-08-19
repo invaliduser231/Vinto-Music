@@ -1,4 +1,4 @@
-import type { Locale, Translator } from '../../../i18n/index.ts';
+import type { Locale, TranslationKey, Translator } from '../../../i18n/index.ts';
 import type { BivariantCallback, CommandDefinition, MessagePayload } from '../../../types/core.ts';
 
 export type GuildConfigLike = {
@@ -273,9 +273,9 @@ export type CommandHelperBundle = {
   parseRoleId: (value: unknown) => string | null;
   parseTextChannelId: (value: unknown) => string | null;
   resolveActiveVoiceChannelOrThrow: (ctx: CommandContextLike, options?: { fallbackCommand?: string | null }) => Promise<string>;
-  ensureManageGuildAccess: (ctx: CommandContextLike, actionLabel: string) => Promise<void>;
+  ensureManageGuildAccess: (ctx: CommandContextLike, actionLabel: TranslationKey) => Promise<void>;
   getSessionOrThrow: (ctx: CommandContextLike) => SessionLike;
   ensureConnectedSession: (ctx: CommandContextLike, explicitChannelId?: string | null) => Promise<SessionLike>;
-  ensureDjAccess: (ctx: CommandContextLike, session: SessionLike, actionLabel: string) => void;
-  parseRequiredInteger: (value: unknown, label: string) => number;
+  ensureDjAccess: (ctx: CommandContextLike, session: SessionLike, actionLabel: TranslationKey) => void;
+  parseRequiredInteger: (value: unknown, label: TranslationKey, t: Translator) => number;
 };

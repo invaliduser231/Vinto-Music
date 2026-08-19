@@ -1,4 +1,5 @@
 import { ValidationError } from '../../core/errors.ts';
+import type { TranslationKey, Translator } from '../../i18n/index.ts';
 import { buildInfoPayload, buildSingleFieldInfoPayload } from './responseUtils.ts';
 import {
   listAvailableRadioStations,
@@ -68,14 +69,14 @@ type LibraryHelperBundle = {
     hidden?: boolean;
     execute?: (ctx: CommandContextLike) => unknown;
   }>(definition: T) => Readonly<T>;
-  ensureGuild: (ctx: Pick<CommandContextLike, 'guildId'>) => void;
+  ensureGuild: (ctx: Pick<CommandContextLike, 'guildId' | 't'>) => void;
   requireLibrary: (ctx: CommandContextLike) => LibraryLike;
   getGuildConfigOrThrow: (ctx: CommandContextLike) => Promise<GuildConfigLike>;
-  ensureDjAccessByConfig: (ctx: CommandContextLike, guildConfig: GuildConfigLike, actionLabel: string) => void;
+  ensureDjAccessByConfig: (ctx: CommandContextLike, guildConfig: GuildConfigLike, actionLabel: TranslationKey) => void;
   userHasDjAccessByConfig: (ctx: CommandContextLike, guildConfig: GuildConfigLike) => boolean;
-  ensureManageGuildAccess: (ctx: CommandContextLike, actionLabel: string) => Promise<void>;
-  parseRequiredInteger: (value: unknown, label: string) => number;
-  normalizeIndex: (value: unknown, label: string) => number;
+  ensureManageGuildAccess: (ctx: CommandContextLike, actionLabel: TranslationKey) => Promise<void>;
+  parseRequiredInteger: (value: unknown, label: TranslationKey, t: Translator) => number;
+  normalizeIndex: (value: unknown, label: TranslationKey, t: Translator) => number;
   trackLabel: (track: TrackLike) => string;
   ensureConnectedSession: (ctx: CommandContextLike) => Promise<SessionLike>;
   resolveQueueGuard: (ctx: CommandContextLike) => Promise<QueueGuardLike | null>;
@@ -200,10 +201,10 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
 
       const action = String(ctx.args[0] ?? 'list').toLowerCase();
       const guildConfig = await getGuildConfigOrThrow(ctx);
-      const enforceWriteAccess = () => ensureDjAccessByConfig(ctx, guildConfig, 'manage playlists');
+      const enforceWriteAccess = () => ensureDjAccessByConfig(ctx, guildConfig, 'access.managePlaylists');
 
       if (action === 'list') {
-        const page = ctx.args[1] ? parseRequiredInteger(ctx.args[1], 'Page') : 1;
+        const page = ctx.args[1] ? parseRequiredInteger(ctx.args[1], 'field.page', ctx.t) : 1;
         const result = await library.listGuildPlaylists(ctx.guildId, page, h.PLAYLIST_PAGE_SIZE);
         if (!result.items.length) {
           await ctx.reply.warning(ctx.t('playlist.none'));
@@ -269,7 +270,7 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
           throw new ValidationError(ctx.t('playlist.usageShow', { prefix: ctx.prefix }));
         }
 
-        const page = ctx.args[2] ? parseRequiredInteger(ctx.args[2], 'Page') : 1;
+        const page = ctx.args[2] ? parseRequiredInteger(ctx.args[2], 'field.page', ctx.t) : 1;
         const playlist = await library.getGuildPlaylist(ctx.guildId, name);
         if (!playlist) {
           await ctx.reply.warning(ctx.t('playlist.notFound', { name }));
@@ -342,7 +343,7 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
       if (action === 'remove') {
         enforceWriteAccess();
         const name = String(ctx.args[1] ?? '').trim();
-        const index = normalizeIndex(ctx.args[2], 'Track index');
+        const index = normalizeIndex(ctx.args[2], 'field.trackIndex', ctx.t);
         if (!name) {
           throw new ValidationError(ctx.t('playlist.usageRemove', { prefix: ctx.prefix }));
         }
@@ -412,7 +413,7 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
       const args = [...ctx.args];
       const maybePage = args.length ? String(args[args.length - 1] ?? '').trim() : '';
       const pageProvided = /^\d+$/.test(maybePage);
-      const page = pageProvided ? parseRequiredInteger(args.pop(), 'Page') : 1;
+      const page = pageProvided ? parseRequiredInteger(args.pop(), 'field.page', ctx.t) : 1;
       const query = args.join(' ').trim();
       const guildStations = await library.listGuildStations?.(ctx.guildId).catch(() => []) ?? [];
       const stations = listAvailableRadioStations(guildStations, query);
@@ -486,12 +487,12 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
         const configuredDjRoles = guildConfig?.settings?.djRoleIds;
         const hasConfiguredDjRoles = Array.isArray(configuredDjRoles) && configuredDjRoles.length > 0;
         if (hasConfiguredDjRoles && userHasDjAccessByConfig(ctx, guildConfig)) return;
-        await ensureManageGuildAccess(ctx, 'manage radio presets');
+        await ensureManageGuildAccess(ctx, 'access.manageStations');
       };
 
       if (action === 'list') {
         const pageProvided = Boolean(ctx.args[1]);
-        const page = pageProvided ? parseRequiredInteger(ctx.args[1], 'Page') : 1;
+        const page = pageProvided ? parseRequiredInteger(ctx.args[1], 'field.page', ctx.t) : 1;
         const guildStations = await library.listGuildStations?.(ctx.guildId).catch(() => []) ?? [];
         if (!guildStations.length) {
           await ctx.reply.warning(ctx.t('station.noneSaved'));
@@ -683,7 +684,7 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
         throw new ValidationError(ctx.t('favorites.userIdUnresolved'));
       }
 
-      const page = ctx.args.length ? parseRequiredInteger(ctx.args[0], 'Page') : 1;
+      const page = ctx.args.length ? parseRequiredInteger(ctx.args[0], 'field.page', ctx.t) : 1;
       const result = await library.listUserFavorites(ctx.authorId, page, h.FAVORITES_PAGE_SIZE);
       if (!result.items.length) {
         await ctx.reply.warning(ctx.t('favorites.empty'));
@@ -724,7 +725,7 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
         throw new ValidationError(ctx.t('favorites.userIdUnresolved'));
       }
 
-      const index = normalizeIndex(ctx.args[0], 'Index');
+      const index = normalizeIndex(ctx.args[0], 'field.index', ctx.t);
       const alias = ctx.args.slice(1).join(' ').trim();
       if (!alias) {
         throw new ValidationError(ctx.t('favorites.usageRename', { prefix: ctx.prefix }));
@@ -751,7 +752,7 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
         throw new ValidationError(ctx.t('favorites.userIdUnresolved'));
       }
 
-      const index = normalizeIndex(ctx.args[0], 'Index');
+      const index = normalizeIndex(ctx.args[0], 'field.index', ctx.t);
       const removed = await library.removeUserFavorite(ctx.authorId, index);
       if (!removed) {
         await ctx.reply.warning(ctx.t('favorites.indexOutOfRange'));
@@ -780,7 +781,7 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
         throw new ValidationError(ctx.t('favorites.usagePlay', { prefix: ctx.prefix }));
       }
       const favorite = /^\d+$/.test(selector)
-        ? await library.getUserFavorite(ctx.authorId, normalizeIndex(selector, 'Index'))
+        ? await library.getUserFavorite(ctx.authorId, normalizeIndex(selector, 'field.index', ctx.t))
         : await library.getUserFavoriteByAlias(ctx.authorId, selector);
       if (!favorite) {
         await ctx.reply.warning(/^\d+$/.test(selector) ? ctx.t('favorites.indexOutOfRange') : ctx.t('favorites.aliasNotFound'));

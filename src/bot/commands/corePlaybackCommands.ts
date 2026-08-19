@@ -685,7 +685,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
         textChannelId: ctx.channelId,
       });
       if (existing) {
-        ensureDjAccess(ctx, existing, 'disconnect the bot');
+        ensureDjAccess(ctx, existing, 'access.disconnectBot');
       }
       const removed = await ctx.sessions.destroy(ctx.guildId, 'manual_command', {
         sessionId: existing?.sessionId,
@@ -1245,7 +1245,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
     usage: 'pick <index>',
     async execute(ctx: PlaybackCommandContext) {
       ensureGuild(ctx);
-      const index = normalizeIndex(ctx.args[0], 'Index');
+      const index = normalizeIndex(ctx.args[0], 'field.index', ctx.t);
 
       const selection = consumeSearchSelection(toSearchSelectionContext(ctx));
       if (!selection) {
@@ -1341,7 +1341,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
     async execute(ctx: PlaybackCommandContext) {
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
-      ensureDjAccess(ctx, session, 'pause playback');
+      ensureDjAccess(ctx, session, 'access.pausePlayback');
 
       if (!session.player.pause()) {
         await ctx.reply.warning(ctx.t('pause.cannot'));
@@ -1361,7 +1361,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
     async execute(ctx: PlaybackCommandContext) {
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
-      ensureDjAccess(ctx, session, 'resume playback');
+      ensureDjAccess(ctx, session, 'access.resumePlayback');
 
       if (!session.player.resume()) {
         await ctx.reply.warning(ctx.t('resume.cannot'));
@@ -1503,7 +1503,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
     async execute(ctx: PlaybackCommandContext) {
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
-      ensureDjAccess(ctx, session, 'seek');
+      ensureDjAccess(ctx, session, 'access.seek');
 
       if (!ctx.args.length) {
         throw new ValidationError(ctx.t('seek.usage', { prefix: ctx.prefix }));
@@ -1536,7 +1536,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
     async execute(ctx: PlaybackCommandContext) {
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
-      ensureDjAccess(ctx, session, 'play previous tracks');
+      ensureDjAccess(ctx, session, 'access.playPrevious');
 
       const previous = session.player.queuePreviousTrack();
       if (!previous) {
@@ -1561,7 +1561,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
     async execute(ctx: PlaybackCommandContext) {
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
-      ensureDjAccess(ctx, session, 'replay tracks');
+      ensureDjAccess(ctx, session, 'access.replayTracks');
 
       if (session.player.replayCurrentTrack()) {
         ctx.sessions.markSnapshotDirty?.(session, true);
@@ -1612,7 +1612,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       const session = getSessionOrThrow(ctx);
 
       if (ctx.args.length) {
-        const page = parseRequiredInteger(ctx.args[0], 'Page');
+        const page = parseRequiredInteger(ctx.args[0], 'field.page', ctx.t);
         const queueData = formatQueuePage(session, page);
         await ctx.reply.info(queueData.description, queueData.fields, { footer: queueData.footer ?? null });
         return;
@@ -1642,7 +1642,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
     usage: 'history [page]',
     async execute(ctx: PlaybackCommandContext) {
       ensureGuild(ctx);
-      const page = ctx.args.length ? parseRequiredInteger(ctx.args[0], 'Page') : 1;
+      const page = ctx.args.length ? parseRequiredInteger(ctx.args[0], 'field.page', ctx.t) : 1;
       const session = ctx.sessions.get(ctx.guildId, {
         voiceChannelId: ctx.activeVoiceChannelId,
         textChannelId: ctx.channelId,

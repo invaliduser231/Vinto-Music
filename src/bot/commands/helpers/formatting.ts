@@ -1,6 +1,7 @@
 import { ValidationError } from '../../../core/errors.ts';
 import { buildEmbed, sourceLabel } from '../../messageFormatter.ts';
 import type { CommandDefinition, EmbedAuthor, MessagePayload } from '../../../types/core.ts';
+import type { TranslationKey, Translator } from '../../../i18n/index.ts';
 import {
   EMBED_FIELD_TEXT_LIMIT,
   HISTORY_PAGE_SIZE,
@@ -280,9 +281,9 @@ export function formatHistoryPage(session: SessionLike, page: number) {
   };
 }
 
-export function parseRequiredInteger(value: unknown, label: string) {
+export function parseRequiredInteger(value: unknown, label: TranslationKey, t: Translator) {
   const parsed = Number.parseInt(String(value ?? ''), 10);
-  if (!Number.isFinite(parsed)) throw new ValidationError(`${label} must be an integer.`);
+  if (!Number.isFinite(parsed)) throw new ValidationError(t('errors.mustBeInteger', { field: t(label) }));
   return parsed;
 }
 
@@ -294,10 +295,10 @@ export function parseOnOff(value: unknown, fallback: boolean | null = null) {
   return fallback;
 }
 
-export function normalizeIndex(value: unknown, label: string) {
+export function normalizeIndex(value: unknown, label: TranslationKey, t: Translator) {
   const parsed = Number.parseInt(String(value ?? ''), 10);
   if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new ValidationError(`${label} must be a positive integer.`);
+    throw new ValidationError(t('errors.mustBePositiveInteger', { field: t(label) }));
   }
   return parsed;
 }

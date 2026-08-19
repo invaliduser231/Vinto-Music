@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { registerCommands } from '../src/bot/commands/index.ts';
 import { CommandRegistry } from '../src/bot/commandRegistry.ts';
+import { createTranslator } from '../src/i18n/index.ts';
 
 type JoinExecute = NonNullable<NonNullable<ReturnType<CommandRegistry['resolve']>>['execute']>;
 
@@ -47,6 +48,7 @@ test('join rejects when bot lacks voice channel permissions', async () => {
       bindTextChannel() {},
       async destroy() {},
     },
+    t: createTranslator('en'),
     reply: {
       async success() {},
     },
