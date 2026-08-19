@@ -37,6 +37,19 @@ test('join rejects when bot lacks voice channel permissions', async () => {
       async canBotJoinAndSpeak() {
         return false;
       },
+      async checkBotPermissions(_guildId: string, _channelId: string, required: readonly string[]) {
+        return {
+          known: true,
+          bits: 0n,
+          reason: null,
+          source: 'computed',
+          isOwner: false,
+          isAdministrator: false,
+          ok: false,
+          missing: [...required],
+          required: [...required],
+        };
+      },
     },
     sessions: {
       has() {
@@ -56,7 +69,13 @@ test('join rejects when bot lacks voice channel permissions', async () => {
 
   await assert.rejects(
     async () => execute(ctx),
-    /do not have permission to connect and speak/
+    (err: Error) => {
+      assert.match(err.message, /<#voice-1>/, 'names the affected voice channel');
+      assert.match(err.message, /View Channel/, 'names the missing view permission');
+      assert.match(err.message, /Connect/, 'names the missing connect permission');
+      assert.match(err.message, /Speak/, 'names the missing speak permission');
+      return true;
+    }
   );
 });
 

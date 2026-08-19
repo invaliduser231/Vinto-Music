@@ -1,4 +1,7 @@
 import { ValidationError } from '../../core/errors.ts';
+import { describePermissionFailure, ensurePermissionCheck, permissionCheckFields } from '../permissions/require.ts';
+import type { PermissionFlag } from '../permissions/flags.ts';
+import { parseVoiceChannelArgument } from './helpers/formatting.ts';
 import {
   localeFlag,
   localeLabel,
@@ -26,6 +29,9 @@ type ConfigCommandHelpers = Pick<
   | 'resolveActiveVoiceChannelOrThrow'
   | 'ensureManageGuildAccess'
 >;
+
+const TEXT_PERMISSIONS: readonly PermissionFlag[] = ['VIEW_CHANNEL', 'SEND_MESSAGES', 'EMBED_LINKS', 'READ_MESSAGE_HISTORY', 'ADD_REACTIONS'];
+const VOICE_PERMISSIONS: readonly PermissionFlag[] = ['VIEW_CHANNEL', 'CONNECT', 'SPEAK'];
 
 export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandHelpers) {
   const {
@@ -88,7 +94,7 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
         throw new ValidationError(ctx.t('config.useOnOff'));
       }
 
-      if (value && ctx.permissionService?.canBotMoveMembers) {
+      if (value && ctx.permissionService?.checkBotPermissions) {
         const channelIds = new Set<string>();
         if (ctx.activeVoiceChannelId) {
           channelIds.add(ctx.activeVoiceChannelId);
@@ -111,11 +117,13 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
         }
 
         for (const channelId of channelIds) {
-          const canMove = await ctx.permissionService.canBotMoveMembers(ctx.guildId, channelId);
-          if (canMove === false) {
-            throw new ValidationError(
-              ctx.t('config.earrapeNeedsMovePerm', { channel: `<#${channelId}>` })
-            );
+          const check = await ctx.permissionService.checkBotPermissions?.(
+            ctx.guildId,
+            channelId,
+            ['VIEW_CHANNEL', 'MOVE_MEMBERS']
+          );
+          if (check?.known && !check.ok) {
+            ensurePermissionCheck(ctx.t, check, { channelMention: `<#${channelId}>` });
           }
         }
       }
@@ -509,6 +517,77 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
 
       await library.setUserLocale(ctx.authorId, locale);
       await ctx.reply.success(translate('language.updated', locale, describe(locale)));
+    },
+  }));
+
+  registry.register(createCommand({
+    name: 'permissions',
+    aliases: ['perms', 'permcheck'],
+    description: 'Check which permissions the bot is missing here.',
+    usage: 'permissions [#voice-channel]',
+    async execute(ctx: CommandContextLike) {
+      ensureGuild(ctx);
+
+      const service = ctx.permissionService;
+      if (!service?.checkBotPermissions) {
+        throw new ValidationError(ctx.t('permcheck.reason.noRest'));
+      }
+
+      const explicitVoice = parseVoiceChannelArgument(ctx.args).channelId;
+      const voiceChannelId = explicitVoice ?? ctx.activeVoiceChannelId ?? null;
+
+      const textCheck = await service.checkBotPermissions(
+        ctx.guildId,
+        ctx.channelId,
+        TEXT_PERMISSIONS
+      );
+      const voiceCheck = voiceChannelId
+        ? await service.checkBotPermissions(ctx.guildId, voiceChannelId, VOICE_PERMISSIONS)
+        : null;
+
+      const fields = [
+        {
+          name: `${ctx.t('permissions.textChannel')} · <#${ctx.channelId}>`,
+          value: permissionCheckFields(ctx.t, textCheck)
+            .map((field) => `${field.name}\n${field.value}`)
+            .join('\n\n') || '-',
+        },
+      ];
+
+      if (voiceCheck && voiceChannelId) {
+        fields.push({
+          name: `${ctx.t('permissions.voiceChannel')} · <#${voiceChannelId}>`,
+          value: permissionCheckFields(ctx.t, voiceCheck)
+            .map((field) => `${field.name}\n${field.value}`)
+            .join('\n\n') || '-',
+        });
+      } else {
+        fields.push({
+          name: ctx.t('permissions.voiceChannel'),
+          value: ctx.t('permissions.noVoiceChannel'),
+        });
+      }
+
+      const missingCount = textCheck.missing.length + (voiceCheck?.missing.length ?? 0);
+      const unresolved = !textCheck.known || (voiceCheck != null && !voiceCheck.known);
+
+      let summary: string;
+      if (unresolved) {
+        summary = describePermissionFailure(ctx.t, textCheck.known ? voiceCheck! : textCheck);
+      } else if (missingCount > 0) {
+        summary = ctx.t('permissions.summaryMissing', { count: missingCount });
+      } else if (textCheck.source === 'owner') {
+        summary = ctx.t('permissions.source.owner');
+      } else if (textCheck.source === 'administrator') {
+        summary = ctx.t('permissions.source.administrator');
+      } else {
+        summary = ctx.t('permissions.allGood');
+      }
+
+      const reply = missingCount > 0 || unresolved ? ctx.reply.warning : ctx.reply.success;
+      await reply(summary, fields, {
+        footer: missingCount > 0 ? ctx.t('permissions.hint') : null,
+      });
     },
   }));
 }

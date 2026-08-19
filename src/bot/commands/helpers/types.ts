@@ -1,4 +1,6 @@
 import type { Locale, TranslationKey, Translator } from '../../../i18n/index.ts';
+import type { PermissionFlag } from '../../permissions/flags.ts';
+import type { PermissionCheck } from '../../permissions/resolver.ts';
 import type { BivariantCallback, CommandDefinition, MessagePayload } from '../../../types/core.ts';
 
 export type GuildConfigLike = {
@@ -234,6 +236,11 @@ export type CommandContextLike = {
   permissionService?: {
     canBotJoinAndSpeak?: (guildId: string, voiceChannelId: string) => Promise<boolean | null>;
     canBotMoveMembers?: (guildId: string, voiceChannelId: string) => Promise<boolean | null>;
+    checkBotPermissions?: (
+      guildId: string,
+      channelId: string,
+      required: readonly PermissionFlag[]
+    ) => Promise<PermissionCheck>;
   } | null;
   guildStateCache?: {
     resolveOwnerId?: (guildId: string) => string | null;

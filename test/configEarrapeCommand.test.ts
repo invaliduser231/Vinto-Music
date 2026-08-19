@@ -138,6 +138,19 @@ test('earrape command rejects enabling when bot lacks move members in active voi
         async canBotMoveMembers() {
           return false;
         },
+        async checkBotPermissions(_guildId: string, _channelId: string, required: readonly string[]) {
+          return {
+            known: true,
+            bits: 0n,
+            reason: null,
+            source: 'computed',
+            isOwner: false,
+            isAdministrator: false,
+            ok: false,
+            missing: [...required],
+            required: [...required],
+          };
+        },
       },
       sessions: {
         applyGuildConfig() {},

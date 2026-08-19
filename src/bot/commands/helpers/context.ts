@@ -1,4 +1,6 @@
 import { ValidationError } from '../../../core/errors.ts';
+import { ensurePermissionCheck } from '../../permissions/require.ts';
+import type { PermissionFlag } from '../../permissions/flags.ts';
 import { applyMoodPreset } from '../advancedCommands.ts';
 import type { CommandContextLike, GuildConfigLike, LibraryLike, SessionLike } from './types.ts';
 
@@ -133,6 +135,8 @@ type PrepareSessionConnectionOptions = {
   bindTextChannel?: boolean;
 };
 
+const VOICE_PLAYBACK_PERMISSIONS: readonly PermissionFlag[] = ['VIEW_CHANNEL', 'CONNECT', 'SPEAK'];
+
 export async function prepareSessionConnection(
   ctx: CommandContextLike,
   explicitChannelId: string | null = null,
@@ -140,10 +144,14 @@ export async function prepareSessionConnection(
 ): Promise<PreparedSessionConnection> {
   const resolvedVoice = explicitChannelId ?? await resolveActiveVoiceChannelOrThrow(ctx, { fallbackCommand: 'play' });
 
-  if (ctx.permissionService?.canBotJoinAndSpeak) {
-    const canVoice = await ctx.permissionService.canBotJoinAndSpeak(ctx.guildId, resolvedVoice);
-    if (canVoice === false) {
-      throw new ValidationError(ctx.t('errors.noVoicePermission'));
+  if (ctx.permissionService?.checkBotPermissions) {
+    const check = await ctx.permissionService.checkBotPermissions(
+      ctx.guildId,
+      resolvedVoice,
+      VOICE_PLAYBACK_PERMISSIONS
+    );
+    if (check.known && !check.ok) {
+      ensurePermissionCheck(ctx.t, check, { channelMention: `<#${resolvedVoice}>` });
     }
   }
 
