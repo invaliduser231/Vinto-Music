@@ -382,7 +382,7 @@ export class MusicLibraryStore {
     const templateKey = normalizePlaylistNameKey(name);
     const normalizedTracks = (Array.isArray(tracks) ? tracks : []).map((track) => normalizeTrack(track as TrackInputLike, createdBy as TrackRequesterLike));
     if (!normalizedTracks.length) {
-      throw new ValidationError('Template requires at least one track.');
+      throw new ValidationError('Template requires at least one track.', { translationKey: 'store.templateNeedsTrack' });
     }
 
     const config = await this.getGuildFeatureConfig(normalizedGuildId);
@@ -954,7 +954,7 @@ export class MusicLibraryStore {
 
     const nextTracks = Array.isArray(tracks) ? tracks : [];
     if (!nextTracks.length) {
-      throw new ValidationError('No tracks to add.');
+      throw new ValidationError('No tracks to add.', { translationKey: 'store.noTracksToAdd' });
     }
 
     const sanitized: NormalizedStoredTrack[] = [];
@@ -1000,7 +1000,7 @@ export class MusicLibraryStore {
     const nameKey = normalizePlaylistNameKey(name);
     const safeIndex = toPositiveInt(index, 0);
     if (safeIndex <= 0) {
-      throw new ValidationError('Track index must be a positive integer.');
+      throw new ValidationError('Track index must be a positive integer.', { translationKey: 'store.trackIndexPositive' });
     }
 
     const current = await this.guildPlaylists.findOne({ guildId: normalizedGuildId, nameKey });
@@ -1010,7 +1010,7 @@ export class MusicLibraryStore {
 
     const tracks = Array.isArray(current.tracks) ? [...current.tracks] : [];
     if (safeIndex > tracks.length) {
-      throw new ValidationError('Track index out of range.');
+      throw new ValidationError('Track index out of range.', { translationKey: 'store.trackIndexRange' });
     }
 
     const [removed] = tracks.splice(safeIndex - 1, 1);
@@ -1091,7 +1091,7 @@ export class MusicLibraryStore {
     const normalizedUserId = normalizeUserId(userId);
     const safeIndex = toPositiveInt(index, 0);
     if (safeIndex <= 0) {
-      throw new ValidationError('Favorite index must be a positive integer.');
+      throw new ValidationError('Favorite index must be a positive integer.', { translationKey: 'store.favoriteIndexPositive' });
     }
 
     const doc = await this.userFavorites.findOne(
@@ -1128,7 +1128,7 @@ export class MusicLibraryStore {
     const normalizedUserId = normalizeUserId(userId);
     const safeIndex = toPositiveInt(index, 0);
     if (safeIndex <= 0) {
-      throw new ValidationError('Favorite index must be a positive integer.');
+      throw new ValidationError('Favorite index must be a positive integer.', { translationKey: 'store.favoriteIndexPositive' });
     }
 
     const current = await this.userFavorites.findOne({ userId: normalizedUserId });
@@ -1158,7 +1158,7 @@ export class MusicLibraryStore {
     const normalizedUserId = normalizeUserId(userId);
     const safeIndex = toPositiveInt(index, 0);
     if (safeIndex <= 0) {
-      throw new ValidationError('Favorite index must be a positive integer.');
+      throw new ValidationError('Favorite index must be a positive integer.', { translationKey: 'store.favoriteIndexPositive' });
     }
 
     const normalizedAlias = normalizeFavoriteAlias(alias);
@@ -1166,7 +1166,7 @@ export class MusicLibraryStore {
     const current = await this.userFavorites.findOne({ userId: normalizedUserId });
     const tracks = Array.isArray(current?.tracks) ? [...current.tracks] : [];
     if (safeIndex > tracks.length) {
-      throw new ValidationError('Favorite index out of range.');
+      throw new ValidationError('Favorite index out of range.', { translationKey: 'favorites.indexOutOfRange' });
     }
 
     const duplicate = tracks.some((track, idx) => {
@@ -1178,7 +1178,7 @@ export class MusicLibraryStore {
       return normalizeFavoriteAliasKey(trackAlias) === normalizedAliasKey;
     });
     if (duplicate) {
-      throw new ValidationError('Alias already exists in your favorites.');
+      throw new ValidationError('Alias already exists in your favorites.', { translationKey: 'store.aliasExists' });
     }
 
     const target = tracks[safeIndex - 1] as StoredTrack;

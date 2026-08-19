@@ -573,4 +573,28 @@ export const ptBR: Catalog = {
   'cmd.volumedefault.description': 'Mostrar ou definir o volume padrão para novas sessões do servidor.',
   'cmd.voteskip.description': 'Mostrar o andamento da votação para pular.',
   'cmd.voteskipcfg.description': 'Configurar o limite da votação para pular por servidor.',
+
+  'common.requestedByLower': 'pedido por',
+  'queue.empty': 'A fila está vazia.',
+  'queue.nowPlaying': 'Tocando agora',
+  'queue.upNext': 'A seguir (página {page}/{total})',
+  'queue.summary': 'Fila: **{count}** faixas • Restante: **{remaining}**',
+  'history.summary': 'Página do histórico **{page}/{totalPages}** • Total de faixas: **{count}**',
+
+  'recap.weeklyTitle': 'Resumo musical da semana',
+  'recap.totalPlays7d': 'Total de reproduções (7d)',
+  'pick.noSession': 'Nenhuma sessão de player ativa. Faça a busca novamente.',
+  'pick.sameChannelRequired': 'Você precisa estar no mesmo canal de voz que o bot.',
+  'pick.sessionNotReady': 'A sessão do player não está pronta. Faça a busca novamente.',
+
+  'favorites.queued': 'Favorito adicionado à fila: {track}',
+  'store.prefixEmpty': 'O prefixo não pode ficar vazio.',
+  'store.prefixTooLong': 'O prefixo deve ter no máximo 5 caracteres.',
+  'store.prefixWhitespace': 'O prefixo não pode conter espaços.',
+  'store.templateNeedsTrack': 'O modelo precisa de pelo menos uma faixa.',
+  'store.noTracksToAdd': 'Nenhuma faixa para adicionar.',
+  'store.trackIndexPositive': 'O índice da faixa deve ser um número inteiro positivo.',
+  'store.trackIndexRange': 'O índice da faixa está fora do intervalo.',
+  'store.favoriteIndexPositive': 'O índice do favorito deve ser um número inteiro positivo.',
+  'store.aliasExists': 'Esse apelido já existe nos seus favoritos.',
 };

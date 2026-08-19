@@ -63,11 +63,12 @@ function formatTrackListLine(
   track: TrackLike,
   index: number | null = null,
   maxChars: number = TRACK_LINE_MAX_CHARS,
-  options: { includeRequester?: boolean } = {},
+  options: { includeRequester?: boolean; t?: Translator } = {},
 ) {
   const prefix = Number.isFinite(index) ? `${index}. ` : '';
-  const by = options.includeRequester !== false && track?.requestedBy ? ` • requested by <@${track.requestedBy}>` : '';
-  const duration = String(track?.duration ?? 'Unknown');
+  const requesterLabel = options.t ? options.t('common.requestedByLower') : 'requested by';
+  const by = options.includeRequester !== false && track?.requestedBy ? ` • ${requesterLabel} <@${track.requestedBy}>` : '';
+  const duration = String(track?.duration ?? (options.t ? options.t('common.unknown') : 'Unknown'));
   const titleRaw = compactTrackTitle(track?.title);
   const staticLength = prefix.length + by.length + duration.length + 7;
   const titleBudget = Math.max(16, Number.parseInt(String(maxChars), 10) - staticLength);
@@ -124,13 +125,14 @@ export function trackLabel(track: TrackLike) {
   return `**${track.title}** (${track.duration})${by}`;
 }
 
-export function trackLabelWithLink(track: TrackLike) {
-  const duration = String(track?.duration ?? 'Unknown');
+export function trackLabelWithLink(track: TrackLike, t?: Translator) {
+  const duration = String(track?.duration ?? (t ? t('common.unknown') : 'Unknown'));
   const title = compactTrackTitle(track?.title);
   const linkedTitle = isSafeMarkdownLinkTarget(track?.url)
     ? `[**${title}**](${String(track.url).trim()})`
     : `**${title}**`;
-  const by = track?.requestedBy ? ` • requested by <@${track.requestedBy}>` : '';
+  const requesterLabel = t ? t('common.requestedByLower') : 'requested by';
+  const by = track?.requestedBy ? ` • ${requesterLabel} <@${track.requestedBy}>` : '';
   return `${linkedTitle} (${duration})${by}`;
 }
 
@@ -218,10 +220,10 @@ function buildSessionStatusFooter(session: SessionLike, pendingDurationSec: numb
   ].join(' | ');
 }
 
-export function formatQueuePage(session: SessionLike, page: number) {
+export function formatQueuePage(session: SessionLike, page: number, t?: Translator) {
   const pending = session.player?.pendingTracks ?? [];
   const current = session.player?.displayTrack ?? session.player?.currentTrack;
-  if (!current && pending.length === 0) return { description: 'Queue is empty.', fields: [] };
+  if (!current && pending.length === 0) return { description: t ? t('queue.empty') : 'Queue is empty.', fields: [] };
 
   const totalPages = Math.max(1, Math.ceil(pending.length / PENDING_PAGE_SIZE));
   const safePage = Math.max(1, Math.min(page, totalPages));
@@ -233,9 +235,9 @@ export function formatQueuePage(session: SessionLike, page: number) {
     const durationSec = parseDurationToSeconds(current.duration);
     const progressSec = session.player?.getProgressSeconds?.() ?? 0;
     fields.push({
-      name: 'Now Playing',
+      name: t ? t('queue.nowPlaying') : 'Now Playing',
       value: joinLinesWithinLimit([
-        trackLabelWithLink(current),
+        trackLabelWithLink(current, t),
         buildProgressBar(progressSec, durationSec ?? Number.NaN, 12, { isLive: Boolean(current?.isLive) }),
       ], EMBED_FIELD_TEXT_LIMIT),
     });
@@ -243,9 +245,9 @@ export function formatQueuePage(session: SessionLike, page: number) {
 
   if (pageItems.length) {
     fields.push({
-      name: `Up Next (Page ${safePage}/${totalPages})`,
+      name: t ? t('queue.upNext', { page: safePage, total: totalPages }) : `Up Next (Page ${safePage}/${totalPages})`,
       value: joinLinesWithinLimit(
-        pageItems.map((track, i) => formatTrackListLine(track, start + i + 1, TRACK_LINE_MAX_CHARS, { includeRequester: false })),
+        pageItems.map((track, i) => formatTrackListLine(track, start + i + 1, TRACK_LINE_MAX_CHARS, { includeRequester: false, ...(t ? { t } : {}) })),
         EMBED_FIELD_TEXT_LIMIT
       ),
     });
@@ -254,15 +256,17 @@ export function formatQueuePage(session: SessionLike, page: number) {
   const pendingDurationSec = sumTrackDurationsSeconds(pending);
   const footer = buildSessionStatusFooter(session, pendingDurationSec, pending.length);
   return {
-    description: `Queue: **${pending.length}** tracks • Remaining: **${formatSeconds(pendingDurationSec)}**`,
+    description: t
+      ? t('queue.summary', { count: pending.length, remaining: formatSeconds(pendingDurationSec) })
+      : `Queue: **${pending.length}** tracks • Remaining: **${formatSeconds(pendingDurationSec)}**`,
     footer,
     fields,
   };
 }
 
-export function formatHistoryPage(session: SessionLike, page: number) {
+export function formatHistoryPage(session: SessionLike, page: number, t?: Translator) {
   const history = session.player?.historyTracks ?? [];
-  if (!history.length) return { description: 'No playback history yet.', fields: [] };
+  if (!history.length) return { description: t ? t('history.empty') : 'No playback history yet.', fields: [] };
 
   const totalPages = Math.max(1, Math.ceil(history.length / HISTORY_PAGE_SIZE));
   const safePage = Math.max(1, Math.min(page, totalPages));
@@ -270,11 +274,13 @@ export function formatHistoryPage(session: SessionLike, page: number) {
   const pageItems = history.slice().reverse().slice(start, start + HISTORY_PAGE_SIZE);
 
   return {
-    description: `History page **${safePage}/${totalPages}** • Total tracks: **${history.length}**`,
+    description: t
+      ? t('history.summary', { page: safePage, totalPages, count: history.length })
+      : `History page **${safePage}/${totalPages}** • Total tracks: **${history.length}**`,
     fields: [{
-      name: 'Recently Played',
+      name: t ? t('history.recentlyPlayed') : 'Recently Played',
       value: joinLinesWithinLimit(
-        pageItems.map((track, idx) => formatTrackListLine(track, start + idx + 1, TRACK_LINE_MAX_CHARS)),
+        pageItems.map((track, idx) => formatTrackListLine(track, start + idx + 1, TRACK_LINE_MAX_CHARS, t ? { t } : {})),
         EMBED_FIELD_TEXT_LIMIT
       ),
     }],

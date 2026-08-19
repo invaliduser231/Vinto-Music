@@ -571,4 +571,28 @@ export const en = {
   'cmd.volumedefault.description': 'Show or set the default volume for new guild sessions.',
   'cmd.voteskip.description': 'Show current vote-skip progress.',
   'cmd.voteskipcfg.description': 'Configure vote-skip threshold per guild.',
+
+  'common.requestedByLower': 'requested by',
+  'queue.empty': 'Queue is empty.',
+  'queue.nowPlaying': 'Now Playing',
+  'queue.upNext': 'Up Next (Page {page}/{total})',
+  'queue.summary': 'Queue: **{count}** tracks • Remaining: **{remaining}**',
+  'history.summary': 'History page **{page}/{totalPages}** • Total tracks: **{count}**',
+
+  'recap.weeklyTitle': 'Weekly music recap',
+  'recap.totalPlays7d': 'Total Plays (7d)',
+  'pick.noSession': 'No active player session. Run the search again.',
+  'pick.sameChannelRequired': 'You must be in the same voice channel as the bot.',
+  'pick.sessionNotReady': 'Player session is not ready. Run the search again.',
+
+  'favorites.queued': 'Added favorite to queue: {track}',
+  'store.prefixEmpty': 'Prefix cannot be empty.',
+  'store.prefixTooLong': 'Prefix must be at most 5 characters.',
+  'store.prefixWhitespace': 'Prefix cannot contain whitespace.',
+  'store.templateNeedsTrack': 'Template requires at least one track.',
+  'store.noTracksToAdd': 'No tracks to add.',
+  'store.trackIndexPositive': 'Track index must be a positive integer.',
+  'store.trackIndexRange': 'Track index out of range.',
+  'store.favoriteIndexPositive': 'Favorite index must be a positive integer.',
+  'store.aliasExists': 'Alias already exists in your favorites.',
 } as const;

@@ -808,7 +808,7 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
       }
 
       typedCtx.sessions.markSnapshotDirty?.(session, true);
-      await ctx.reply.success(`Added favorite to queue: ${trackLabel(toTrackLike(added[0] ?? null))}`);
+      await ctx.reply.success(ctx.t('favorites.queued', { track: trackLabel(toTrackLike(added[0] ?? null)) }));
     },
   }));
 }

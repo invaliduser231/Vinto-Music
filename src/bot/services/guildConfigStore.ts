@@ -26,13 +26,13 @@ function normalizePrefix(value: unknown, fallback: string) {
 
   const prefix = String(value).trim();
   if (!prefix) {
-    throw new ValidationError('Prefix cannot be empty.');
+    throw new ValidationError('Prefix cannot be empty.', { translationKey: 'store.prefixEmpty' });
   }
   if (prefix.length > 5) {
-    throw new ValidationError('Prefix must be at most 5 characters.');
+    throw new ValidationError('Prefix must be at most 5 characters.', { translationKey: 'store.prefixTooLong' });
   }
   if (/\s/.test(prefix)) {
-    throw new ValidationError('Prefix cannot contain whitespace.');
+    throw new ValidationError('Prefix cannot contain whitespace.', { translationKey: 'store.prefixWhitespace' });
   }
 
   return prefix;
@@ -315,7 +315,7 @@ export class GuildConfigStore {
       if (settingsPatch.volumePercent !== undefined) {
         const volume = Number.parseInt(String(settingsPatch.volumePercent), 10);
         if (!Number.isFinite(volume) || volume < 0 || volume > 200) {
-          throw new ValidationError('Volume must be an integer between 0 and 200.');
+          throw new ValidationError('Volume must be an integer between 0 and 200.', { translationKey: 'config.volumeRange' });
         }
         next.settings.volumePercent = volume;
       }
@@ -323,7 +323,7 @@ export class GuildConfigStore {
       if (settingsPatch.voteSkipRatio !== undefined) {
         const ratio = Number.parseFloat(String(settingsPatch.voteSkipRatio));
         if (!Number.isFinite(ratio) || ratio <= 0 || ratio > 1) {
-          throw new ValidationError('Vote-skip ratio must be a number between 0 and 1.');
+          throw new ValidationError('Vote-skip ratio must be a number between 0 and 1.', { translationKey: 'voteskipcfg.ratioRange' });
         }
         next.settings.voteSkipRatio = ratio;
       }
@@ -331,7 +331,7 @@ export class GuildConfigStore {
       if (settingsPatch.voteSkipMinVotes !== undefined) {
         const min = Number.parseInt(String(settingsPatch.voteSkipMinVotes), 10);
         if (!Number.isFinite(min) || min <= 0 || min > 100) {
-          throw new ValidationError('Vote-skip minimum votes must be an integer between 1 and 100.');
+          throw new ValidationError('Vote-skip minimum votes must be an integer between 1 and 100.', { translationKey: 'voteskipcfg.minRange' });
         }
         next.settings.voteSkipMinVotes = min;
       }

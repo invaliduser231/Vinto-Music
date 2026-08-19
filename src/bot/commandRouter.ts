@@ -367,7 +367,10 @@ export class CommandRouter {
       const commandName = String(command.name ?? '').trim() || 'unknown';
       if (err instanceof ValidationError) {
         this.metrics?.commandsTotal?.inc?.(1, { command: commandName, outcome: 'validation_error' });
-        await context.reply.warning(err.message);
+        const localized = err.translationKey
+          ? context.t.optional(err.translationKey, err.translationParams ?? undefined)
+          : null;
+        await context.reply.warning(localized ?? err.message);
         return;
       }
 
@@ -539,7 +542,7 @@ export class CommandRouter {
     if (!guildId) return fn();
     const lockKey = `${String(guildId)}:${String(key ?? 'default')}`;
     if (this.guildOpLocks.has(lockKey)) {
-      throw new ValidationError('This action is already running. Please retry in a moment.');
+      throw new ValidationError('This action is already running. Please retry in a moment.', { translationKey: 'errors.actionRunning' });
     }
     this.guildOpLocks.set(lockKey, Date.now());
     try {

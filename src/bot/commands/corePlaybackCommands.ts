@@ -1613,7 +1613,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
 
       if (ctx.args.length) {
         const page = parseRequiredInteger(ctx.args[0], 'field.page', ctx.t);
-        const queueData = formatQueuePage(session, page);
+        const queueData = formatQueuePage(session, page, ctx.t);
         await ctx.reply.info(queueData.description, queueData.fields, { footer: queueData.footer ?? null });
         return;
       }
@@ -1621,14 +1621,14 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       const pendingCount = session.player.pendingTracks.length;
       const totalPages = Math.max(1, Math.ceil(pendingCount / PENDING_PAGE_SIZE));
       if (totalPages <= 1) {
-        const queueData = formatQueuePage(session, 1);
+        const queueData = formatQueuePage(session, 1, ctx.t);
         await ctx.reply.info(queueData.description, queueData.fields, { footer: queueData.footer ?? null });
         return;
       }
 
       const pages = [];
       for (let page = 1; page <= totalPages; page += 1) {
-        const queueData = formatQueuePage(session, page);
+        const queueData = formatQueuePage(session, page, ctx.t);
         pages.push(buildInfoPayload(ctx, 'Queue', queueData.description, queueData.fields, { footer: queueData.footer ?? null }));
       }
       await ctx.sendPaginated(pages);
@@ -1648,7 +1648,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
         textChannelId: ctx.channelId,
       });
       if (session?.player?.historyTracks?.length) {
-        const historyData = formatHistoryPage(session, page);
+        const historyData = formatHistoryPage(session, page, ctx.t);
         await ctx.reply.info(historyData.description, historyData.fields);
         return;
       }

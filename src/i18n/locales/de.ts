@@ -573,4 +573,28 @@ export const de: Catalog = {
   'cmd.volumedefault.description': 'Standardlautstärke für neue Server-Sitzungen anzeigen oder setzen.',
   'cmd.voteskip.description': 'Aktuellen Stand der Skip-Abstimmung anzeigen.',
   'cmd.voteskipcfg.description': 'Schwelle für die Skip-Abstimmung pro Server einrichten.',
+
+  'common.requestedByLower': 'gewünscht von',
+  'queue.empty': 'Die Warteschlange ist leer.',
+  'queue.nowPlaying': 'Läuft gerade',
+  'queue.upNext': 'Als Nächstes (Seite {page}/{total})',
+  'queue.summary': 'Warteschlange: **{count}** Titel • Restdauer: **{remaining}**',
+  'history.summary': 'Verlaufsseite **{page}/{totalPages}** • Titel gesamt: **{count}**',
+
+  'recap.weeklyTitle': 'Wöchentlicher Musikrückblick',
+  'recap.totalPlays7d': 'Wiedergaben gesamt (7 Tage)',
+  'pick.noSession': 'Keine aktive Player-Sitzung. Starte die Suche erneut.',
+  'pick.sameChannelRequired': 'Du musst im selben Sprachkanal wie der Bot sein.',
+  'pick.sessionNotReady': 'Die Player-Sitzung ist nicht bereit. Starte die Suche erneut.',
+
+  'favorites.queued': 'Favorit zur Warteschlange hinzugefügt: {track}',
+  'store.prefixEmpty': 'Das Präfix darf nicht leer sein.',
+  'store.prefixTooLong': 'Das Präfix darf höchstens 5 Zeichen lang sein.',
+  'store.prefixWhitespace': 'Das Präfix darf keine Leerzeichen enthalten.',
+  'store.templateNeedsTrack': 'Eine Vorlage braucht mindestens einen Titel.',
+  'store.noTracksToAdd': 'Keine Titel zum Hinzufügen.',
+  'store.trackIndexPositive': 'Der Titel-Index muss eine positive ganze Zahl sein.',
+  'store.trackIndexRange': 'Der Titel-Index liegt außerhalb des Bereichs.',
+  'store.favoriteIndexPositive': 'Der Favoriten-Index muss eine positive ganze Zahl sein.',
+  'store.aliasExists': 'Dieser Alias existiert bereits in deinen Favoriten.',
 };

@@ -125,6 +125,31 @@ test('createTranslator binds a locale and exposes it', () => {
   assert.equal(createTranslator('de')('common.enabled'), 'Aktiviert');
 });
 
+test('every registered command has a translated description key', async () => {
+  const { CommandRegistry } = await import('../src/bot/commandRegistry.ts');
+  const { registerCommands } = await import('../src/bot/commands/index.ts');
+
+  const registry = new CommandRegistry();
+  registerCommands(registry);
+
+  const missing = registry.list()
+    .map((cmd) => String(cmd.name))
+    .filter((name) => !Object.prototype.hasOwnProperty.call(en, `cmd.${name}.description`));
+
+  assert.deepEqual(missing, [], `commands without a description key: ${missing.join(', ')}`);
+});
+
+test('translation keys attached to thrown errors exist in the catalog', async () => {
+  const { ValidationError } = await import('../src/core/errors.ts');
+
+  const error = new ValidationError('Prefix cannot be empty.', { translationKey: 'store.prefixEmpty' });
+  assert.equal(error.translationKey, 'store.prefixEmpty');
+  assert.ok(Object.prototype.hasOwnProperty.call(en, error.translationKey));
+
+  const plain = new ValidationError('no key');
+  assert.equal(plain.translationKey, null);
+});
+
 test('locale metadata is defined for every supported locale', () => {
   for (const locale of SUPPORTED_LOCALES) {
     assert.ok(localeLabel(locale).length > 0, `missing label for ${locale}`);
