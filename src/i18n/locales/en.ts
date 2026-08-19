@@ -148,4 +148,56 @@ export const en = {
 
   'history.empty': 'No playback history yet.',
   'history.recentlyPlayed': 'Recently Played',
+
+  'common.available': 'Available',
+
+  'queue.invalidIndex': 'Invalid queue index.',
+  'queue.removed': 'Removed: {track}',
+  'queue.cleared': { one: 'Cleared {count} pending track.', other: 'Cleared {count} pending tracks.' },
+  'queue.shuffled': { one: 'Shuffled {count} pending track.', other: 'Shuffled {count} pending tracks.' },
+
+  'loop.current': 'Current loop mode: **{mode}**',
+  'loop.set': 'Loop mode set to **{mode}**.',
+  'volume.current': 'Current volume: **{percent}%**',
+  'volume.set': 'Volume set to **{percent}%**.',
+
+  'kicktimer.inactive': 'No kick timer is active. Use `{prefix}kicktimer <seconds>` to start one.',
+  'kicktimer.active': 'Kick timer active: **{remaining}** remaining (set to {total}).',
+  'kicktimer.cancelled': 'Kick timer cancelled.',
+  'kicktimer.noneActive': 'No kick timer was active.',
+  'kicktimer.rangeError': 'Provide a duration between **{min}** and **{max}** seconds.',
+  'kicktimer.unavailable': 'Kick timer is not available right now.',
+  'kicktimer.set': 'Kick timer set. Everyone will be disconnected from voice in **{duration}**. Use `{prefix}kicktimer off` to cancel.',
+
+  'filter.current': 'Current filter: **{preset}**',
+  'filter.set': 'Filter set to **{preset}**.',
+  'eq.current': 'Current EQ: **{preset}**',
+  'eq.set': 'EQ preset set to **{preset}**.',
+  'tempo.invalid': 'Provide a valid tempo ratio.',
+  'tempo.set': 'Tempo set to **{value}x**.',
+  'pitch.set': 'Pitch set to **{value} semitones**.',
+
+  'effects.title': 'Audio effects',
+  'effects.filter': 'Filter',
+  'effects.eq': 'EQ',
+  'effects.tempo': 'Tempo',
+  'effects.pitch': 'Pitch',
+  'effects.reapplying': 'Reapplying to current track...',
+
+  'voteskip.progress': 'Vote-skip progress: **{current}/{needed}**',
+
+  'lyrics.needQuery': 'Provide a song query or play a track first.',
+  'lyrics.unavailable': 'Lyrics service is not available.',
+  'lyrics.notFound': 'No lyrics found for: **{query}**',
+  'lyrics.title': 'Lyrics for {query}',
+
+  'stats.collecting': 'Collecting runtime statistics...',
+  'stats.title': 'Runtime statistics',
+  'stats.uptime': 'Uptime',
+  'stats.guildSessions': 'Guild sessions',
+  'stats.serversTotal': 'Servers total',
+  'stats.usersTotal': 'Users total',
+  'stats.heapUsed': 'Heap Used',
+  'stats.counting': 'counting...',
+  'stats.partial': '{count} (partial)',
 } as const;

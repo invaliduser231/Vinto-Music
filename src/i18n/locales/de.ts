@@ -150,4 +150,56 @@ export const de: Catalog = {
 
   'history.empty': 'Noch kein Wiedergabeverlauf vorhanden.',
   'history.recentlyPlayed': 'Zuletzt gespielt',
+
+  'common.available': 'Verfügbar',
+
+  'queue.invalidIndex': 'Ungültiger Warteschlangen-Index.',
+  'queue.removed': 'Entfernt: {track}',
+  'queue.cleared': { one: '{count} wartenden Titel entfernt.', other: '{count} wartende Titel entfernt.' },
+  'queue.shuffled': { one: '{count} wartenden Titel gemischt.', other: '{count} wartende Titel gemischt.' },
+
+  'loop.current': 'Aktueller Wiederholungsmodus: **{mode}**',
+  'loop.set': 'Wiederholungsmodus auf **{mode}** gesetzt.',
+  'volume.current': 'Aktuelle Lautstärke: **{percent}%**',
+  'volume.set': 'Lautstärke auf **{percent}%** gesetzt.',
+
+  'kicktimer.inactive': 'Es läuft kein Kick-Timer. Starte einen mit `{prefix}kicktimer <Sekunden>`.',
+  'kicktimer.active': 'Kick-Timer aktiv: noch **{remaining}** (eingestellt auf {total}).',
+  'kicktimer.cancelled': 'Kick-Timer abgebrochen.',
+  'kicktimer.noneActive': 'Es war kein Kick-Timer aktiv.',
+  'kicktimer.rangeError': 'Gib eine Dauer zwischen **{min}** und **{max}** Sekunden an.',
+  'kicktimer.unavailable': 'Der Kick-Timer ist gerade nicht verfügbar.',
+  'kicktimer.set': 'Kick-Timer gesetzt. In **{duration}** werden alle aus dem Sprachkanal getrennt. Abbrechen mit `{prefix}kicktimer off`.',
+
+  'filter.current': 'Aktueller Filter: **{preset}**',
+  'filter.set': 'Filter auf **{preset}** gesetzt.',
+  'eq.current': 'Aktueller EQ: **{preset}**',
+  'eq.set': 'EQ-Preset auf **{preset}** gesetzt.',
+  'tempo.invalid': 'Gib ein gültiges Tempo-Verhältnis an.',
+  'tempo.set': 'Tempo auf **{value}x** gesetzt.',
+  'pitch.set': 'Tonhöhe auf **{value} Halbtöne** gesetzt.',
+
+  'effects.title': 'Audio-Effekte',
+  'effects.filter': 'Filter',
+  'effects.eq': 'EQ',
+  'effects.tempo': 'Tempo',
+  'effects.pitch': 'Tonhöhe',
+  'effects.reapplying': 'Wird auf den aktuellen Titel angewendet...',
+
+  'voteskip.progress': 'Skip-Abstimmung: **{current}/{needed}**',
+
+  'lyrics.needQuery': 'Gib eine Suche an oder spiele zuerst einen Titel ab.',
+  'lyrics.unavailable': 'Der Lyrics-Dienst ist nicht verfügbar.',
+  'lyrics.notFound': 'Keine Lyrics gefunden für: **{query}**',
+  'lyrics.title': 'Lyrics für {query}',
+
+  'stats.collecting': 'Sammle Laufzeitstatistiken...',
+  'stats.title': 'Laufzeitstatistiken',
+  'stats.uptime': 'Laufzeit',
+  'stats.guildSessions': 'Server-Sitzungen',
+  'stats.serversTotal': 'Server gesamt',
+  'stats.usersTotal': 'Nutzer gesamt',
+  'stats.heapUsed': 'Heap belegt',
+  'stats.counting': 'wird gezählt...',
+  'stats.partial': '{count} (unvollständig)',
 };

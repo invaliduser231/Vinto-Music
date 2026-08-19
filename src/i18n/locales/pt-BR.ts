@@ -150,4 +150,56 @@ export const ptBR: Catalog = {
 
   'history.empty': 'Ainda não há histórico de reprodução.',
   'history.recentlyPlayed': 'Tocadas recentemente',
+
+  'common.available': 'Disponíveis',
+
+  'queue.invalidIndex': 'Índice de fila inválido.',
+  'queue.removed': 'Removido: {track}',
+  'queue.cleared': { one: '{count} faixa pendente removida.', other: '{count} faixas pendentes removidas.' },
+  'queue.shuffled': { one: '{count} faixa pendente embaralhada.', other: '{count} faixas pendentes embaralhadas.' },
+
+  'loop.current': 'Modo de repetição atual: **{mode}**',
+  'loop.set': 'Modo de repetição definido como **{mode}**.',
+  'volume.current': 'Volume atual: **{percent}%**',
+  'volume.set': 'Volume definido como **{percent}%**.',
+
+  'kicktimer.inactive': 'Nenhum temporizador de expulsão ativo. Use `{prefix}kicktimer <segundos>` para iniciar um.',
+  'kicktimer.active': 'Temporizador ativo: faltam **{remaining}** (definido para {total}).',
+  'kicktimer.cancelled': 'Temporizador de expulsão cancelado.',
+  'kicktimer.noneActive': 'Nenhum temporizador estava ativo.',
+  'kicktimer.rangeError': 'Informe uma duração entre **{min}** e **{max}** segundos.',
+  'kicktimer.unavailable': 'O temporizador de expulsão não está disponível agora.',
+  'kicktimer.set': 'Temporizador definido. Todos serão desconectados da voz em **{duration}**. Use `{prefix}kicktimer off` para cancelar.',
+
+  'filter.current': 'Filtro atual: **{preset}**',
+  'filter.set': 'Filtro definido como **{preset}**.',
+  'eq.current': 'EQ atual: **{preset}**',
+  'eq.set': 'Predefinição de EQ definida como **{preset}**.',
+  'tempo.invalid': 'Informe uma proporção de tempo válida.',
+  'tempo.set': 'Tempo definido como **{value}x**.',
+  'pitch.set': 'Tom definido como **{value} semitons**.',
+
+  'effects.title': 'Efeitos de áudio',
+  'effects.filter': 'Filtro',
+  'effects.eq': 'EQ',
+  'effects.tempo': 'Tempo',
+  'effects.pitch': 'Tom',
+  'effects.reapplying': 'Reaplicando na faixa atual...',
+
+  'voteskip.progress': 'Votação para pular: **{current}/{needed}**',
+
+  'lyrics.needQuery': 'Informe uma busca ou toque uma faixa primeiro.',
+  'lyrics.unavailable': 'O serviço de letras não está disponível.',
+  'lyrics.notFound': 'Nenhuma letra encontrada para: **{query}**',
+  'lyrics.title': 'Letra de {query}',
+
+  'stats.collecting': 'Coletando estatísticas de execução...',
+  'stats.title': 'Estatísticas de execução',
+  'stats.uptime': 'Tempo ativo',
+  'stats.guildSessions': 'Sessões de servidor',
+  'stats.serversTotal': 'Servidores no total',
+  'stats.usersTotal': 'Usuários no total',
+  'stats.heapUsed': 'Heap usado',
+  'stats.counting': 'contando...',
+  'stats.partial': '{count} (parcial)',
 };

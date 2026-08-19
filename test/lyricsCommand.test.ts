@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { registerCommands } from '../src/bot/commands/index.ts';
 import { CommandRegistry } from '../src/bot/commandRegistry.ts';
+import { createTranslator } from '../src/i18n/index.ts';
 
 function setupLyricsCommand() {
   const registry = new CommandRegistry();
@@ -42,6 +43,7 @@ test('lyrics command uses current track artist and title as fallback query', asy
         };
       },
     },
+    t: createTranslator('en'),
     reply: {
       async warning() {},
     },
