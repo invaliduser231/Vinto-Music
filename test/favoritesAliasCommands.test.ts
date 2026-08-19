@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { registerCommands } from '../src/bot/commands/index.ts';
 import { CommandRegistry } from '../src/bot/commandRegistry.ts';
+import { createTranslator } from '../src/i18n/index.ts';
 
 type Execute = NonNullable<NonNullable<ReturnType<CommandRegistry['resolve']>>['execute']>;
 
@@ -93,6 +94,7 @@ function createBaseContext(overrides: Record<string, unknown> = {}) {
       bindTextChannel() {},
       async destroy() {},
     },
+    t: createTranslator('en'),
     reply: {
       async info(text: string, fields?: Array<{ name: string; value: string }>) {
         replyCalls.push(`info:${text}:${fields?.[0]?.value ?? ''}`);
