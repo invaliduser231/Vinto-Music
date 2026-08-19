@@ -144,6 +144,7 @@ test('_handleTrackClose warns when yt-dlp source process ended long before expec
     requestedBy: 'user-1',
   });
 
+  player.play = async () => {};
   player.queue.current = track;
   player.playing = true;
   player.trackStartedAtMs = Date.now() - (56 * 60 * 1000);
