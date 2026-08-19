@@ -237,7 +237,7 @@ export async function applyVoiceProfileIfConfigured(ctx: CommandContextLike, ses
   const profile = await ctx.library.getVoiceProfile(ctx.guildId, channelId).catch(() => null);
   const moodPreset = String(profile?.moodPreset ?? '').trim().toLowerCase();
   if (moodPreset) {
-    applyMoodPreset(session.player, moodPreset);
+    applyMoodPreset(session.player, moodPreset, ctx.t);
   }
 }
 
