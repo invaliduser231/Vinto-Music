@@ -16,10 +16,13 @@ services:
       - .env
     environment:
       NODE_ENV: production
-      MONGODB_URI: mongodb://mongo:27017
-      NODELINK_ENABLED: "1"
-      NODELINK_BASE_URL: http://nodelink:3000
-      MONITORING_ENABLED: "1"
+      # Falls back to the bundled mongo container. Set MONGODB_URI in .env to
+      # use an external database instead.
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017}
+      NODELINK_ENABLED: ${NODELINK_ENABLED:-1}
+      NODELINK_BASE_URL: ${NODELINK_BASE_URL:-http://nodelink:3000}
+      MONITORING_ENABLED: ${MONITORING_ENABLED:-1}
+      # Container internal values. The host side port is set under "ports".
       MONITORING_HOST: 0.0.0.0
       MONITORING_PORT: "9091"
       FFMPEG_BIN: /usr/bin/ffmpeg

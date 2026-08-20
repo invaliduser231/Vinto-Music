@@ -78,6 +78,28 @@ docker compose ps                 # all containers healthy
 docker compose images nodelink    # check which NodeLink build is running
 ```
 
+## Using an external database
+
+The compose file ships a MongoDB container and uses it by default. To point at
+a hosted database instead, set `MONGODB_URI` in `.env`:
+
+```
+MONGODB_URI=mongodb+srv://user:password@cluster.example.net/?appName=Vinto
+```
+
+The bundled container then still starts but goes unused. To leave it out
+entirely, start only the services you need:
+
+```bash
+docker compose up -d --no-deps app nodelink bgutil-pot
+```
+
+Verify which database is actually in use:
+
+```bash
+docker compose exec app printenv MONGODB_URI
+```
+
 ## Updating
 
 ```bash
