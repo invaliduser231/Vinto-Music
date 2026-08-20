@@ -193,6 +193,58 @@ test('NodeLink previewTracks reduces text play queries to the top result even wh
   }
 });
 
+test('a track link never expands into a queue full of search hits', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    loadType: 'search',
+    data: [
+      nodeLinkTrack('Mangos mit Chili', 'encoded-1', 'youtube'),
+      nodeLinkTrack('Mangos mit Chili (Hardstyle Remix)', 'encoded-2', 'youtube'),
+      nodeLinkTrack('Some unrelated song', 'encoded-3', 'youtube'),
+      nodeLinkTrack('Another unrelated song', 'encoded-4', 'youtube'),
+    ],
+  }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+
+  try {
+    const player = createPlayer({ nodeLinkRoutingMode: 'all' });
+    const tracks = await player.previewTracks(
+      'https://open.spotify.com/track/7AyE8MRf4dIK75mqqpks9S',
+      { requestedBy: 'user-1', limit: 100 }
+    );
+
+    assert.equal(tracks.length, 1, 'only the best match may be queued');
+    assert.equal(tracks[0]!.title, 'Mangos mit Chili');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('a playlist link may still expand into many tracks', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    loadType: 'playlist',
+    data: {
+      tracks: [
+        nodeLinkTrack('One', 'encoded-1', 'deezer'),
+        nodeLinkTrack('Two', 'encoded-2', 'deezer'),
+        nodeLinkTrack('Three', 'encoded-3', 'deezer'),
+      ],
+    },
+  }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+
+  try {
+    const player = createPlayer({ nodeLinkRoutingMode: 'all' });
+    const tracks = await player.previewTracks(
+      'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M',
+      { requestedBy: 'user-1', limit: 100 }
+    );
+
+    assert.equal(tracks.length, 3, 'a real playlist must not be truncated to one');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('NodeLink does not hard-cutover generic radio urls', async () => {
   const player = createPlayer();
   let nodeLinkCalled = false;

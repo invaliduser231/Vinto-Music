@@ -166,7 +166,7 @@ export const resolverMethods: LooseMethodMap = {
     const shouldBypassNodeLink = shouldBypassNodeLinkForDirectStreamUrl(url, nodeLinkRoutingMode);
     const shouldTryNodeLinkForUrl = !shouldBypassNodeLink && (nodeLinkRoutingMode === 'all' || isYouTubeUrl(url));
     if (this.nodeLinkEnabled && this.nodeLinkClient?.enabled && shouldTryNodeLinkForUrl) {
-      const nodeLinkResolved = await this._resolveNodeLinkTracks(url, requestedBy, safeLimit).catch((err: unknown) => {
+      const nodeLinkResolved = await this._resolveNodeLinkTracks(url, requestedBy, safeLimit, { urlQuery: true }).catch((err: unknown) => {
         if (nodeLinkRoutingMode === 'all') {
           throw new ValidationError('NodeLink URL resolution failed and local fallback is disabled in NODELINK_ROUTING_MODE=all.');
         }

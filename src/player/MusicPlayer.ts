@@ -289,7 +289,7 @@ export class MusicPlayer extends EventEmitter {
   declare _resolveStartupMirrorFallbackTrack: (track: Partial<Track> | null | undefined, requestedBy: string | null) => Promise<Track | null>;
   declare _isNodeLinkOnlyModeForSourceTrack: (track: Partial<Track> | null | undefined, trackUrl?: string | null) => boolean;
   declare isNodeLinkStreamingEnabled: () => boolean;
-  declare _nodeLinkLoadResultToTracks: (result: unknown, requestedBy: string | null, limit?: number | null) => Track[];
+  declare _nodeLinkLoadResultToTracks: (result: unknown, requestedBy: string | null, limit?: number | null, options?: { urlQuery?: boolean }) => Track[];
   declare _nodeLinkTrackDataToTrack: (data: unknown, requestedBy: string | null) => Track | null;
   declare _resolveSearchTrack: (query: string, requestedBy: string | null) => Promise<Track[]>;
   declare _resolveAmazonTrack: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
