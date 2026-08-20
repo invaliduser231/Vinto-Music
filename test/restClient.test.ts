@@ -175,6 +175,81 @@ test('disconnectMemberFromVoice patches the member voice channel to null', async
   }
 });
 
+test('sendFile follows the presigned attachment upload contract', async () => {
+  const originalFetch = global.fetch;
+  const calls: Array<{ method: string; url: string; body: unknown }> = [];
+
+  global.fetch = async (requestUrl, init) => {
+    const method = String(init?.method ?? 'GET');
+    const url = String(requestUrl);
+    const isJson = typeof init?.body === 'string';
+    calls.push({ method, url, body: isJson ? JSON.parse(String(init?.body)) : init?.body ?? null });
+
+    if (url.endsWith('/attachments')) {
+      return jsonResponse({
+        attachments: [{
+          id: 0,
+          filename: 'queue.csv',
+          upload_filename: 'tmp/abc-queue.csv',
+          file_size: 12,
+          content_type: 'text/csv',
+          upload_mode: 'singlepart',
+          upload_url: 'https://uploads.fluxer.app/presigned',
+        }],
+      }, { status: 200 });
+    }
+    if (url === 'https://uploads.fluxer.app/presigned') {
+      return new Response(null, { status: 200 });
+    }
+    return jsonResponse({ id: 'message-1' }, { status: 200 });
+  };
+
+  try {
+    const rest = new RestClient({
+      token: 'test-token',
+      base: 'https://api.fluxer.app/v1',
+      maxRetries: 1,
+    });
+
+    await rest.sendFile('channel-3', {
+      filename: 'queue.csv',
+      contentType: 'text/csv',
+      data: new TextEncoder().encode('title,artist'),
+      description: 'Queue export',
+    }, { content: 'Here you go' });
+
+    assert.equal(calls.length, 3);
+
+    assert.equal(calls[0]!.method, 'POST');
+    assert.equal(calls[0]!.url, 'https://api.fluxer.app/v1/channels/channel-3/attachments');
+    assert.deepEqual(calls[0]!.body, {
+      attachments: [{
+        id: 0,
+        filename: 'queue.csv',
+        file_size: 12,
+        content_type: 'text/csv',
+      }],
+    });
+
+    assert.equal(calls[1]!.method, 'PUT');
+    assert.equal(calls[1]!.url, 'https://uploads.fluxer.app/presigned');
+
+    assert.equal(calls[2]!.method, 'POST');
+    assert.equal(calls[2]!.url, 'https://api.fluxer.app/v1/channels/channel-3/messages');
+    const messageBody = calls[2]!.body as { attachments: Array<Record<string, unknown>> };
+    assert.deepEqual(messageBody.attachments, [{
+      id: 0,
+      filename: 'queue.csv',
+      upload_filename: 'tmp/abc-queue.csv',
+      file_size: 12,
+      content_type: 'text/csv',
+      description: 'Queue export',
+    }]);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 
 
 

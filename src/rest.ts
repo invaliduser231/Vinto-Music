@@ -499,7 +499,7 @@ export class RestClient {
   }) {
     const response = await this.request('POST', `/channels/${channelId}/attachments`, {
       body: {
-        files: [{
+        attachments: [{
           id: 0,
           filename: file.filename,
           file_size: file.size,
@@ -525,7 +525,14 @@ export class RestClient {
       throw new RestError(`Unsupported attachment upload mode: ${uploadMode}`, { status: null });
     }
 
-    return { uploadUrl, uploadFilename };
+    return {
+      uploadUrl,
+      uploadFilename,
+      id: Number.isInteger(slot.id) ? Number(slot.id) : 0,
+      filename: String(slot.filename ?? file.filename),
+      fileSize: Number.isFinite(Number(slot.file_size)) ? Number(slot.file_size) : file.size,
+      contentType: String(slot.content_type ?? file.contentType),
+    };
   }
 
   async uploadAttachmentData(uploadUrl: string, data: Uint8Array, contentType: string) {
@@ -565,9 +572,11 @@ export class RestClient {
       body: {
         ...body,
         attachments: [{
-          id: 0,
-          filename: file.filename,
-          uploaded_filename: slot.uploadFilename,
+          id: slot.id,
+          filename: slot.filename,
+          upload_filename: slot.uploadFilename,
+          file_size: slot.fileSize,
+          content_type: slot.contentType,
           ...(file.description ? { description: file.description } : {}),
         }],
       },
