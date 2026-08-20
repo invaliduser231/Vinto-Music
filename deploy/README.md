@@ -1,20 +1,21 @@
 # Self hosting with Docker
 
-Runs the bot and everything it needs on a single host. Four containers:
+Runs the bot and everything it needs on a single host. Five containers:
 
-| Container    | Purpose                                              |
-| ------------ | ---------------------------------------------------- |
-| `app`        | the bot itself                                       |
-| `nodelink`   | audio resolution and streaming                       |
-| `mongo`      | playlists, favorites, guild settings, session state   |
-| `bgutil-pot` | token provider that keeps YouTube from blocking hosts |
+| Container    | Purpose                                               |
+| ------------ | ----------------------------------------------------- |
+| `app`        | the bot itself                                        |
+| `nodelink`   | audio resolution and streaming                        |
+| `mongo`      | playlists, favorites, guild settings, session state    |
+| `bgutil-pot` | token provider that keeps YouTube from blocking hosts  |
+| `yt-cipher`  | solves YouTube signature ciphers for NodeLink          |
 
-Only `app` talks to the internet. Nothing is exposed publicly.
+Nothing is exposed publicly.
 
 ## Requirements
 
 - A host with at least 2 GB RAM. Typical usage: bot ~1 GB, NodeLink ~300 MB,
-  Mongo ~200 MB.
+  Mongo ~200 MB, cipher ~150 MB.
 - Docker Engine with the Compose plugin.
 - A bot account and token from the Fluxer developer portal.
 
@@ -173,6 +174,22 @@ the image referenced in `.env.example` fixes that in the source worker.
 
 **YouTube reports "Sign in to confirm you're not a bot".** The host IP is
 flagged. Set `YTDLP_PROXY_URL` to route requests through a proxy.
+
+**NodeLink logs "No streaming data found" for every YouTube video.** YouTube
+serves stream URLs with a scrambled signature that has to be unscrambled with a
+function extracted from the player script. NodeLink delegates that to the
+service at `NODELINK_SOURCES_YOUTUBE_CIPHER_URL`. If that endpoint times out,
+nothing is playable, no matter how the source is otherwise configured. Check the
+local container:
+
+```bash
+docker compose logs yt-cipher --tail 50
+docker compose exec nodelink node -e "fetch(process.env.NODELINK_SOURCES_YOUTUBE_CIPHER_URL+'/get_sts',{method:'POST',headers:{'content-type':'application/json'},body:'{}'}).then(r=>console.log('HTTP',r.status)).catch(e=>console.log('FAIL',e.cause?.code||e.message))"
+```
+
+The public instance at `https://cipher.kikkia.dev/api` works as a drop in
+replacement and needs no credentials, but it is rate limited to 10 requests per
+second and shared by everyone who uses it.
 
 **Bot stays silent in a channel.** Run `!permissions` there. It names the exact
 missing permission instead of a generic error.
