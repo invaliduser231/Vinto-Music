@@ -51,6 +51,7 @@ import {
   type ResolvedRadioStation,
 } from './helpers/radioStations.ts';
 import { detectRadioNowPlaying } from './helpers/radioNowPlaying.ts';
+import { ensurePermissionCheck } from '../permissions/require.ts';
 import type { CommandRegistry } from '../commandRegistry.ts';
 import type { EmbedField, MessagePayload } from '../../types/core.ts';
 import type { CommandContextLike, SessionLike, TrackDataLike } from './helpers/types.ts';
@@ -70,7 +71,10 @@ type GatewayLike = {
 type PlaybackCommandContext = CommandContextLike & {
   gateway?: GatewayLike;
   rest: NonNullable<CommandContextLike['rest']>;
-  logger?: { debug?: (message: string, meta?: Record<string, unknown>) => void } | null;
+  logger?: {
+    debug?: (message: string, meta?: Record<string, unknown>) => void;
+    warn?: (message: string, meta?: Record<string, unknown>) => void;
+  } | null;
   library?: CommandContextLike['library'] & {
     getLastGuildHistoryTrack?: (guildId: string) => Promise<TrackDataLike | null>;
   };
@@ -1661,6 +1665,17 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
         throw new ValidationError(ctx.t('export.unsupported'));
       }
 
+      if (ctx.permissionService?.checkBotPermissions) {
+        const check = await ctx.permissionService.checkBotPermissions(
+          ctx.guildId,
+          ctx.channelId,
+          ['VIEW_CHANNEL', 'SEND_MESSAGES', 'ATTACH_FILES']
+        );
+        if (check?.known) {
+          ensurePermissionCheck(ctx.t, check, { channelMention: `<#${ctx.channelId}>` });
+        }
+      }
+
       try {
         await ctx.rest.sendFile(
           ctx.channelId,
@@ -1675,8 +1690,12 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
           })
         );
       } catch (err) {
-        ctx.logger?.debug?.('Queue CSV export failed', {
+        ctx.logger?.warn?.('Queue CSV export failed', {
           guildId: ctx.guildId,
+          channelId: ctx.channelId,
+          filename,
+          bytes: data.byteLength,
+          status: (err as { status?: number | null } | null)?.status ?? null,
           error: err instanceof Error ? err.message : String(err),
         });
         throw new ValidationError(ctx.t('export.failed'));
