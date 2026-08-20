@@ -82,10 +82,25 @@ docker compose images nodelink    # check which NodeLink build is running
 
 ```bash
 cd ~/vinto
+curl -fsSLO https://raw.githubusercontent.com/invaliduser231/Vinto-Music/main/deploy/docker-compose.yml
 docker compose pull
 docker compose up -d
 docker image prune -f
 ```
+
+When a release adds new settings, merge the template into your existing file
+instead of overwriting it:
+
+```bash
+BASE=https://raw.githubusercontent.com/invaliduser231/Vinto-Music/main/deploy
+curl -fsSL "$BASE/.env.example" -o .env.example
+curl -fsSL "$BASE/merge-env.sh" -o merge-env.sh && chmod +x merge-env.sh
+./merge-env.sh
+```
+
+The script keeps every value you already set, adds keys that are new in the
+template, preserves keys that exist only in your file, and writes a timestamped
+backup first.
 
 `pull_policy: always` makes `up -d` fetch the current image for the configured
 tag. To pin a deployment instead, set `APP_IMAGE` to a `sha-<commit>` tag.
