@@ -13,7 +13,7 @@ interface MonitoringServerOptions {
   port?: number;
   enabled?: boolean;
   metrics?: MetricsRegistry | null;
-  getHealth?: () => MonitoringHealth;
+  getHealth?: () => MonitoringHealth | Promise<MonitoringHealth>;
 }
 
 export class MonitoringServer {
@@ -22,7 +22,7 @@ export class MonitoringServer {
   port: number;
   enabled: boolean;
   metrics: MetricsRegistry | null;
-  getHealth: () => MonitoringHealth;
+  getHealth: () => MonitoringHealth | Promise<MonitoringHealth>;
   server: http.Server | null;
 
   constructor(options: MonitoringServerOptions = {}) {
@@ -40,22 +40,38 @@ export class MonitoringServer {
     if (!this.enabled) return false;
     if (this.server) return true;
 
-    this.server = http.createServer((req, res) => {
+    this.server = http.createServer(async (req, res) => {
       const parsed = new URL(req.url ?? '/', 'http://monitor.local');
       const path = parsed.pathname ?? '/';
       if (path === '/healthz' || path === '/readyz') {
-        const health = this.getHealth();
-        const status = health?.ok ? 200 : 503;
-        const body = JSON.stringify({
-          ...health,
-          ok: Boolean(health?.ok),
-        });
+        try {
+          const health = await this.getHealth();
+          const status = health?.ok ? 200 : 503;
+          const body = JSON.stringify({
+            ...health,
+            ok: Boolean(health?.ok),
+          });
 
-        res.writeHead(status, {
-          'Content-Type': 'application/json; charset=utf-8',
-          'Cache-Control': 'no-store',
-        });
-        res.end(body);
+          res.writeHead(status, {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Cache-Control': 'no-store',
+          });
+          res.end(body);
+        } catch (err) {
+          this.logger?.error?.('Monitoring health check failed', {
+            error: err instanceof Error
+              ? { name: err.name, message: err.message, stack: err.stack }
+              : String(err),
+          });
+          res.writeHead(503, {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Cache-Control': 'no-store',
+          });
+          res.end(JSON.stringify({
+            ok: false,
+            error: 'Health check failed',
+          }));
+        }
         return;
       }
 

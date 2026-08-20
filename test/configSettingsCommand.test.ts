@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { CommandRegistry } from '../src/bot/commandRegistry.ts';
 import { registerCommands } from '../src/bot/commands/index.ts';
+import { createTranslator } from '../src/i18n/index.ts';
 
 type SettingsExecute = NonNullable<NonNullable<ReturnType<CommandRegistry['resolve']>>['execute']>;
 
@@ -32,6 +33,7 @@ test('settings command shows 24/7 status with the active voice channel tag', asy
         };
       },
     },
+    t: createTranslator('en'),
     reply: {
       async info(title: string, fields: Array<{ name: string; value: string; inline?: boolean }>) {
         replyTitle = title;
@@ -60,6 +62,7 @@ test('settings command shows 24/7 status with the active voice channel tag', asy
           prefix: '!',
           settings: {
             stayInVoiceEnabled: false,
+            earrapeProtectionEnabled: true,
             minimalMode: false,
             dedupeEnabled: false,
             volumePercent: 100,
@@ -79,4 +82,7 @@ test('settings command shows 24/7 status with the active voice channel tag', asy
   const stayField = replyFields.find((field) => field.name === '24/7');
   assert.ok(stayField);
   assert.equal(stayField.value, '<#222222>: on');
+  const earrapeField = replyFields.find((field) => field.name === 'Earrape Protection');
+  assert.ok(earrapeField);
+  assert.equal(earrapeField.value, 'on (bot undeafens)');
 });

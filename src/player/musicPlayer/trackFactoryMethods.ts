@@ -17,6 +17,8 @@ type TrackFactoryInput = {
   spotifyTrackId?: string | null;
   spotifyPreviewUrl?: string | null;
   isrc?: string | null;
+  nodelinkEncodedTrack?: string | null;
+  nodelinkInfo?: Record<string, unknown> | null;
   isPreview?: boolean;
   isLive?: boolean;
   seekStartSec?: number;
@@ -40,6 +42,8 @@ export const trackFactoryMethods = {
     spotifyTrackId = null,
     spotifyPreviewUrl = null,
     isrc = null,
+    nodelinkEncodedTrack = null,
+    nodelinkInfo = null,
     isPreview = false,
     isLive = false,
     seekStartSec = 0,
@@ -66,6 +70,8 @@ export const trackFactoryMethods = {
       spotifyTrackId: spotifyTrackId ? String(spotifyTrackId) : null,
       spotifyPreviewUrl: normalizedSpotifyPreview,
       isrc: isrc ? String(isrc).trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12) || null : null,
+      nodelinkEncodedTrack: nodelinkEncodedTrack ? String(nodelinkEncodedTrack) : null,
+      nodelinkInfo: nodelinkInfo && typeof nodelinkInfo === 'object' ? { ...nodelinkInfo } : null,
       isPreview: Boolean(isPreview),
       isLive: Boolean(isLive),
       queuedAt: Date.now(),

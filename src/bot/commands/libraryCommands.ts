@@ -1,4 +1,5 @@
 import { ValidationError } from '../../core/errors.ts';
+import type { TranslationKey, Translator } from '../../i18n/index.ts';
 import { buildInfoPayload, buildSingleFieldInfoPayload } from './responseUtils.ts';
 import {
   listAvailableRadioStations,
@@ -43,6 +44,8 @@ type PlaylistLibrary = LibraryLike & {
   }>;
   removeUserFavorite: (userId: string, index: number) => Promise<TrackDataLike | null>;
   getUserFavorite: (userId: string, index: number) => Promise<TrackDataLike | null>;
+  getUserFavoriteByAlias: (userId: string, alias: string) => Promise<TrackDataLike | null>;
+  renameUserFavorite: (userId: string, index: number, alias: string) => Promise<TrackDataLike | null>;
   listGuildStations?: (guildId: string) => Promise<RadioStationRecord[]>;
   getGuildStation?: (guildId: string, name: string) => Promise<RadioStationRecord | null>;
   setGuildStation?: (guildId: string, name: string, station: SavedStationInput, authorId?: string | null) => Promise<RadioStationRecord>;
@@ -66,14 +69,14 @@ type LibraryHelperBundle = {
     hidden?: boolean;
     execute?: (ctx: CommandContextLike) => unknown;
   }>(definition: T) => Readonly<T>;
-  ensureGuild: (ctx: Pick<CommandContextLike, 'guildId'>) => void;
+  ensureGuild: (ctx: Pick<CommandContextLike, 'guildId' | 't'>) => void;
   requireLibrary: (ctx: CommandContextLike) => LibraryLike;
   getGuildConfigOrThrow: (ctx: CommandContextLike) => Promise<GuildConfigLike>;
-  ensureDjAccessByConfig: (ctx: CommandContextLike, guildConfig: GuildConfigLike, actionLabel: string) => void;
+  ensureDjAccessByConfig: (ctx: CommandContextLike, guildConfig: GuildConfigLike, actionLabel: TranslationKey) => void;
   userHasDjAccessByConfig: (ctx: CommandContextLike, guildConfig: GuildConfigLike) => boolean;
-  ensureManageGuildAccess: (ctx: CommandContextLike, actionLabel: string) => Promise<void>;
-  parseRequiredInteger: (value: unknown, label: string) => number;
-  normalizeIndex: (value: unknown, label: string) => number;
+  ensureManageGuildAccess: (ctx: CommandContextLike, actionLabel: TranslationKey) => Promise<void>;
+  parseRequiredInteger: (value: unknown, label: TranslationKey, t: Translator) => number;
+  normalizeIndex: (value: unknown, label: TranslationKey, t: Translator) => number;
   trackLabel: (track: TrackLike) => string;
   ensureConnectedSession: (ctx: CommandContextLike) => Promise<SessionLike>;
   resolveQueueGuard: (ctx: CommandContextLike) => Promise<QueueGuardLike | null>;
@@ -86,6 +89,14 @@ function toTrackLike(track: TrackDataLike | null | undefined): TrackLike {
     ...(track?.duration != null ? { duration: track.duration } : {}),
     requestedBy: track?.requestedBy ?? null,
   };
+}
+
+function formatFavoriteLine(track: TrackDataLike, absoluteIndex: number): string {
+  const alias = String(track?.alias ?? '').trim();
+  const title = String(track?.title ?? '').trim() || 'Unknown title';
+  const duration = String(track?.duration ?? '').trim() || 'Unknown';
+  const value = alias || title;
+  return `${absoluteIndex}. ${value} (${duration})`;
 }
 
 function chunkLines(lines: unknown, maxChars = 1000): string[] {
@@ -144,10 +155,6 @@ async function validateRadioStationUrl(ctx: CommandContextLike, url: string) {
     voiceChannelId: ctx.activeVoiceChannelId,
     textChannelId: ctx.channelId,
   });
-  ctx.sessions.bindTextChannel(ctx.guildId, ctx.channelId, {
-    voiceChannelId: ctx.activeVoiceChannelId,
-    textChannelId: ctx.channelId,
-  });
 
   const preview = await session.player.previewTracks(url, {
     requestedBy: ctx.authorId,
@@ -155,11 +162,11 @@ async function validateRadioStationUrl(ctx: CommandContextLike, url: string) {
   });
   const track = preview[0] ?? null;
   if (!track) {
-    throw new ValidationError('No playable stream found for that station URL.');
+    throw new ValidationError(ctx.t('station.noPlayableStream'));
   }
 
   if (String(track.source ?? '').trim().toLowerCase() !== 'radio-stream') {
-    throw new ValidationError('That URL resolved to a normal track/file, not a live radio stream.');
+    throw new ValidationError(ctx.t('station.notLiveStream'));
   }
 
   return track;
@@ -194,13 +201,13 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
 
       const action = String(ctx.args[0] ?? 'list').toLowerCase();
       const guildConfig = await getGuildConfigOrThrow(ctx);
-      const enforceWriteAccess = () => ensureDjAccessByConfig(ctx, guildConfig, 'manage playlists');
+      const enforceWriteAccess = () => ensureDjAccessByConfig(ctx, guildConfig, 'access.managePlaylists');
 
       if (action === 'list') {
-        const page = ctx.args[1] ? parseRequiredInteger(ctx.args[1], 'Page') : 1;
+        const page = ctx.args[1] ? parseRequiredInteger(ctx.args[1], 'field.page', ctx.t) : 1;
         const result = await library.listGuildPlaylists(ctx.guildId, page, h.PLAYLIST_PAGE_SIZE);
         if (!result.items.length) {
-          await ctx.reply.warning('No playlists in this guild yet.');
+          await ctx.reply.warning(ctx.t('playlist.none'));
           return;
         }
 
@@ -212,16 +219,16 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
         const pages = chunkLines(lines, 1000);
         if (pages.length === 1) {
           await ctx.reply.info(
-            `Playlists page **${result.page}/${result.totalPages}** • Total: **${result.total}**`,
-            [{ name: 'Guild playlists', value: pages[0]! }]
+            ctx.t('playlist.listSummary', { page: result.page, totalPages: result.totalPages, total: result.total }),
+            [{ name: ctx.t('playlist.guildPlaylists'), value: pages[0]! }]
           );
           return;
         }
 
         await typedCtx.sendPaginated(pages.map((value, idx) => buildSingleFieldInfoPayload(
           ctx,
-          `Guild playlists (${idx + 1}/${pages.length})`,
-          `Page **${result.page}/${result.totalPages}** • Total: **${result.total}**`,
+          ctx.t('playlist.listTitlePaged', { current: idx + 1, total: pages.length }),
+          ctx.t('playlist.pageSummary', { page: result.page, totalPages: result.totalPages, total: result.total }),
           'Guild playlists',
           value
         )));
@@ -232,11 +239,11 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
         enforceWriteAccess();
         const name = ctx.args.slice(1).join(' ').trim();
         if (!name) {
-          throw new ValidationError(`Usage: ${ctx.prefix}playlist create <name>`);
+          throw new ValidationError(ctx.t('playlist.usageCreate', { prefix: ctx.prefix }));
         }
 
         const created = await library.createGuildPlaylist(ctx.guildId, name, ctx.authorId);
-        await ctx.reply.success(`Created playlist **${created.name}**.`);
+        await ctx.reply.success(ctx.t('playlist.created', { name: created.name }));
         return;
       }
 
@@ -244,34 +251,34 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
         enforceWriteAccess();
         const name = String(ctx.args[1] ?? '').trim();
         if (!name) {
-          throw new ValidationError(`Usage: ${ctx.prefix}playlist delete <name>`);
+          throw new ValidationError(ctx.t('playlist.usageDelete', { prefix: ctx.prefix }));
         }
 
         const removed = await library.deleteGuildPlaylist(ctx.guildId, name);
         if (!removed) {
-          await ctx.reply.warning(`Playlist **${name}** not found.`);
+          await ctx.reply.warning(ctx.t('playlist.notFound', { name }));
           return;
         }
 
-        await ctx.reply.success(`Deleted playlist **${name}**.`);
+        await ctx.reply.success(ctx.t('playlist.deleted', { name }));
         return;
       }
 
       if (action === 'show') {
         const name = String(ctx.args[1] ?? '').trim();
         if (!name) {
-          throw new ValidationError(`Usage: ${ctx.prefix}playlist show <name> [page]`);
+          throw new ValidationError(ctx.t('playlist.usageShow', { prefix: ctx.prefix }));
         }
 
-        const page = ctx.args[2] ? parseRequiredInteger(ctx.args[2], 'Page') : 1;
+        const page = ctx.args[2] ? parseRequiredInteger(ctx.args[2], 'field.page', ctx.t) : 1;
         const playlist = await library.getGuildPlaylist(ctx.guildId, name);
         if (!playlist) {
-          await ctx.reply.warning(`Playlist **${name}** not found.`);
+          await ctx.reply.warning(ctx.t('playlist.notFound', { name }));
           return;
         }
 
         if (!playlist.tracks.length) {
-          await ctx.reply.info(`Playlist **${playlist.name}** is empty.`);
+          await ctx.reply.info(ctx.t('playlist.empty', { name: playlist.name }));
           return;
         }
 
@@ -284,8 +291,8 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
         const pages = chunkLines(lines, 1000);
         if (pages.length === 1) {
           await ctx.reply.info(
-            `Playlist **${playlist.name}** • Page **${safePage}/${totalPages}** • Tracks: **${playlist.tracks.length}**`,
-            [{ name: 'Tracks', value: pages[0]! }]
+            ctx.t('playlist.showSummary', { name: playlist.name, page: safePage, totalPages, count: playlist.tracks.length }),
+            [{ name: ctx.t('common.tracks'), value: pages[0]! }]
           );
           return;
         }
@@ -305,15 +312,11 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
         const name = String(ctx.args[1] ?? '').trim();
         const query = ctx.args.slice(2).join(' ').trim();
         if (!name || !query) {
-          throw new ValidationError(`Usage: ${ctx.prefix}playlist add <name> <query|url>`);
+          throw new ValidationError(ctx.t('playlist.usageAdd', { prefix: ctx.prefix }));
         }
 
         await typedCtx.safeTyping?.();
         const session = await ctx.sessions.ensure(ctx.guildId, ctx.guildConfig, {
-          voiceChannelId: ctx.activeVoiceChannelId,
-          textChannelId: ctx.channelId,
-        });
-        ctx.sessions.bindTextChannel(ctx.guildId, ctx.channelId, {
           voiceChannelId: ctx.activeVoiceChannelId,
           textChannelId: ctx.channelId,
         });
@@ -323,15 +326,15 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
         });
 
         if (!resolved.length) {
-          await ctx.reply.warning('No tracks found for this playlist add query.');
+          await ctx.reply.warning(ctx.t('playlist.noTracksFound'));
           return;
         }
 
         const addResult = await library.addTracksToGuildPlaylist(ctx.guildId, name, resolved, ctx.authorId);
         await ctx.reply.success(
-          `Added **${addResult.addedCount}** track(s) to **${addResult.playlistName}**.`,
+          ctx.t('playlist.added', { count: addResult.addedCount, name: addResult.playlistName }),
           addResult.droppedCount > 0
-            ? [{ name: 'Skipped', value: `${addResult.droppedCount} over playlist limit.` }]
+            ? [{ name: ctx.t('playlist.skipped'), value: ctx.t('playlist.overLimit', { count: addResult.droppedCount }) }]
             : null
         );
         return;
@@ -340,30 +343,30 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
       if (action === 'remove') {
         enforceWriteAccess();
         const name = String(ctx.args[1] ?? '').trim();
-        const index = normalizeIndex(ctx.args[2], 'Track index');
+        const index = normalizeIndex(ctx.args[2], 'field.trackIndex', ctx.t);
         if (!name) {
-          throw new ValidationError(`Usage: ${ctx.prefix}playlist remove <name> <index>`);
+          throw new ValidationError(ctx.t('playlist.usageRemove', { prefix: ctx.prefix }));
         }
 
         const removed = await library.removeTrackFromGuildPlaylist(ctx.guildId, name, index);
-        await ctx.reply.success(`Removed from **${name}**: ${trackLabel(toTrackLike(removed))}`);
+        await ctx.reply.success(ctx.t('playlist.removed', { name, track: trackLabel(toTrackLike(removed)) }));
         return;
       }
 
       if (action === 'play') {
         const name = String(ctx.args[1] ?? '').trim();
         if (!name) {
-          throw new ValidationError(`Usage: ${ctx.prefix}playlist play <name>`);
+          throw new ValidationError(ctx.t('playlist.usagePlay', { prefix: ctx.prefix }));
         }
 
         const playlist = await library.getGuildPlaylist(ctx.guildId, name);
         if (!playlist) {
-          await ctx.reply.warning(`Playlist **${name}** not found.`);
+          await ctx.reply.warning(ctx.t('playlist.notFound', { name }));
           return;
         }
 
         if (!playlist.tracks.length) {
-          await ctx.reply.warning(`Playlist **${playlist.name}** is empty.`);
+          await ctx.reply.warning(ctx.t('playlist.empty', { name: playlist.name }));
           return;
         }
 
@@ -379,7 +382,7 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
         });
 
         if (!added.length) {
-          await ctx.reply.warning('No tracks were added (likely duplicates with dedupe enabled).');
+          await ctx.reply.warning(ctx.t('playlist.noneAdded'));
           return;
         }
 
@@ -388,7 +391,7 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
         }
 
         typedCtx.sessions.markSnapshotDirty?.(session, true);
-        await ctx.reply.success(`Queued **${added.length}** track(s) from playlist **${playlist.name}**.`);
+        await ctx.reply.success(ctx.t('playlist.queued', { count: added.length, name: playlist.name }));
         return;
       }
 
@@ -410,15 +413,15 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
       const args = [...ctx.args];
       const maybePage = args.length ? String(args[args.length - 1] ?? '').trim() : '';
       const pageProvided = /^\d+$/.test(maybePage);
-      const page = pageProvided ? parseRequiredInteger(args.pop(), 'Page') : 1;
+      const page = pageProvided ? parseRequiredInteger(args.pop(), 'field.page', ctx.t) : 1;
       const query = args.join(' ').trim();
       const guildStations = await library.listGuildStations?.(ctx.guildId).catch(() => []) ?? [];
       const stations = listAvailableRadioStations(guildStations, query);
       if (!stations.length) {
         await ctx.reply.warning(
           query
-            ? `No radio stations matched **${query}**.`
-            : 'No radio stations are available yet.'
+            ? ctx.t('station.noMatch', { query })
+            : ctx.t('radio.noneAvailable')
         );
         return;
       }
@@ -431,11 +434,11 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
             const next = paginate(stations, nextPage, h.PLAYLIST_PAGE_SIZE);
             const lines = next.items.map((station, idx) => formatStationLine(station, next.start + idx + 1));
             const summary = query
-              ? `Stations for **${query}** • Page **${next.page}/${next.totalPages}** • Total: **${next.total}**`
-              : `Radio stations • Page **${next.page}/${next.totalPages}** • Total: **${next.total}**`;
-            payloads.push(buildInfoPayload(ctx, 'Stations', summary, [
-              { name: 'Stations', value: lines.join('\n') || '-' },
-              { name: 'Use', value: `\`${ctx.prefix}radio <number|name|url>\`` },
+              ? ctx.t('station.listSummaryQuery', { query, page: next.page, totalPages: next.totalPages, total: next.total })
+              : ctx.t('station.listSummary', { page: next.page, totalPages: next.totalPages, total: next.total });
+            payloads.push(buildInfoPayload(ctx, ctx.t('station.stations'), summary, [
+              { name: ctx.t('station.stations'), value: lines.join('\n') || '-' },
+              { name: ctx.t('station.use'), value: `\`${ctx.prefix}radio <number|name|url>\`` },
             ]));
           }
 
@@ -448,13 +451,13 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
       const lines = result.items.map((station, idx) => formatStationLine(station, result.start + idx + 1));
       const pages = chunkLines(lines, 1000);
       const summary = query
-        ? `Stations for **${query}** • Page **${result.page}/${result.totalPages}** • Total: **${result.total}**`
-        : `Radio stations • Page **${result.page}/${result.totalPages}** • Total: **${result.total}**`;
+        ? ctx.t('station.listSummaryQuery', { query, page: result.page, totalPages: result.totalPages, total: result.total })
+        : ctx.t('station.listSummary', { page: result.page, totalPages: result.totalPages, total: result.total });
 
       if (pages.length === 1) {
         await ctx.reply.info(summary, [
-          { name: 'Stations', value: pages[0]! },
-          { name: 'Use', value: `\`${ctx.prefix}radio <number|name|url>\`` },
+          { name: ctx.t('station.stations'), value: pages[0]! },
+          { name: ctx.t('station.use'), value: `\`${ctx.prefix}radio <number|name|url>\`` },
         ]);
         return;
       }
@@ -484,15 +487,15 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
         const configuredDjRoles = guildConfig?.settings?.djRoleIds;
         const hasConfiguredDjRoles = Array.isArray(configuredDjRoles) && configuredDjRoles.length > 0;
         if (hasConfiguredDjRoles && userHasDjAccessByConfig(ctx, guildConfig)) return;
-        await ensureManageGuildAccess(ctx, 'manage radio presets');
+        await ensureManageGuildAccess(ctx, 'access.manageStations');
       };
 
       if (action === 'list') {
         const pageProvided = Boolean(ctx.args[1]);
-        const page = pageProvided ? parseRequiredInteger(ctx.args[1], 'Page') : 1;
+        const page = pageProvided ? parseRequiredInteger(ctx.args[1], 'field.page', ctx.t) : 1;
         const guildStations = await library.listGuildStations?.(ctx.guildId).catch(() => []) ?? [];
         if (!guildStations.length) {
-          await ctx.reply.warning('No guild radio presets saved yet.');
+          await ctx.reply.warning(ctx.t('station.noneSaved'));
           return;
         }
 
@@ -524,7 +527,7 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
         const summary = `Guild radio presets • Page **${result.page}/${result.totalPages}** • Total: **${result.total}**`;
 
         if (pages.length === 1) {
-          await ctx.reply.info(summary, [{ name: 'Presets', value: pages[0]! }]);
+          await ctx.reply.info(summary, [{ name: ctx.t('station.presets'), value: pages[0]! }]);
           return;
         }
 
@@ -541,28 +544,28 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
       if (action === 'show') {
         const query = ctx.args.slice(1).join(' ').trim();
         if (!query) {
-          throw new ValidationError(`Usage: ${ctx.prefix}station show <name>`);
+          throw new ValidationError(ctx.t('station.usageShow', { prefix: ctx.prefix }));
         }
 
         const guildStations = await library.listGuildStations?.(ctx.guildId).catch(() => []) ?? [];
         const selection = resolveRadioStationSelection(guildStations, query);
         if (!selection.station) {
           if (selection.matches.length) {
-            await ctx.reply.info(`Multiple stations matched **${query}**.`, [
-              { name: 'Matches', value: selection.matches.map((station, idx) => formatStationLine(station, idx + 1)).join('\n') },
+            await ctx.reply.info(ctx.t('radio.multipleMatches', { query }), [
+              { name: ctx.t('radio.matches'), value: selection.matches.map((station, idx) => formatStationLine(station, idx + 1)).join('\n') },
             ]);
             return;
           }
-          await ctx.reply.warning(`Station **${query}** not found.`);
+          await ctx.reply.warning(ctx.t('station.notFound', { name: query }));
           return;
         }
 
         const station = selection.station;
-        await ctx.reply.info(`Station: **${station.name}**`, [
-          { name: 'Source', value: station.scope === 'guild' ? 'Guild preset' : 'Built-in preset', inline: true },
-          { name: 'Tags', value: station.tags.length ? station.tags.join(', ') : '-', inline: true },
-          { name: 'URL', value: station.url },
-          ...(station.description ? [{ name: 'Description', value: station.description }] : []),
+        await ctx.reply.info(ctx.t('station.showTitle', { name: station.name }), [
+          { name: ctx.t('common.source'), value: station.scope === 'guild' ? ctx.t('station.guildPreset') : ctx.t('station.builtinPreset'), inline: true },
+          { name: ctx.t('station.tags'), value: station.tags.length ? station.tags.join(', ') : '-', inline: true },
+          { name: ctx.t('station.url'), value: station.url },
+          ...(station.description ? [{ name: ctx.t('station.description'), value: station.description }] : []),
         ]);
         return;
       }
@@ -572,7 +575,7 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
         const url = String(ctx.args[ctx.args.length - 1] ?? '').trim();
         const name = ctx.args.slice(1, -1).join(' ').trim();
         if (!name || !isHttpUrl(url)) {
-          throw new ValidationError(`Usage: ${ctx.prefix}station save <name> <http(s) url>`);
+          throw new ValidationError(ctx.t('station.usageSave', { prefix: ctx.prefix }));
         }
 
         await typedCtx.safeTyping?.();
@@ -583,11 +586,11 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
           tags: [],
         }, ctx.authorId);
         if (!saved) {
-          throw new ValidationError('Guild station storage is unavailable.');
+          throw new ValidationError(ctx.t('station.storageUnavailable'));
         }
 
-        await ctx.reply.success(`Saved radio preset **${saved.name ?? name}**.`, [
-          { name: 'Resolved Stream', value: String(validatedTrack.url ?? url).trim() || url },
+        await ctx.reply.success(ctx.t('station.saved', { name: saved.name ?? name }), [
+          { name: ctx.t('station.resolvedStream'), value: String(validatedTrack.url ?? url).trim() || url },
         ]);
         return;
       }
@@ -596,20 +599,20 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
         await enforceWriteAccess();
         const name = ctx.args.slice(1).join(' ').trim();
         if (!name) {
-          throw new ValidationError(`Usage: ${ctx.prefix}station delete <name>`);
+          throw new ValidationError(ctx.t('station.usageDelete', { prefix: ctx.prefix }));
         }
 
         const removed = await library.deleteGuildStation?.(ctx.guildId, name);
         if (!removed) {
-          await ctx.reply.warning(`Guild radio preset **${name}** not found.`);
+          await ctx.reply.warning(ctx.t('station.presetNotFound', { name }));
           return;
         }
 
-        await ctx.reply.success(`Deleted radio preset **${name}**.`);
+        await ctx.reply.success(ctx.t('station.deleted', { name }));
         return;
       }
 
-      throw new ValidationError(`Usage: ${ctx.prefix}station <list|show|save|delete> ...`);
+      throw new ValidationError(ctx.t('station.usage', { prefix: ctx.prefix }));
     },
   }));
 
@@ -621,7 +624,7 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
     async execute(ctx: CommandContextLike) {
       const library = requireLibrary(ctx) as PlaylistLibrary;
       if (!ctx.authorId) {
-        throw new ValidationError('Cannot resolve your user id for favorites.');
+        throw new ValidationError(ctx.t('favorites.userIdUnresolved'));
       }
 
       let baseTrack = null;
@@ -630,10 +633,6 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
       if (query) {
         ensureGuild(ctx);
         const session = await ctx.sessions.ensure(ctx.guildId, ctx.guildConfig, {
-          voiceChannelId: ctx.activeVoiceChannelId,
-          textChannelId: ctx.channelId,
-        });
-        ctx.sessions.bindTextChannel(ctx.guildId, ctx.channelId, {
           voiceChannelId: ctx.activeVoiceChannelId,
           textChannelId: ctx.channelId,
         });
@@ -651,12 +650,12 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
       }
 
       if (!baseTrack) {
-        throw new ValidationError('Nothing to favorite. Play a track or provide a query.');
+        throw new ValidationError(ctx.t('favorites.nothingToSave'));
       }
 
       const result = await library.addUserFavorite(ctx.authorId, baseTrack);
       if (!result.added) {
-        await ctx.reply.info('Track is already in your favorites.');
+        await ctx.reply.info(ctx.t('favorites.alreadySaved'));
         return;
       }
 
@@ -669,7 +668,7 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
         ).catch(() => null);
       }
 
-      await ctx.reply.success(`Saved to favorites: ${trackLabel(toTrackLike(result.track))}`);
+      await ctx.reply.success(ctx.t('favorites.saved', { track: trackLabel(toTrackLike(result.track)) }));
     },
   }));
 
@@ -682,22 +681,25 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
       const typedCtx = ctx as LibraryCommandContext;
       const library = requireLibrary(ctx) as PlaylistLibrary;
       if (!ctx.authorId) {
-        throw new ValidationError('Cannot resolve your user id for favorites.');
+        throw new ValidationError(ctx.t('favorites.userIdUnresolved'));
       }
 
-      const page = ctx.args.length ? parseRequiredInteger(ctx.args[0], 'Page') : 1;
+      const page = ctx.args.length ? parseRequiredInteger(ctx.args[0], 'field.page', ctx.t) : 1;
       const result = await library.listUserFavorites(ctx.authorId, page, h.FAVORITES_PAGE_SIZE);
       if (!result.items.length) {
-        await ctx.reply.warning('You have no favorite tracks yet.');
+        await ctx.reply.warning(ctx.t('favorites.empty'));
         return;
       }
 
-      const lines = result.items.map((track: TrackDataLike, idx: number) => `${(result.page - 1) * result.pageSize + idx + 1}. ${trackLabel(toTrackLike(track))}`);
+      const lines = result.items.map((track: TrackDataLike, idx: number) => formatFavoriteLine(
+        track,
+        (result.page - 1) * result.pageSize + idx + 1
+      ));
       const pages = chunkLines(lines, 1000);
       if (pages.length === 1) {
         await ctx.reply.info(
           `Favorites page **${result.page}/${result.totalPages}** • Total: **${result.total}**`,
-          [{ name: 'Your favorites', value: pages[0]! }]
+          [{ name: ctx.t('favorites.yours'), value: pages[0]! }]
         );
         return;
       }
@@ -713,6 +715,33 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
   }));
 
   registry.register(createCommand({
+    name: 'favname',
+    aliases: ['fn'],
+    description: 'Set a custom alias name for one of your favorites.',
+    usage: 'favname <index> <alias>',
+    async execute(ctx: CommandContextLike) {
+      const library = requireLibrary(ctx) as PlaylistLibrary;
+      if (!ctx.authorId) {
+        throw new ValidationError(ctx.t('favorites.userIdUnresolved'));
+      }
+
+      const index = normalizeIndex(ctx.args[0], 'field.index', ctx.t);
+      const alias = ctx.args.slice(1).join(' ').trim();
+      if (!alias) {
+        throw new ValidationError(ctx.t('favorites.usageRename', { prefix: ctx.prefix }));
+      }
+
+      const renamed = await library.renameUserFavorite(ctx.authorId, index, alias);
+      if (!renamed) {
+        await ctx.reply.warning(ctx.t('favorites.indexOutOfRange'));
+        return;
+      }
+
+      await ctx.reply.success(ctx.t('favorites.aliasUpdated', { alias: String(renamed.alias ?? alias).trim() }));
+    },
+  }));
+
+  registry.register(createCommand({
     name: 'ufav',
     aliases: ['unfav'],
     description: 'Remove a favorite by index.',
@@ -720,37 +749,42 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
     async execute(ctx: CommandContextLike) {
       const library = requireLibrary(ctx) as PlaylistLibrary;
       if (!ctx.authorId) {
-        throw new ValidationError('Cannot resolve your user id for favorites.');
+        throw new ValidationError(ctx.t('favorites.userIdUnresolved'));
       }
 
-      const index = normalizeIndex(ctx.args[0], 'Index');
+      const index = normalizeIndex(ctx.args[0], 'field.index', ctx.t);
       const removed = await library.removeUserFavorite(ctx.authorId, index);
       if (!removed) {
-        await ctx.reply.warning('Favorite index out of range.');
+        await ctx.reply.warning(ctx.t('favorites.indexOutOfRange'));
         return;
       }
 
-      await ctx.reply.success(`Removed favorite: ${trackLabel(toTrackLike(removed))}`);
+      await ctx.reply.success(ctx.t('favorites.removed', { track: trackLabel(toTrackLike(removed)) }));
     },
   }));
 
   registry.register(createCommand({
     name: 'favplay',
     aliases: ['fp'],
-    description: 'Queue one of your favorites by index.',
-    usage: 'favplay <index>',
+    description: 'Queue one of your favorites by index or alias.',
+    usage: 'favplay <index|alias>',
     async execute(ctx: CommandContextLike) {
       const typedCtx = ctx as LibraryCommandContext;
       ensureGuild(ctx);
       const library = requireLibrary(ctx) as PlaylistLibrary;
       if (!ctx.authorId) {
-        throw new ValidationError('Cannot resolve your user id for favorites.');
+        throw new ValidationError(ctx.t('favorites.userIdUnresolved'));
       }
 
-      const index = normalizeIndex(ctx.args[0], 'Index');
-      const favorite = await library.getUserFavorite(ctx.authorId, index);
+      const selector = ctx.args.join(' ').trim();
+      if (!selector) {
+        throw new ValidationError(ctx.t('favorites.usagePlay', { prefix: ctx.prefix }));
+      }
+      const favorite = /^\d+$/.test(selector)
+        ? await library.getUserFavorite(ctx.authorId, normalizeIndex(selector, 'field.index', ctx.t))
+        : await library.getUserFavoriteByAlias(ctx.authorId, selector);
       if (!favorite) {
-        await ctx.reply.warning('Favorite index out of range.');
+        await ctx.reply.warning(/^\d+$/.test(selector) ? ctx.t('favorites.indexOutOfRange') : ctx.t('favorites.aliasNotFound'));
         return;
       }
 
@@ -765,7 +799,7 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
         queueGuard,
       });
       if (!added.length) {
-        await ctx.reply.warning('Favorite is already in queue (dedupe enabled).');
+        await ctx.reply.warning(ctx.t('favorites.duplicate'));
         return;
       }
 
@@ -774,7 +808,7 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
       }
 
       typedCtx.sessions.markSnapshotDirty?.(session, true);
-      await ctx.reply.success(`Added favorite to queue: ${trackLabel(toTrackLike(added[0] ?? null))}`);
+      await ctx.reply.success(ctx.t('favorites.queued', { track: trackLabel(toTrackLike(added[0] ?? null)) }));
     },
   }));
 }

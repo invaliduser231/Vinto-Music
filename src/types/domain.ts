@@ -1,4 +1,4 @@
-import type { BivariantCallback, LoggerLike } from './core.ts';
+import type { BivariantCallback, LoggerLike, MessagePayload } from './core.ts';
 import type { AppConfig } from '../config.ts';
 
 export type ChannelId = string | null;
@@ -28,6 +28,17 @@ export interface Track {
   spotifyTrackId?: string | null;
   spotifyPreviewUrl?: string | null;
   isrc?: string | null;
+  nodelinkEncodedTrack?: string | null;
+  nodelinkInfo?: {
+    identifier?: string | null;
+    sourceName?: string | null;
+    uri?: string | null;
+    isSeekable?: boolean | null;
+    isStream?: boolean | null;
+    length?: number | null;
+    artworkUrl?: string | null;
+    isrc?: string | null;
+  } | null;
   isPreview?: boolean;
   isLive?: boolean;
   queuedAt?: number;
@@ -43,6 +54,7 @@ export interface VoiceProfileSettings {
 export interface SessionSettings {
   dedupeEnabled?: boolean;
   stayInVoiceEnabled?: boolean;
+  earrapeProtectionEnabled?: boolean;
   minimalMode?: boolean;
   volumePercent?: number;
   voteSkipRatio?: number;
@@ -57,6 +69,7 @@ export interface GuildConfig {
   settings: {
     dedupeEnabled?: boolean;
     stayInVoiceEnabled?: boolean;
+    earrapeProtectionEnabled?: boolean;
     minimalMode?: boolean;
     volumePercent?: number;
     voteSkipRatio?: number;
@@ -132,6 +145,9 @@ export interface VoiceConnectionLike {
   stopAudio?: () => unknown;
   pauseAudio?: () => unknown;
   resumeAudio?: () => unknown;
+  setEarrapeProtectionEnabled?: (enabled: unknown) => void;
+  setBotUserId?: (botUserId: unknown) => void;
+  setEarrapeDetectionHandler?: (handler: ((event: unknown) => Promise<unknown> | unknown) | null | undefined) => void;
   getDiagnostics?: () => Promise<unknown>;
 }
 
@@ -147,6 +163,8 @@ export interface MusicPlayerLike {
   pendingTracks?: unknown[];
   loopMode?: string;
   volumePercent?: number;
+  nodeLinkEnabled?: boolean;
+  nodeLinkClient?: { enabled?: boolean } | null;
   queue?: MusicPlayerQueueLike;
   on?: (event: string, listener: BivariantCallback<unknown[], void>) => unknown;
   off?: (event: string, listener: BivariantCallback<unknown[], void>) => unknown;
@@ -182,10 +200,18 @@ export interface Session {
   lastActivityAt?: number;
   textChannelId?: string | null;
   idleTimer?: unknown;
+  kickTimer?: unknown;
+  kickTimerMeta?: SessionKickTimerMeta | null;
   idleTimeoutIgnoreListeners?: boolean;
   diagnostics?: SessionDiagnosticsState;
   snapshot?: SessionSnapshotState;
   restoreState?: SessionRestoreState;
+}
+
+export interface SessionKickTimerMeta {
+  firesAtMs: number;
+  durationSec: number;
+  requestedBy: string | null;
 }
 
 export interface SessionManagerConfigLike extends Partial<AppConfig> {
@@ -203,7 +229,7 @@ export interface SessionManagerConfigLike extends Partial<AppConfig> {
 
 export interface SessionManagerOptions {
   gateway: {
-    joinVoice: (guildId: string, channelId: string) => void;
+    joinVoice: (guildId: string, channelId: string, options?: { selfDeaf?: boolean }) => void;
     leaveVoice: (guildId: string) => void;
     on: (event: string, listener: BivariantCallback<[VoiceServerUpdate], void>) => void;
     off: (event: string, listener: BivariantCallback<[VoiceServerUpdate], void>) => void;
@@ -212,6 +238,7 @@ export interface SessionManagerOptions {
   logger?: LoggerLike | null | undefined;
   guildConfigs?: GuildConfigStoreLike | null;
   library?: LibraryStoreLike | null;
+  earrapeProfiles?: EarrapeProfileStoreLike | null;
   rest?: RestAdapterLike | null;
   voiceStateStore?: VoiceStateStoreLike | null;
   botUserId?: string | null;
@@ -242,12 +269,38 @@ export interface LibraryStoreLike {
   getGuildFeatureConfig?: (guildId: string) => Promise<GuildFeatureConfigDocument | null>;
 }
 
+export interface EarrapeProfileSnapshot {
+  offenseScore: number;
+  offenseEvents: number[];
+  offenseEventCount: number;
+  lastOffenseAtMs: number | null;
+  calmRmsBaseline: number | null;
+}
+
+export interface EarrapeProfileUpdate {
+  offenseDetected?: boolean;
+  calmRmsSample?: number | null;
+}
+
+export interface EarrapeProfileStoreLike {
+  getProfile: (guildId: string, userId: string, nowMs?: number) => Promise<EarrapeProfileSnapshot>;
+  updateProfile: (
+    guildId: string,
+    userId: string,
+    update: EarrapeProfileUpdate,
+    nowMs?: number
+  ) => Promise<EarrapeProfileSnapshot>;
+}
+
 export interface RestAdapterLike {
   getChannel?: (channelId: string) => Promise<unknown>;
+  disconnectMemberFromVoice?: (guildId: string, userId: string) => Promise<unknown>;
+  sendMessage?: (channelId: string, payload: MessagePayload | string) => Promise<unknown>;
 }
 
 export interface VoiceStateStoreLike {
   countUsersInChannel?: (guildId: string, channelId: string, excludedUserIds?: string[]) => number;
+  getUsersInChannel?: (guildId: string, channelId: string) => string[];
 }
 
 export interface PipelineProcess {

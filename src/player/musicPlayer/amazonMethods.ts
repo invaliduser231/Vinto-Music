@@ -128,10 +128,14 @@ type AmazonPlayer = MusicPlayer & {
   _deezerApiRequest: (path: string) => Promise<{ data?: unknown } | null>;
   _pickMirrorSearchQuery: (track: Partial<Track> & { durationInSec?: number | null }) => string | null;
   _searchYouTubeTracks: (query: string, limit: number, requestedBy: string | null) => Promise<Track[]>;
+  _resolveNodeLinkTracks: (query: string, requestedBy: string | null, limit?: number | null) => Promise<Track[]>;
   _cloneTrack: (track: Track, overrides?: Partial<Track>) => Track;
   _searchDeezerTracks: (query: string, limit: number, requestedBy: string | null) => Promise<Track[]>;
   _pickBestSpotifyMirror: (metadataTrack: Partial<Track>, candidates: unknown) => Track | null;
   _resolveCrossSourceToYouTube: (sourceTracks: Array<{ title?: string; artist?: string | null; durationInSec?: number | null }>, requestedBy: string | null, source: string) => Promise<Track[]>;
+  nodeLinkEnabled?: boolean;
+  nodeLinkClient?: { enabled?: boolean } | null;
+  nodeLinkRoutingMode?: string | null;
 };
 type AmazonMethods = {
   _getAmazonLookupConfig(url: string): Promise<AmazonLookupConfig>;
@@ -376,6 +380,13 @@ function inferFallbackTrack(url: string, metadata: AmazonFallbackMetadata) {
   };
 }
 
+function getNodeLinkRoutingMode(value: unknown): 'smart' | 'all' | 'youtube-only' {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (normalized === 'all') return 'all';
+  if (normalized === 'youtube-only' || normalized === 'youtube') return 'youtube-only';
+  return 'smart';
+}
+
 export const amazonMethods: AmazonMethods & ThisType<AmazonPlayer> = {
   async _getAmazonLookupConfig(this: AmazonRuntime, url) {
     const origin = pickAmazonOrigin(url);
@@ -597,7 +608,19 @@ export const amazonMethods: AmazonMethods & ThisType<AmazonPlayer> = {
       throw new ValidationError('Amazon Music mirroring requires YouTube playback, which is currently disabled.');
     }
 
-    const results = await this._searchYouTubeTracks(query, 1, requestedBy).catch(() => []);
+    let results = await (
+      this.nodeLinkEnabled && this.nodeLinkClient?.enabled && getNodeLinkRoutingMode(this.nodeLinkRoutingMode) !== 'youtube-only'
+        ? this._resolveNodeLinkTracks(query, requestedBy, 1)
+        : this._searchYouTubeTracks(query, 1, requestedBy)
+    ).catch(() => []);
+    if (
+      !results.length
+      && this.nodeLinkEnabled
+      && this.nodeLinkClient?.enabled
+      && getNodeLinkRoutingMode(this.nodeLinkRoutingMode) !== 'all'
+    ) {
+      results = await this._searchYouTubeTracks(query, 1, requestedBy).catch(() => []);
+    }
     if (!results.length) {
       throw new ValidationError('Could not resolve Amazon Music URL to a playable track.');
     }

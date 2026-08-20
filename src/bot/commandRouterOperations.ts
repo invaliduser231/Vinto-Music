@@ -1,4 +1,5 @@
 import { SEARCH_PICK_EMOJIS, applyReplyOptionsToPayload, summarizeTrack } from './commandRouterUtils.ts';
+import { createTranslator, type Locale } from '../i18n/index.ts';
 import type { MessagePayload, ReplyOptions, ResponderEmbedOptions } from '../types/core.ts';
 
 type ReplyField = { name: string; value: string; inline?: boolean };
@@ -80,8 +81,10 @@ type RouterLike = {
   };
   logger?: {
     warn?: (message: string, context?: Record<string, unknown>) => void;
+    debug?: (message: string, context?: Record<string, unknown>) => void;
   } | undefined;
   _withGuildOpLock: (guildId: string, key: string, fn: () => Promise<unknown>) => Promise<unknown>;
+  _resolveGuildLocale: (guildId: string | null) => Promise<Locale>;
 };
 
 export async function registerHelpPagination(router: RouterLike, channelId: string, messageId: string, pages: MessagePayload[], index: number = 0) {
@@ -134,17 +137,18 @@ export async function runWeeklyRecapSweep(router: RouterLike) {
     const recap = await router.library.buildGuildRecap(guildId, 7).catch(() => null);
     if (!recap || recap.playCount <= 0) continue;
 
-    const trackLines = recap.topTracks.slice(0, 5).map((entry, i) => `${i + 1}. ${entry.title} (${entry.plays} plays)`);
+    const recapT = createTranslator(await router._resolveGuildLocale(guildId));
+    const trackLines = recap.topTracks.slice(0, 5).map((entry, i) => `${i + 1}. ${entry.title} (${entry.plays})`);
     const userLines = recap.topRequesters.slice(0, 5).map((entry, i) => `${i + 1}. <@${entry.userId}> (${entry.plays})`);
     await safeReply(
       router,
       features.recapChannelId,
       'info',
-      'Weekly music recap',
+      recapT('recap.weeklyTitle'),
       [
-        { name: 'Total Plays (7d)', value: String(recap.playCount), inline: true },
-        { name: 'Top Tracks', value: trackLines.join('\n') || 'No data' },
-        { name: 'Top Requesters', value: userLines.join('\n') || 'No data' },
+        { name: recapT('recap.totalPlays7d'), value: String(recap.playCount), inline: true },
+        { name: recapT('recap.topTracks'), value: trackLines.join('\n') || recapT('common.noData') },
+        { name: recapT('recap.topRequesters'), value: userLines.join('\n') || recapT('common.noData') },
       ]
     );
 
@@ -223,16 +227,17 @@ export async function applySearchReactionSelection(router: RouterLike, state: Se
     textChannelId: state.channelId,
     allowAnyGuildSession: true,
   });
+  const pickT = createTranslator(await router._resolveGuildLocale(state.guildId));
   if (!session) {
-    await safeReply(router, state.channelId, 'warning', 'No active player session. Run the search again.');
+    await safeReply(router, state.channelId, 'warning', pickT('pick.noSession'));
     return;
   }
   if (session.connection?.channelId && userVoiceChannel !== session.connection.channelId) {
-    await safeReply(router, state.channelId, 'warning', 'You must be in the same voice channel as the bot.');
+    await safeReply(router, state.channelId, 'warning', pickT('pick.sameChannelRequired'));
     return;
   }
   if (!session.player?.createTrackFromData || !session.player.enqueueResolvedTracks) {
-    await safeReply(router, state.channelId, 'warning', 'Player session is not ready. Run the search again.');
+    await safeReply(router, state.channelId, 'warning', pickT('pick.sessionNotReady'));
     return;
   }
   const player = session.player;
@@ -253,7 +258,7 @@ export async function applySearchReactionSelection(router: RouterLike, state: Se
       queueGuard,
     });
     if (!added.length) {
-      await safeReply(router, state.channelId, 'warning', 'Track already exists in queue (dedupe enabled).');
+      await safeReply(router, state.channelId, 'warning', pickT('play.duplicate'));
       return;
     }
 
@@ -292,11 +297,27 @@ export async function safeReply(
       handleUnknownGuildForChannel(router, channelId);
     }
 
-    router.logger?.warn?.('Failed to send command response', {
+    const upperMessage = String(errorLike?.message ?? '').toUpperCase();
+    const upperCode = String(errorLike?.code ?? '').toUpperCase();
+    const isExpectedMissingTarget = (
+      errorLike?.status === 404
+      && (
+        upperCode.startsWith('UNKNOWN_')
+        || upperMessage.includes('UNKNOWN_MESSAGE')
+        || upperMessage.includes('UNKNOWN_CHANNEL')
+        || upperMessage.includes('UNKNOWN_GUILD')
+      )
+    );
+    const logPayload = {
       channelId,
       type,
       error: err instanceof Error ? err.message : String(err),
-    });
+    };
+    if (isExpectedMissingTarget) {
+      router.logger?.debug?.('Skipped command response for missing target', logPayload);
+    } else {
+      router.logger?.warn?.('Failed to send command response', logPayload);
+    }
     return null;
   }
 }

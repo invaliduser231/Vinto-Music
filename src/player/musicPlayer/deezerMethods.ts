@@ -560,7 +560,7 @@ export const deezerMethods: LooseMethodMap = {
   },
 
   async _resolveDeezerStreamUrl(track: Partial<Track> | null | undefined) {
-    const trackId = String(track?.deezerTrackId ?? '').trim();
+    const trackId = String(track?.deezerTrackId ?? '').trim() || String(extractDeezerTrackId(track?.url) ?? '').trim();
     const pinned = String(track?.deezerFullStreamUrl ?? '').trim();
     const cachedMeta = (trackId ? this._deezerStreamMetaByTrackId.get(trackId) : null) as
       | { url?: string; cipherType?: string; format?: string | null }

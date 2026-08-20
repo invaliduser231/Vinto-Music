@@ -76,8 +76,9 @@ export class CommandRateLimiter {
     const guildId = input.guildId ? String(input.guildId) : null;
     const userId = input.userId ? String(input.userId) : null;
 
+    let guildBucket: number[] | null = null;
     if (guildId) {
-      const guildCheck = this._consumeBucket({
+      const guildCheck = this._peekBucket({
         map: this.guildBuckets,
         key: guildId,
         now,
@@ -91,11 +92,13 @@ export class CommandRateLimiter {
           retryAfterMs: guildCheck.retryAfterMs,
         };
       }
+      guildBucket = guildCheck.bucket;
     }
 
+    let userBucket: number[] | null = null;
     if (guildId && userId) {
       const key = `${guildId}:${userId}`;
-      const userCheck = this._consumeBucket({
+      const userCheck = this._peekBucket({
         map: this.userBuckets,
         key,
         now,
@@ -109,30 +112,32 @@ export class CommandRateLimiter {
           retryAfterMs: userCheck.retryAfterMs,
         };
       }
+      userBucket = userCheck.bucket;
     }
+
+    if (guildBucket) guildBucket.push(now);
+    if (userBucket) userBucket.push(now);
 
     return { allowed: true };
   }
 
-  _consumeBucket({ map, key, now, windowMs, limit }: ConsumeBucketInput): ConsumeBucketResult {
+  _peekBucket({ map, key, now, windowMs, limit }: ConsumeBucketInput): ConsumeBucketResult & { bucket: number[] | null } {
     if (!key || limit <= 0 || windowMs <= 0) {
-      return { allowed: true };
+      return { allowed: true, bucket: null };
     }
 
     const bucket = map.get(key) ?? [];
     const cutoff = now - windowMs;
     const next = bucket.filter((ts: number) => ts > cutoff);
+    map.set(key, next);
 
     if (next.length >= limit) {
       const oldestInWindow = next[0] ?? now;
       const retryAfterMs = Math.max(100, windowMs - (now - oldestInWindow));
-      map.set(key, next);
-      return { allowed: false, retryAfterMs };
+      return { allowed: false, retryAfterMs, bucket: null };
     }
 
-    next.push(now);
-    map.set(key, next);
-    return { allowed: true };
+    return { allowed: true, bucket: next };
   }
 
   _cleanup(now: number): void {

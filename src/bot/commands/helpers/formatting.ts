@@ -1,6 +1,7 @@
 import { ValidationError } from '../../../core/errors.ts';
-import { buildEmbed } from '../../messageFormatter.ts';
-import type { CommandDefinition, MessagePayload } from '../../../types/core.ts';
+import { buildEmbed, sourceLabel } from '../../messageFormatter.ts';
+import type { CommandDefinition, EmbedAuthor, MessagePayload } from '../../../types/core.ts';
+import type { TranslationKey, Translator } from '../../../i18n/index.ts';
 import {
   EMBED_FIELD_TEXT_LIMIT,
   HISTORY_PAGE_SIZE,
@@ -16,6 +17,8 @@ type TrackLike = {
   title?: string | null;
   isLive?: boolean | null;
   url?: string | null;
+  artist?: string | null;
+  source?: string | null;
 };
 
 type SessionLike = {
@@ -60,11 +63,12 @@ function formatTrackListLine(
   track: TrackLike,
   index: number | null = null,
   maxChars: number = TRACK_LINE_MAX_CHARS,
-  options: { includeRequester?: boolean } = {},
+  options: { includeRequester?: boolean; t?: Translator } = {},
 ) {
   const prefix = Number.isFinite(index) ? `${index}. ` : '';
-  const by = options.includeRequester !== false && track?.requestedBy ? ` • requested by <@${track.requestedBy}>` : '';
-  const duration = String(track?.duration ?? 'Unknown');
+  const requesterLabel = options.t ? options.t('common.requestedByLower') : 'requested by';
+  const by = options.includeRequester !== false && track?.requestedBy ? ` • ${requesterLabel} <@${track.requestedBy}>` : '';
+  const duration = String(track?.duration ?? (options.t ? options.t('common.unknown') : 'Unknown'));
   const titleRaw = compactTrackTitle(track?.title);
   const staticLength = prefix.length + by.length + duration.length + 7;
   const titleBudget = Math.max(16, Number.parseInt(String(maxChars), 10) - staticLength);
@@ -121,14 +125,27 @@ export function trackLabel(track: TrackLike) {
   return `**${track.title}** (${track.duration})${by}`;
 }
 
-export function trackLabelWithLink(track: TrackLike) {
-  const duration = String(track?.duration ?? 'Unknown');
+export function trackLabelWithLink(track: TrackLike, t?: Translator) {
+  const duration = String(track?.duration ?? (t ? t('common.unknown') : 'Unknown'));
   const title = compactTrackTitle(track?.title);
   const linkedTitle = isSafeMarkdownLinkTarget(track?.url)
     ? `[**${title}**](${String(track.url).trim()})`
     : `**${title}**`;
-  const by = track?.requestedBy ? ` • requested by <@${track.requestedBy}>` : '';
+  const requesterLabel = t ? t('common.requestedByLower') : 'requested by';
+  const by = track?.requestedBy ? ` • ${requesterLabel} <@${track.requestedBy}>` : '';
   return `${linkedTitle} (${duration})${by}`;
+}
+
+export function buildTrackAuthor(track: TrackLike): EmbedAuthor | null {
+  const label = sourceLabel(track?.source);
+  const artist = String(track?.artist ?? '').trim();
+  const name = artist ? `${label} · ${artist}` : label;
+  if (!name) return null;
+
+  const author: EmbedAuthor = { name };
+  const url = String(track?.url ?? '').trim();
+  if (/^https?:\/\//i.test(url)) author.url = url;
+  return author;
 }
 
 export function parseDurationToSeconds(value: unknown) {
@@ -203,10 +220,10 @@ function buildSessionStatusFooter(session: SessionLike, pendingDurationSec: numb
   ].join(' | ');
 }
 
-export function formatQueuePage(session: SessionLike, page: number) {
+export function formatQueuePage(session: SessionLike, page: number, t?: Translator) {
   const pending = session.player?.pendingTracks ?? [];
   const current = session.player?.displayTrack ?? session.player?.currentTrack;
-  if (!current && pending.length === 0) return { description: 'Queue is empty.', fields: [] };
+  if (!current && pending.length === 0) return { description: t ? t('queue.empty') : 'Queue is empty.', fields: [] };
 
   const totalPages = Math.max(1, Math.ceil(pending.length / PENDING_PAGE_SIZE));
   const safePage = Math.max(1, Math.min(page, totalPages));
@@ -218,9 +235,9 @@ export function formatQueuePage(session: SessionLike, page: number) {
     const durationSec = parseDurationToSeconds(current.duration);
     const progressSec = session.player?.getProgressSeconds?.() ?? 0;
     fields.push({
-      name: 'Now Playing',
+      name: t ? t('queue.nowPlaying') : 'Now Playing',
       value: joinLinesWithinLimit([
-        trackLabelWithLink(current),
+        trackLabelWithLink(current, t),
         buildProgressBar(progressSec, durationSec ?? Number.NaN, 12, { isLive: Boolean(current?.isLive) }),
       ], EMBED_FIELD_TEXT_LIMIT),
     });
@@ -228,9 +245,9 @@ export function formatQueuePage(session: SessionLike, page: number) {
 
   if (pageItems.length) {
     fields.push({
-      name: `Up Next (Page ${safePage}/${totalPages})`,
+      name: t ? t('queue.upNext', { page: safePage, total: totalPages }) : `Up Next (Page ${safePage}/${totalPages})`,
       value: joinLinesWithinLimit(
-        pageItems.map((track, i) => formatTrackListLine(track, start + i + 1, TRACK_LINE_MAX_CHARS, { includeRequester: false })),
+        pageItems.map((track, i) => formatTrackListLine(track, start + i + 1, TRACK_LINE_MAX_CHARS, { includeRequester: false, ...(t ? { t } : {}) })),
         EMBED_FIELD_TEXT_LIMIT
       ),
     });
@@ -239,15 +256,17 @@ export function formatQueuePage(session: SessionLike, page: number) {
   const pendingDurationSec = sumTrackDurationsSeconds(pending);
   const footer = buildSessionStatusFooter(session, pendingDurationSec, pending.length);
   return {
-    description: `Queue: **${pending.length}** tracks • Remaining: **${formatSeconds(pendingDurationSec)}**`,
+    description: t
+      ? t('queue.summary', { count: pending.length, remaining: formatSeconds(pendingDurationSec) })
+      : `Queue: **${pending.length}** tracks • Remaining: **${formatSeconds(pendingDurationSec)}**`,
     footer,
     fields,
   };
 }
 
-export function formatHistoryPage(session: SessionLike, page: number) {
+export function formatHistoryPage(session: SessionLike, page: number, t?: Translator) {
   const history = session.player?.historyTracks ?? [];
-  if (!history.length) return { description: 'No playback history yet.', fields: [] };
+  if (!history.length) return { description: t ? t('history.empty') : 'No playback history yet.', fields: [] };
 
   const totalPages = Math.max(1, Math.ceil(history.length / HISTORY_PAGE_SIZE));
   const safePage = Math.max(1, Math.min(page, totalPages));
@@ -255,20 +274,22 @@ export function formatHistoryPage(session: SessionLike, page: number) {
   const pageItems = history.slice().reverse().slice(start, start + HISTORY_PAGE_SIZE);
 
   return {
-    description: `History page **${safePage}/${totalPages}** • Total tracks: **${history.length}**`,
+    description: t
+      ? t('history.summary', { page: safePage, totalPages, count: history.length })
+      : `History page **${safePage}/${totalPages}** • Total tracks: **${history.length}**`,
     fields: [{
-      name: 'Recently Played',
+      name: t ? t('history.recentlyPlayed') : 'Recently Played',
       value: joinLinesWithinLimit(
-        pageItems.map((track, idx) => formatTrackListLine(track, start + idx + 1, TRACK_LINE_MAX_CHARS)),
+        pageItems.map((track, idx) => formatTrackListLine(track, start + idx + 1, TRACK_LINE_MAX_CHARS, t ? { t } : {})),
         EMBED_FIELD_TEXT_LIMIT
       ),
     }],
   };
 }
 
-export function parseRequiredInteger(value: unknown, label: string) {
+export function parseRequiredInteger(value: unknown, label: TranslationKey, t: Translator) {
   const parsed = Number.parseInt(String(value ?? ''), 10);
-  if (!Number.isFinite(parsed)) throw new ValidationError(`${label} must be an integer.`);
+  if (!Number.isFinite(parsed)) throw new ValidationError(t('errors.mustBeInteger', { field: t(label) }));
   return parsed;
 }
 
@@ -280,10 +301,10 @@ export function parseOnOff(value: unknown, fallback: boolean | null = null) {
   return fallback;
 }
 
-export function normalizeIndex(value: unknown, label: string) {
+export function normalizeIndex(value: unknown, label: TranslationKey, t: Translator) {
   const parsed = Number.parseInt(String(value ?? ''), 10);
   if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new ValidationError(`${label} must be a positive integer.`);
+    throw new ValidationError(t('errors.mustBePositiveInteger', { field: t(label) }));
   }
   return parsed;
 }
@@ -295,13 +316,20 @@ export function createCommand<T extends CommandDefinition>(definition: T): Reado
 type CommandUsageContext = {
   prefix: string;
   command: CommandDefinition;
+  t?: Translator;
 };
 
-export function buildCommandUsage(ctx: CommandUsageContext) {
-  const { command: cmd, prefix } = ctx;
+export function commandDescription(command: CommandDefinition, t?: Translator): string {
+  const translated = t?.optional(`cmd.${String(command.name)}.description`);
+  return translated ?? String(command.description ?? '');
+}
 
-  const aliases = cmd.aliases?.length ? ` (aliases: \`${cmd.aliases.join('`, `')}\`)` : '';
-  return `\`${prefix}${cmd.usage}\` - ${cmd.description}${aliases}`;
+export function buildCommandUsage(ctx: CommandUsageContext) {
+  const { command: cmd, prefix, t } = ctx;
+
+  const aliasLabel = t ? t('help.aliases') : 'aliases';
+  const aliases = cmd.aliases?.length ? ` (${aliasLabel}: \`${cmd.aliases.join('`, `')}\`)` : '';
+  return `\`${prefix}${cmd.usage}\` - ${commandDescription(cmd, t)}${aliases}`;
 }
 
 type HelpPayloadContext = {
@@ -332,10 +360,15 @@ type HelpPageContext = {
   registry: {
     list(): CommandDefinition[];
   };
+  t?: Translator;
 };
 
 export function buildHelpPages(ctx: HelpPageContext): MessagePayload[] {
-  const lines = ctx.registry.list().map((cmd) => buildCommandUsage({ prefix: ctx.prefix, command: cmd }));
+  const lines = ctx.registry.list().map((cmd) => buildCommandUsage({
+    prefix: ctx.prefix,
+    command: cmd,
+    ...(ctx.t ? { t: ctx.t } : {}),
+  }));
 
   const pageSize = 12;
   const pages: MessagePayload[] = [];
@@ -345,7 +378,7 @@ export function buildHelpPages(ctx: HelpPageContext): MessagePayload[] {
     const slice = lines.slice(i * pageSize, (i + 1) * pageSize);
     pages.push(
       buildHelpPayload({
-        title: `Help ${i + 1}/${totalPages}`,
+        title: ctx.t ? ctx.t('help.titlePaged', { current: i + 1, total: totalPages }) : `Help ${i + 1}/${totalPages}`,
         description: slice.join('\n').slice(0, 3900),
       })
     );

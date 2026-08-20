@@ -40,6 +40,28 @@ function sanitizeRestoredTrackData(track: Partial<Track> | null | undefined, see
     ...(isDeezerTrack ? { deezerFullStreamUrl: null } : {}),
   };
 }
+
+function shouldReResolveSnapshotTrackViaNodeLink(
+  player: { nodeLinkEnabled?: unknown; nodeLinkClient?: { enabled?: unknown } | null } | null | undefined,
+  track: Partial<Track> | null | undefined,
+) {
+  const rawUrl = String(track?.url ?? '').trim();
+  let hostname = '';
+  try {
+    hostname = new URL(rawUrl).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  const isYouTubeHost = (
+    hostname === 'youtube.com'
+    || hostname.endsWith('.youtube.com')
+    || hostname === 'youtu.be'
+    || hostname.endsWith('.youtu.be')
+  );
+  if (!isYouTubeHost) return false;
+  if (String(track?.nodelinkEncodedTrack ?? '').trim()) return false;
+  return Boolean(player?.nodeLinkEnabled && player?.nodeLinkClient?.enabled);
+}
 type RuntimeMethods = {
   _isPermanentPersistentVoiceFailure(error: RuntimeErrorLike): boolean;
   _resetVoteState(session: Session, trackId?: string | null): void;
@@ -423,8 +445,9 @@ export const runtimeMethods: RuntimeMethods & ThisType<SessionManager> = {
     const seekStartSec = toSeekStartSec(restoreOptions.seekStartSec ?? track?.seekStartSec ?? 0);
     const requestedBy = track?.requestedBy ?? null;
     const restoredTrackData = sanitizeRestoredTrackData(track, seekStartSec, requestedBy);
+    const shouldForceResolve = shouldReResolveSnapshotTrackViaNodeLink(session.player, track);
 
-    if (this._isSnapshotTrackDirectlyPlayable(track)) {
+    if (this._isSnapshotTrackDirectlyPlayable(track) && !shouldForceResolve) {
       return session.player.createTrackFromData(restoredTrackData);
     }
 

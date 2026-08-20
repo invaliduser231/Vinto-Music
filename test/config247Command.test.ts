@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { CommandRegistry } from '../src/bot/commandRegistry.ts';
 import { registerCommands } from '../src/bot/commands/index.ts';
+import { createTranslator } from '../src/i18n/index.ts';
 
 type Command247Execute = NonNullable<NonNullable<ReturnType<CommandRegistry['resolve']>>['execute']>;
 
@@ -28,6 +29,7 @@ test('247 command resolves required helpers through command registration', async
         calls.push(['refresh', guildId, selector.voiceChannelId]);
       },
     },
+    t: createTranslator('en'),
     reply: {
       async success(message: string) {
         calls.push(['reply', message]);

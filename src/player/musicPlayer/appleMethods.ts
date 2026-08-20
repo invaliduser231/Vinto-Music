@@ -13,6 +13,7 @@ const APPLE_WEB_TOKEN_PAGE = 'https://music.apple.com/us/browse';
 const APPLE_PAGE_TIMEOUT_MS = 10_000;
 const APPLE_CATALOG_PAGE_SIZE = 300;
 const APPLE_TOKEN_REFRESH_SKEW_MS = 5 * 60_000;
+const APPLE_COLLECTION_MIRROR_CONCURRENCY = 6;
 
 type AppleLookupResult = Record<string, unknown> & {
   wrapperType?: unknown;
@@ -94,6 +95,10 @@ type ApplePlayer = MusicPlayer & {
   _searchDeezerTracks: (query: string, limit: number, requestedBy: string | null) => Promise<Track[]>;
   _pickBestSpotifyMirror: (metadataTrack: AppleMetadataTrack, candidates: unknown) => Track | null;
   _resolveCrossSourceToYouTube: (sourceTracks: CrossSourceSeed[], requestedBy: string | null, source: string) => Promise<Track[]>;
+  nodeLinkEnabled?: boolean;
+  nodeLinkClient?: { enabled?: boolean } | null;
+  nodeLinkRoutingMode?: string | null;
+  _resolveNodeLinkTracks: (query: string, requestedBy: string | null, limit?: number | null) => Promise<Track[]>;
 };
 type AppleMethods = {
   _appleLookup(query?: Record<string, unknown>): Promise<AppleLookupResult[]>;
@@ -154,6 +159,29 @@ function toRecord(value: unknown): Record<string, unknown> | null {
 
 function toCatalogItems(value: unknown): AppleCatalogItem[] {
   return toArray(value).filter((item): item is AppleCatalogItem => Boolean(toRecord(item)));
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>,
+) {
+  const size = Math.max(1, Number.parseInt(String(concurrency), 10) || 1);
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+
+  const worker = async () => {
+    while (true) {
+      const current = nextIndex;
+      nextIndex += 1;
+      if (current >= items.length) return;
+      results[current] = await mapper(items[current]!, current);
+    }
+  };
+
+  const workers = Array.from({ length: Math.min(size, items.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
 }
 
 function normalizeAppleMarket(value: unknown, fallback = 'US') {
@@ -219,6 +247,13 @@ function appleCatalogPath(entity: AppleMusicEntity, suffix = '') {
 
 function trackItemType(value: unknown) {
   return String((value as AppleCatalogItem | null | undefined)?.type ?? '').toLowerCase();
+}
+
+function getNodeLinkRoutingMode(value: unknown): 'smart' | 'all' | 'youtube-only' {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (normalized === 'all') return 'all';
+  if (normalized === 'youtube-only' || normalized === 'youtube') return 'youtube-only';
+  return 'smart';
 }
 
 export const appleMethods: AppleMethods & ThisType<MusicPlayer> = {
@@ -384,21 +419,26 @@ export const appleMethods: AppleMethods & ThisType<MusicPlayer> = {
     const safeLimit = normalizeAppleCollectionLimit(limit, methods.maxPlaylistTracks);
     const tracks: Track[] = [];
     const appendMirrors = async (items: AppleCatalogItem[], source: string) => {
-      for (const item of items) {
-        if (trackItemType(item) !== 'songs') continue;
-
+      const songItems = items.filter((item) => trackItemType(item) === 'songs').slice(0, safeLimit - tracks.length);
+      const mirroredByItem = await mapWithConcurrency(songItems, APPLE_COLLECTION_MIRROR_CONCURRENCY, async (item) => {
         const metadataTrack = methods._buildAppleCatalogTrack(item, requestedBy, source);
-        if (!metadataTrack) continue;
+        if (!metadataTrack) return null;
 
         try {
           const mirrored = await methods._resolveAppleMirror(metadataTrack, requestedBy);
-          tracks.push(...mirrored.slice(0, 1));
+          return mirrored[0] ?? null;
         } catch (err) {
           methods.logger?.warn?.('Failed to mirror Apple Music catalog track', {
             appleTrackId: item.id ?? null,
             error: err instanceof Error ? err.message : String(err),
           });
+          return null;
         }
+      });
+
+      for (const mirrored of mirroredByItem) {
+        if (!mirrored) continue;
+        tracks.push(mirrored);
         if (tracks.length >= safeLimit) break;
       }
     };
@@ -524,7 +564,19 @@ export const appleMethods: AppleMethods & ThisType<MusicPlayer> = {
       throw new ValidationError('Apple Music mirroring requires YouTube playback, which is currently disabled.');
     }
 
-    const results = await methods._searchYouTubeTracks(query, 1, requestedBy).catch(() => []);
+    let results = await (
+      this.nodeLinkEnabled && this.nodeLinkClient?.enabled && getNodeLinkRoutingMode(this.nodeLinkRoutingMode) !== 'youtube-only'
+        ? this._resolveNodeLinkTracks(query, requestedBy, 1)
+        : methods._searchYouTubeTracks(query, 1, requestedBy)
+    ).catch(() => []);
+    if (
+      !results.length
+      && this.nodeLinkEnabled
+      && this.nodeLinkClient?.enabled
+      && getNodeLinkRoutingMode(this.nodeLinkRoutingMode) !== 'all'
+    ) {
+      results = await methods._searchYouTubeTracks(query, 1, requestedBy).catch(() => []);
+    }
     if (!results.length) {
       throw new ValidationError('Could not resolve Apple Music URL to a playable track.');
     }

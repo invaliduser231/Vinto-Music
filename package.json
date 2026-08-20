@@ -1,6 +1,6 @@
 {
   "name": "fluxer-music-bot",
-  "version": "0.6.4",
+  "version": "0.8.0",
   "description": "Production-minded music bot for Fluxer with resilient playback, persistence, and monitoring.",
   "license": "SEE LICENSE IN LICENSE",
   "type": "module",
@@ -36,7 +36,7 @@
     "ffmpeg-static": "^5.3.0",
     "mongodb": "^7.1.0",
     "play-dl": "^1.9.7",
-    "ws": "^8.18.0"
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
@@ -47,6 +47,10 @@
     "onlyBuiltDependencies": [
       "esbuild",
       "ffmpeg-static"
-    ]
+    ],
+    "overrides": {
+      "ws@>=8.0.0 <8.21.0": ">=8.21.0",
+      "brace-expansion@<5.0.9": ">=5.0.9"
+    }
   }
 }

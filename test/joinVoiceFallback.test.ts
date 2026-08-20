@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { registerCommands } from '../src/bot/commands/index.ts';
 import { CommandRegistry } from '../src/bot/commandRegistry.ts';
+import { createTranslator } from '../src/i18n/index.ts';
 
 function buildJoinCommand() {
   const registry = new CommandRegistry();
@@ -59,6 +60,7 @@ test('join resolves voice channel through async fallback', async () => {
       },
       async destroy() {},
     },
+    t: createTranslator('en'),
     reply: {
       async success() {
         calls.push('reply');
@@ -71,10 +73,10 @@ test('join resolves voice channel through async fallback', async () => {
     'resolveMemberVoiceChannelWithFallback',
     'has',
     'ensure',
-    'bind:guild-1:text-1',
     'connect:voice-1',
     'reply',
   ]);
+  assert.equal(calls.includes('bind:guild-1:text-1'), false);
 });
 
 

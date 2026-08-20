@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import type { Readable, Writable } from 'node:stream';
+import type { Writable } from 'node:stream';
 import { copyFileSync, existsSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -10,9 +10,12 @@ import { DeezerClient } from './musicPlayer/DeezerClient.ts';
 import { ResolverClient } from './musicPlayer/ResolverClient.ts';
 import { SoundCloudClient } from './musicPlayer/SoundCloudClient.ts';
 import { SpotifyClient } from './musicPlayer/SpotifyClient.ts';
+import { NodeLinkClient } from './musicPlayer/NodeLinkClient.ts';
+import type { NodeLinkLoadResult } from './musicPlayer/NodeLinkClient.ts';
 import { playbackStateMethods } from './musicPlayer/playbackStateMethods.ts';
 import { queueLifecycleMethods } from './musicPlayer/queueLifecycleMethods.ts';
 import { resolverMethods } from './musicPlayer/resolverMethods.ts';
+import { nodeLinkMethods } from './musicPlayer/nodeLinkMethods.ts';
 import { pipelineMethods } from './musicPlayer/pipelineMethods.ts';
 import { trackRuntimeMethods } from './musicPlayer/trackRuntimeMethods.ts';
 import ffmpegPath from 'ffmpeg-static';
@@ -53,6 +56,7 @@ import {
   getYouTubePlaylistId,
   isDeezerUrl,
   isHttpUrl,
+  isSpotifyUrl,
   isYouTubeUrl,
   normalizeThumbnailUrl,
   pickArtistName,
@@ -81,17 +85,29 @@ const NORMALIZED_INPUT_URL_CACHE_MAX_SIZE = 500;
 const DEEZER_STREAM_META_CACHE_MAX_SIZE = 1_000;
 const STARTUP_FAILURE_STREAK_LIMIT = 3;
 const NEXT_TRACK_PREFETCH_TTL_MS = 10 * 60_000;
+const PUMP_RECOVERY_WINDOW_MS = 30_000;
+const PUMP_RECOVERY_MAX_ATTEMPTS = 3;
 
 type YouTubePrefetchedStream = {
   streamUrl: string;
   proxyUrl: string | null;
 };
 
+type NodeLinkRoutingMode = 'smart' | 'all' | 'youtube-only';
+
 function parseEnabledFlag(value: unknown, fallback = false): boolean {
   if (value == null) return fallback;
   const normalized = String(value).trim().toLowerCase();
   if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
   if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return fallback;
+}
+
+function normalizeNodeLinkRoutingMode(value: unknown, fallback: NodeLinkRoutingMode = 'smart'): NodeLinkRoutingMode {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (!normalized || normalized === 'auto') return fallback;
+  if (normalized === 'smart' || normalized === 'all' || normalized === 'youtube-only') return normalized;
+  if (normalized === 'youtube') return 'youtube-only';
   return fallback;
 }
 
@@ -115,6 +131,8 @@ interface VoiceAdapterLike {
   pauseAudio?: () => unknown;
   resumeAudio?: () => unknown;
   getDiagnostics?: () => Promise<unknown>;
+  onAudioPumpFatalError?: (() => void) | null;
+  onReconnected?: (() => void) | null;
 }
 
 class PlaybackStartupAbortedError extends Error {
@@ -142,6 +160,13 @@ interface MusicPlayerOptions {
   enableSpotifyImport?: boolean;
   enableDeezerImport?: boolean;
   enableTidalImport?: boolean;
+  nodeLinkEnabled?: boolean;
+  nodeLinkBaseUrl?: string | null;
+  nodeLinkPassword?: string | null;
+  nodeLinkDefaultSearch?: string | null;
+  nodeLinkRoutingMode?: NodeLinkRoutingMode | string | null;
+  nodeLinkRequestTimeoutMs?: number | null;
+  nodeLinkStreamStartTimeoutMs?: number | null;
   spotifyClientId?: string | null;
   spotifyClientSecret?: string | null;
   spotifyRefreshToken?: string | null;
@@ -207,6 +232,8 @@ type BuiltTrackInput = {
   spotifyTrackId?: string | null;
   spotifyPreviewUrl?: string | null;
   isrc?: string | null;
+  nodelinkEncodedTrack?: string | null;
+  nodelinkInfo?: Record<string, unknown> | null;
   isPreview?: boolean;
   isLive?: boolean;
   seekStartSec?: number;
@@ -242,6 +269,7 @@ export class MusicPlayer extends EventEmitter {
   declare resume: () => boolean;
   declare seekTo: (seconds: number) => number;
   declare replayCurrentTrack: () => boolean;
+  declare refreshCurrentTrackProcessing: () => boolean;
   declare queuePreviousTrack: () => Track | null;
   declare searchCandidates: (
     query: string,
@@ -251,6 +279,18 @@ export class MusicPlayer extends EventEmitter {
   declare _buildTrack: (input: BuiltTrackInput) => Track;
   declare _handleTrackClose: (track: Track, code: unknown, signal: unknown, playbackToken?: number | null) => Promise<void>;
   declare _resolveTracks: (query: string, requestedBy: string | null, limit?: number | null) => Promise<Track[]>;
+  declare _resolveNodeLinkTracks: (
+    query: string,
+    requestedBy: string | null,
+    limit?: number | null,
+    options?: { searchIdentifier?: string | null }
+  ) => Promise<Track[]>;
+  declare _resolveYouTubeTrackViaNodeLink: (track: Partial<Track> | null | undefined) => Promise<Track | null>;
+  declare _resolveStartupMirrorFallbackTrack: (track: Partial<Track> | null | undefined, requestedBy: string | null) => Promise<Track | null>;
+  declare _isNodeLinkOnlyModeForSourceTrack: (track: Partial<Track> | null | undefined, trackUrl?: string | null) => boolean;
+  declare isNodeLinkStreamingEnabled: () => boolean;
+  declare _nodeLinkLoadResultToTracks: (result: unknown, requestedBy: string | null, limit?: number | null) => Track[];
+  declare _nodeLinkTrackDataToTrack: (data: unknown, requestedBy: string | null) => Track | null;
   declare _resolveSearchTrack: (query: string, requestedBy: string | null) => Promise<Track[]>;
   declare _resolveAmazonTrack: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
   declare _resolveAmazonCollection: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
@@ -275,6 +315,7 @@ export class MusicPlayer extends EventEmitter {
   declare _resolveSpotifyCollection: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
   declare _resolveSpotifyArtist: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
   declare _resolveSpotifyByGuess: BivariantCallback<[string, (string | null | undefined)?, (number | null | undefined)?], Promise<Track[]>>;
+  declare _resolveSpotifyMirror: BivariantCallback<[Partial<Track> | null | undefined, (string | null | undefined)?], Promise<Track[]>>;
   declare _spotifyApiRequest: (pathname: string, query?: Record<string, unknown>) => Promise<unknown>;
   declare _resolveTidalTrack: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
   declare _resolveTidalCollection: BivariantCallback<[string, (string | null | undefined)?, (number | null | undefined)?], Promise<Track[]>>;
@@ -360,6 +401,10 @@ export class MusicPlayer extends EventEmitter {
   enableSpotifyImport: boolean;
   enableDeezerImport: boolean;
   enableTidalImport: boolean;
+  nodeLinkEnabled: boolean;
+  nodeLinkRoutingMode: NodeLinkRoutingMode;
+  nodeLinkClient: NodeLinkClient | null;
+  _nodeLinkResolveCache: Map<string, { result: NodeLinkLoadResult; expiresAtMs: number }>;
   spotifyClientId: string | null;
   spotifyClientSecret: string | null;
   spotifyRefreshToken: string | null;
@@ -428,6 +473,8 @@ export class MusicPlayer extends EventEmitter {
   normalizedInputUrlCache: Map<string, { url: string; expiresAtMs: number }>;
   consecutiveStartupFailures: number;
   activeSourceProcessCloseInfo: SourceProcessCloseInfo | null;
+  _lastPumpRecoveryAtMs: number;
+  _pumpRecoveryCount: number;
 
   constructor(voice: VoiceAdapterLike, options: MusicPlayerOptions = {}) {
     super();
@@ -458,6 +505,21 @@ export class MusicPlayer extends EventEmitter {
     this.enableSpotifyImport = options.enableSpotifyImport !== false;
     this.enableDeezerImport = options.enableDeezerImport !== false;
     this.enableTidalImport = options.enableTidalImport !== false;
+    this.nodeLinkRoutingMode = normalizeNodeLinkRoutingMode(
+      options.nodeLinkRoutingMode ?? process.env.NODELINK_ROUTING_MODE,
+      'smart'
+    );
+    this.nodeLinkEnabled = options.nodeLinkEnabled ?? parseEnabledFlag(process.env.NODELINK_ENABLED, false);
+    this.nodeLinkClient = this.nodeLinkEnabled
+      ? new NodeLinkClient({
+          baseUrl: options.nodeLinkBaseUrl ?? process.env.NODELINK_BASE_URL ?? null,
+          password: options.nodeLinkPassword ?? process.env.NODELINK_PASSWORD ?? null,
+          defaultSearchIdentifier: options.nodeLinkDefaultSearch ?? process.env.NODELINK_DEFAULT_SEARCH ?? null,
+          requestTimeoutMs: options.nodeLinkRequestTimeoutMs ?? null,
+          streamStartTimeoutMs: options.nodeLinkStreamStartTimeoutMs ?? null,
+        })
+      : null;
+    this._nodeLinkResolveCache = new Map();
     this.spotifyClientId = String(options.spotifyClientId ?? process.env.SPOTIFY_CLIENT_ID ?? '').trim() || null;
     this.spotifyClientSecret = String(options.spotifyClientSecret ?? process.env.SPOTIFY_CLIENT_SECRET ?? '').trim() || null;
     this.spotifyRefreshToken = String(options.spotifyRefreshToken ?? process.env.SPOTIFY_REFRESH_TOKEN ?? '').trim() || null;
@@ -538,6 +600,59 @@ export class MusicPlayer extends EventEmitter {
     this.normalizedInputUrlCache = new Map();
     this.consecutiveStartupFailures = 0;
     this.activeSourceProcessCloseInfo = null;
+    this._lastPumpRecoveryAtMs = 0;
+    this._pumpRecoveryCount = 0;
+    if (this.voice && typeof this.voice === 'object') {
+      (this.voice as VoiceAdapterLike).onAudioPumpFatalError = () => this._handleVoicePumpFatalError();
+      (this.voice as VoiceAdapterLike).onReconnected = () => this._handleVoiceReconnected();
+    }
+  }
+
+  _handleVoicePumpFatalError(): void {
+    if (!this.playing || !this.currentTrack) return;
+
+    const now = Date.now();
+    if (now - this._lastPumpRecoveryAtMs > PUMP_RECOVERY_WINDOW_MS) {
+      this._pumpRecoveryCount = 0;
+    }
+    this._lastPumpRecoveryAtMs = now;
+    this._pumpRecoveryCount += 1;
+
+    if (this._pumpRecoveryCount > PUMP_RECOVERY_MAX_ATTEMPTS) {
+      this.logger?.error?.('Audio pump recovery limit reached, skipping track', {
+        title: this.currentTrack?.title ?? null,
+        attempts: this._pumpRecoveryCount,
+      });
+      this._pumpRecoveryCount = 0;
+      try {
+        this.skip();
+      } catch {
+      }
+      return;
+    }
+
+    this.logger?.warn?.('Recovering playback after fatal audio pump error', {
+      title: this.currentTrack?.title ?? null,
+      attempt: this._pumpRecoveryCount,
+      progressSec: typeof this.getProgressSeconds === 'function' ? this.getProgressSeconds() : null,
+    });
+    this.refreshCurrentTrackProcessing();
+  }
+
+  _handleVoiceReconnected(): void {
+    if (this.playing) return;
+    if (this.queue.pendingSize <= 0) return;
+    if (!this.voice?.connected) return;
+
+    this.logger?.info?.('Voice reconnected, resuming playback', {
+      guildId: String((this.voice as { guildId?: unknown } | null | undefined)?.guildId ?? '').trim() || null,
+      pendingTracks: this.queue.pendingSize,
+    });
+    this.play().catch((err: unknown) => {
+      this.logger?.warn?.('Failed to resume playback after voice reconnect', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
   }
 
   _setNormalizedInputUrlCacheEntry(key: string, value: { url: string; expiresAtMs: number }): void {
@@ -760,7 +875,7 @@ export class MusicPlayer extends EventEmitter {
     const startupHint = this.nextPlaybackStartupHint;
     this.nextPlaybackStartupHint = null;
 
-    const track = this.queue.next();
+    let track = this.queue.next();
     if (!track) {
       this._clearNextTrackPrefetch();
       this._cleanupRuntimeYtDlpCookiesFile();
@@ -778,13 +893,77 @@ export class MusicPlayer extends EventEmitter {
     let onFfmpegStartupStderr = null;
     let ffmpegProc = null;
     let initialPlaybackChunkTimeoutMs: number | null = null;
+    let retryStartupTrack: Track | null = null;
     this.activeSourceProcessCloseInfo = null;
 
     try {
       this._ensurePlaybackStartupActive(startupToken);
-      const trackUrl = String(track.url ?? '').trim();
+      let trackUrl = String(track.url ?? '').trim();
       if (!trackUrl) {
         throw new ValidationError('Track is missing a playable URL.');
+      }
+
+      if (track.nodelinkEncodedTrack) {
+        try {
+          await this._startNodeLinkStream(track, startupToken, playbackToken);
+          return;
+        } catch (nodeLinkErr) {
+          if (this._isPlaybackStartupAbortedError(nodeLinkErr)) {
+            throw nodeLinkErr;
+          }
+
+          if (this._isNodeLinkOnlyModeForSourceTrack(track, trackUrl)) {
+            this.logger?.warn?.('NodeLink stream startup failed; local playback disabled in NODELINK_ROUTING_MODE=all, will attempt NodeLink mirror', {
+              title: track.title,
+              source: track.source,
+              url: trackUrl,
+              error: nodeLinkErr instanceof Error ? nodeLinkErr.message : String(nodeLinkErr),
+            });
+            throw nodeLinkErr;
+          }
+
+          this.logger?.warn?.('NodeLink stream startup failed, falling back to local playback pipeline', {
+            title: track.title,
+            source: track.source,
+            url: trackUrl,
+            error: nodeLinkErr instanceof Error ? nodeLinkErr.message : String(nodeLinkErr),
+          });
+
+          if (String(track.source ?? '').startsWith('spotify') || isSpotifyUrl(trackUrl)) {
+            const requestedBy = String(track.requestedBy ?? '').trim() || null;
+            const spotifyFallbackTracksResult = await this._resolveSpotifyMirror(track, requestedBy).catch((fallbackErr: unknown): Track[] => {
+              this.logger?.warn?.('Spotify fallback resolution failed after NodeLink startup failure', {
+                title: track.title,
+                url: trackUrl,
+                error: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr),
+              });
+              return [];
+            });
+            const spotifyFallbackTracks = Array.isArray(spotifyFallbackTracksResult)
+              ? spotifyFallbackTracksResult.filter((candidate): candidate is Track => Boolean(candidate && typeof candidate === 'object'))
+              : [];
+            const spotifyFallbackTrack = spotifyFallbackTracks[0] ?? null;
+            if (spotifyFallbackTrack) {
+              retryStartupTrack = this._cloneTrack(spotifyFallbackTrack, {
+                seekStartSec: track.seekStartSec ?? 0,
+              });
+              (retryStartupTrack as Track & { startupRetryCount?: number }).startupRetryCount = 1;
+              this.logger?.warn?.('Retrying Spotify playback after NodeLink startup failure', {
+                title: track.title,
+                url: trackUrl,
+                fallbackSource: retryStartupTrack.source ?? null,
+              });
+              track = retryStartupTrack;
+              trackUrl = String(track.url ?? '').trim() || trackUrl;
+              this._cleanupProcesses();
+            }
+          }
+          this._cleanupProcesses();
+        }
+      }
+
+      if (this._isNodeLinkOnlyModeForSourceTrack(track, trackUrl)) {
+        throw new ValidationError('NodeLink-only mode (NODELINK_ROUTING_MODE=all): local playback is disabled for source tracks.');
       }
 
       if (isYouTubeUrl(trackUrl)) {
@@ -821,7 +1000,7 @@ export class MusicPlayer extends EventEmitter {
         await this._startHttpUrlPipeline(trackUrl, 0, { isLive: true });
       } else if (String(track.source ?? '').startsWith('audius')) {
         await this.sources.audius.startPipeline(track, track.seekStartSec ?? 0);
-      } else if (track?.deezerTrackId || String(track.source ?? '').startsWith('deezer-direct')) {
+      } else if (track?.deezerTrackId || isDeezerUrl(trackUrl) || String(track.source ?? '').startsWith('deezer-direct')) {
         await this.sources.deezer.startPipeline(track, track.seekStartSec ?? 0);
       } else if (String(track.source ?? '').startsWith('soundcloud')) {
         await this.sources.soundcloud.startPipeline(track, track.seekStartSec ?? 0);
@@ -889,7 +1068,6 @@ export class MusicPlayer extends EventEmitter {
     } catch (err) {
       const startupAborted = this._isPlaybackStartupAbortedError(err);
       let normalizedMessage = '';
-      let retryStartupTrack: Track | null = null;
       if (!startupAborted) {
         const normalized = this._normalizePlaybackError(this._withStartupStderr(err, ffmpegStartupStderr));
         normalizedMessage = String(normalized?.message ?? '').toLowerCase();
@@ -907,15 +1085,63 @@ export class MusicPlayer extends EventEmitter {
         if (shouldRetryYouTubeStartup) {
           retryStartupTrack = this._cloneTrack(track, { seekStartSec: track?.seekStartSec ?? 0 });
           (retryStartupTrack as Track & { startupRetryCount?: number }).startupRetryCount = startupRetryAttempt + 1;
+          if (!String(retryStartupTrack.nodelinkEncodedTrack ?? '').trim()) {
+            const nodeLinkRetryTrack = await this._resolveYouTubeTrackViaNodeLink(retryStartupTrack).catch((nodeLinkErr: unknown) => {
+              this.logger?.debug?.('NodeLink retry preparation failed, continuing with local YouTube startup fallback', {
+                title: track?.title ?? null,
+                url: track?.url ?? null,
+                error: nodeLinkErr instanceof Error ? nodeLinkErr.message : String(nodeLinkErr),
+              });
+              return null;
+            });
+            if (nodeLinkRetryTrack) {
+              retryStartupTrack = this._cloneTrack(nodeLinkRetryTrack, {
+                seekStartSec: track?.seekStartSec ?? 0,
+              });
+              (retryStartupTrack as Track & { startupRetryCount?: number }).startupRetryCount = startupRetryAttempt + 1;
+            }
+          }
           const currentYtDlpDiagnostics = this._lastYtDlpDiagnostics;
           const shouldRetryWithProxyPipe = (
-            Boolean(this.ytdlpProxyUrl)
+            !String(retryStartupTrack.nodelinkEncodedTrack ?? '').trim()
+            && Boolean(this.ytdlpProxyUrl)
             && !currentYtDlpDiagnostics?.proxyEnabled
           );
           if (shouldRetryWithProxyPipe) {
             (retryStartupTrack as Track & { startupFallbackPipeline?: 'ytdlp-proxy' }).startupFallbackPipeline = 'ytdlp-proxy';
-          } else if (shouldFallbackToYtDlpUrl) {
+          } else if (!String(retryStartupTrack.nodelinkEncodedTrack ?? '').trim() && shouldFallbackToYtDlpUrl) {
             (retryStartupTrack as Track & { startupFallbackPipeline?: 'ytdlp-url' }).startupFallbackPipeline = 'ytdlp-url';
+          }
+        }
+        const mirrorSourceLabel = String(track?.source ?? '').toLowerCase();
+        const isMirrorableSource = (
+          !track?.isLive
+          && !mirrorSourceLabel.startsWith('radio')
+          && mirrorSourceLabel !== 'http-audio'
+          && mirrorSourceLabel !== 'url'
+        );
+        const shouldMirrorNonYouTubeStartup = (
+          !retryStartupTrack
+          && !mirrorSourceLabel.startsWith('youtube')
+          && !isYouTubeUrl(String(track?.url ?? ''))
+          && isMirrorableSource
+          && !normalizedMessage.includes('not connected')
+          && startupRetryAttempt < 1
+          && this.enableYtSearch
+          && this.enableYtPlayback
+        );
+        if (shouldMirrorNonYouTubeStartup) {
+          const requestedBy = String(track?.requestedBy ?? '').trim() || null;
+          const mirrorTrack = await this._resolveStartupMirrorFallbackTrack(track, requestedBy).catch(() => null);
+          if (mirrorTrack) {
+            retryStartupTrack = this._cloneTrack(mirrorTrack, { seekStartSec: track?.seekStartSec ?? 0 });
+            (retryStartupTrack as Track & { startupRetryCount?: number }).startupRetryCount = startupRetryAttempt + 1;
+            this.logger?.warn?.('Resolved YouTube/SoundCloud mirror after source stream failure', {
+              title: track?.title ?? null,
+              source: track?.source ?? null,
+              mirrorSource: retryStartupTrack.source ?? null,
+              mirrorUrl: retryStartupTrack.url ?? null,
+            });
           }
         }
         const setupFailureLogPayload = {
@@ -950,7 +1176,7 @@ export class MusicPlayer extends EventEmitter {
                 isStreaming: Boolean(this.voice?.isStreaming),
                 channelId: (this.voice as { channelId?: unknown } | null | undefined)?.channelId ?? null,
               };
-          this.logger?.warn?.('Playback startup diagnostics snapshot', {
+          this.logger?.debug?.('Playback startup diagnostics snapshot', {
             track: track.title,
             url: track?.url ?? null,
             source: track?.source ?? null,
@@ -1000,6 +1226,30 @@ export class MusicPlayer extends EventEmitter {
 
       if (retryStartupTrack) {
         this.queue.addFront(retryStartupTrack);
+      }
+
+      if (
+        !startupAborted
+        && !retryStartupTrack
+        && normalizedMessage.includes('not connected')
+        && !this.voice?.connected
+      ) {
+        this.queue.addFront(track);
+        this._clearNextTrackPrefetch();
+        this._cleanupRuntimeYtDlpCookiesFile();
+        this._stopVoiceStream();
+        this.consecutiveStartupFailures = 0;
+        this.logger?.warn?.('Voice not connected, pausing queue until reconnect', {
+          guildId: String((this.voice as { guildId?: unknown } | null | undefined)?.guildId ?? '').trim() || null,
+          track: track?.title ?? null,
+          pendingTracks: this.queue.pendingSize,
+        });
+        this.emit('playbackPaused', {
+          reason: 'voice_disconnected',
+          track: track?.title ?? null,
+          pendingTracks: this.queue.pendingSize,
+        });
+        return;
       }
 
       if (
@@ -1095,6 +1345,7 @@ export class MusicPlayer extends EventEmitter {
 
   _canPrefetchTrack(track: Track | null | undefined): boolean {
     if (!track || track.isLive) return false;
+    if (String(track.nodelinkEncodedTrack ?? '').trim()) return false;
     const url = String(track.url ?? '').trim();
     if (!url || !isYouTubeUrl(url) || !this.enableYtPlayback) return false;
     const seekStartSec = Math.max(0, Number.parseInt(String(track.seekStartSec ?? 0), 10) || 0);
@@ -1303,6 +1554,65 @@ export class MusicPlayer extends EventEmitter {
     return isExpectedPipeError(err);
   }
 
+  async _startNodeLinkStream(track: Track, startupToken: number, playbackToken: number): Promise<void> {
+    if (!this.nodeLinkClient?.enabled) {
+      throw new ValidationError('NodeLink is not configured.');
+    }
+
+    const positionMs = Math.max(0, Number.parseInt(String(track.seekStartSec ?? 0), 10) || 0) * 1000;
+    const guildId = String((this.voice as { guildId?: unknown } | null | undefined)?.guildId ?? '').trim() || null;
+    const nodeLinkStream = await this.nodeLinkClient.streamTrack(track, {
+      positionMs,
+      volume: 100,
+      ...(guildId ? { guildId } : {}),
+    });
+    this.sourceStream = nodeLinkStream as PipelineStreamLike;
+    this._bindPipelineErrorHandler(nodeLinkStream, 'nodelink.stream');
+
+    let playbackStarted = false;
+    let closeHandled = false;
+    const onClose = async () => {
+      if (!playbackStarted || closeHandled) return;
+      closeHandled = true;
+      await this._handleTrackClose(track, 0, null, playbackToken);
+    };
+    nodeLinkStream.once('end', onClose);
+    nodeLinkStream.once('close', onClose);
+
+    const playbackOutput = this._createPlaybackOutputStream();
+    if (this._shouldUseLiveAudioProcessor()) {
+      this.liveAudioProcessor = this._createLiveAudioProcessor();
+      this._bindPipelineErrorHandler(this.liveAudioProcessor, 'liveAudioProcessor');
+      nodeLinkStream.pipe(this.liveAudioProcessor);
+      this.liveAudioProcessor.pipe(playbackOutput);
+    } else {
+      nodeLinkStream.pipe(playbackOutput);
+    }
+
+    await this.voice.sendAudio?.(playbackOutput);
+    this._ensurePlaybackStartupActive(startupToken);
+    const timeoutMs = this._getInitialPlaybackChunkTimeoutMs(track, { hint: 'nodelink' });
+    await this._awaitInitialPlaybackChunk(playbackOutput, nodeLinkStream as unknown as PipelineProcess, timeoutMs);
+    this._ensurePlaybackStartupActive(startupToken);
+    playbackStarted = true;
+    this.consecutiveStartupFailures = 0;
+    this.activeSourceProcessCloseInfo = null;
+    this._startPlaybackClock(track.seekStartSec ?? 0);
+    this.lastKnownTrack = track;
+    this.lastKnownTrackAtMs = Date.now();
+    this._scheduleNextTrackPrefetch();
+    this.emit('trackStart', track);
+    this.logger?.info?.('Playback started', {
+      title: track.title,
+      url: track.url,
+      source: track.source,
+      backend: 'nodelink',
+      seek: track.seekStartSec ?? 0,
+      guildId,
+      channelId: String((this.voice as { channelId?: unknown } | null | undefined)?.channelId ?? '').trim() || null,
+    });
+  }
+
   _startPlaybackClock(offsetSec: number) {
     startPlaybackClock(this, offsetSec);
   }
@@ -1321,6 +1631,7 @@ Object.assign(
   playbackStateMethods,
   queueLifecycleMethods,
   resolverMethods,
+  nodeLinkMethods,
   trackRuntimeMethods,
   pipelineMethods,
   sourceMethods

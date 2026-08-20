@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { registerCommands } from '../src/bot/commands/index.ts';
 import { CommandRegistry } from '../src/bot/commandRegistry.ts';
 import { SessionManager } from '../src/bot/sessionManager.ts';
+import { createTranslator } from '../src/i18n/index.ts';
 
 function buildVolumeCommand() {
   const registry = new CommandRegistry();
@@ -81,6 +82,7 @@ test('volume command only changes the active session volume', async () => {
       author: { id: 'user-1' },
       member: { permissions: '32' },
     },
+    t: createTranslator('en'),
     reply: {
       async success() {},
     },
@@ -203,6 +205,7 @@ test('volume default command persists guild default volume', async () => {
       author: { id: 'user-1' },
       member: { permissions: '32' },
     },
+    t: createTranslator('en'),
     reply: {
       async success() {},
     },

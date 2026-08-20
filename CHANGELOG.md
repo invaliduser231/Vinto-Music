@@ -2,6 +2,48 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.8.0] - 2026-04-29
+
+- Features:
+  - added `favname <index> <alias>` so users can assign custom names to favorites
+  - allowed `favplay` to resolve favorites by alias in addition to index
+  - displayed favorite aliases in `favs` output to reduce ambiguity for large favorite lists
+- Tests:
+  - added command coverage for alias rename, alias display, and alias-based playback
+  - added store coverage for alias lookup and duplicate-alias validation
+
+## [0.7.1] - 2026-04-29
+
+- Fixes:
+  - stopped rebinding session text channels on non-play commands so music logs no longer jump to the last command channel
+  - bound session log channels explicitly in the `play` flow to keep per-session logging stable across multiple voice sessions in one guild
+  - removed library preview-path channel rebinds that unintentionally shifted active playback logs
+- Tests:
+  - added coverage that `CommandRouter` does not rebind text channels for non-play commands
+  - updated join/session-connect expectations for the new non-rebinding behavior
+  - asserted that `play` still performs the intended text-channel bind
+
+## [0.7.0] - 2026-04-26
+
+- Features:
+  - added a guild-scoped `earrape` config command to enable or disable automatic earrape protection
+  - monitored remote livekit audio tracks and disconnected participants that hit repeated peak thresholds
+  - switched bot voice join behavior to `self_deaf=false` while earrape protection is enabled and kept default deaf joins otherwise
+- Tests:
+  - added coverage for the new `earrape` command behavior and settings rendering
+  - added unit tests for peak detection cadence, cooldown handling, and voice state toggling
+  - covered the REST member voice-disconnect endpoint wrapper and session-level enforcement flow
+
+## [0.6.5] - 2026-04-20
+
+- Features:
+  - routed source resolution and PCM playback through NodeLink when the backend is enabled
+  - kept Fluxer voice output in the bot while using NodeLink as the source and stream resolver
+- Operations:
+  - added NodeLink runtime configuration and a Docker Compose sidecar with `loadStream` enabled
+- Tests:
+  - covered NodeLink config parsing, track mapping, hard-cutover resolution, and playback startup
+
 ## [0.6.4] - 2026-04-20
 
 - Features:

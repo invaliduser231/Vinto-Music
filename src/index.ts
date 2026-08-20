@@ -8,5 +8,3 @@ try {
   console.error(message);
   process.exit(1);
 }
-
-

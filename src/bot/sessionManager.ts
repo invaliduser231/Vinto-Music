@@ -1,9 +1,10 @@
 import { EventEmitter } from 'events';
-import { VoiceConnection } from '../voice/VoiceConnection.ts';
+import { VoiceConnection, type EarrapeDetectionEvent } from '../voice/VoiceConnection.ts';
 import { MusicPlayer } from '../player/MusicPlayer.ts';
 import type {
   GuildConfig,
   GuildConfigStoreLike,
+  EarrapeProfileStoreLike,
   LibraryStoreLike,
   RestAdapterLike,
   Session,
@@ -124,6 +125,7 @@ export class SessionManager extends EventEmitter {
   logger: SessionManagerOptions['logger'] | undefined;
   guildConfigs: GuildConfigStoreLike | null;
   library: LibraryStoreLike | null;
+  earrapeProfiles: EarrapeProfileStoreLike | null;
   rest: RestAdapterLike | null;
   voiceStateStore: VoiceStateStoreLike | null;
   botUserId: string | null;
@@ -139,6 +141,7 @@ export class SessionManager extends EventEmitter {
     this.logger = options.logger;
     this.guildConfigs = options.guildConfigs ?? null;
     this.library = options.library ?? null;
+    this.earrapeProfiles = options.earrapeProfiles ?? null;
     this.rest = options.rest ?? null;
     this.voiceStateStore = options.voiceStateStore ?? null;
     this.botUserId = options.botUserId ? String(options.botUserId) : null;
@@ -204,8 +207,229 @@ export class SessionManager extends EventEmitter {
     });
   }
 
+  _isVoiceModerationPermissionError(error: unknown): boolean {
+    const status = Number((error as { status?: unknown; statusCode?: unknown } | null | undefined)?.status ?? (
+      error as { statusCode?: unknown } | null | undefined
+    )?.statusCode ?? 0);
+    const message = String((error as { message?: unknown } | null | undefined)?.message ?? '').toLowerCase();
+    return (
+      status === 403
+      || message.includes('forbidden')
+      || message.includes('missing permission')
+      || message.includes('missing permissions')
+      || message.includes('move members')
+      || message.includes('insufficient permission')
+    );
+  }
+
+  _resolveSessionNotificationChannel(session: Session | null | undefined): string | null {
+    const channelId = String(session?.settings?.musicLogChannelId ?? session?.textChannelId ?? '').trim();
+    return channelId || null;
+  }
+
+  async _notifySessionChannel(session: Session | null | undefined, message: string): Promise<boolean> {
+    const sendMessage = this.rest?.sendMessage;
+    const channelId = this._resolveSessionNotificationChannel(session);
+    if (!channelId || typeof sendMessage !== 'function') return false;
+
+    try {
+      await sendMessage(channelId, message);
+      return true;
+    } catch (err) {
+      this.logger?.debug?.('Failed to send session notification', {
+        guildId: session?.guildId ?? null,
+        channelId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return false;
+    }
+  }
+
+  async _handleEarrapeDetected(event: EarrapeDetectionEvent): Promise<void> {
+    const guildId = String(event?.guildId ?? '').trim();
+    const userId = String(event?.participantId ?? '').trim();
+    const channelId = String(event?.channelId ?? '').trim() || null;
+    if (!guildId || !userId) return;
+    if (this.botUserId && userId === this.botUserId) return;
+
+    const session = channelId
+      ? this.get(guildId, { voiceChannelId: channelId, allowAnyGuildSession: true })
+      : this.get(guildId, { allowAnyGuildSession: true });
+    if (!session?.settings?.earrapeProtectionEnabled) return;
+
+    const rest = this.rest;
+    if (!rest || typeof rest.disconnectMemberFromVoice !== 'function') {
+      this.logger?.warn?.('Earrape protection triggered without a voice-disconnect REST adapter', {
+        guildId,
+        channelId,
+        participantId: userId,
+      });
+      await this._notifySessionChannel(
+        session,
+        `Earrape protection detected <@${userId}>, but I cannot disconnect users because the voice moderation API is unavailable.`
+      );
+      return;
+    }
+
+    try {
+      await rest.disconnectMemberFromVoice(guildId, userId);
+      this.logger?.warn?.('Disconnected member due to earrape protection trigger', {
+        guildId,
+        channelId,
+        participantId: userId,
+        peak: event.peak,
+        threshold: event.threshold,
+      });
+      this.emit('earrapeDetected', { session, guildId, channelId, participantId: userId, peak: event.peak });
+    } catch (err) {
+      this.logger?.warn?.('Failed to disconnect member after earrape protection trigger', {
+        guildId,
+        channelId,
+        participantId: userId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      if (this._isVoiceModerationPermissionError(err)) {
+        await this._notifySessionChannel(
+          session,
+          `Earrape protection detected <@${userId}>, but I am missing the **Move Members** permission and could not disconnect them.`
+        );
+      } else {
+        await this._notifySessionChannel(
+          session,
+          `Earrape protection detected <@${userId}>, but disconnecting them failed due to an API error.`
+        );
+      }
+    }
+  }
+
+  _clearKickTimer(session: Session | null | undefined): void {
+    if (!session?.kickTimer) return;
+    clearTimeout(session.kickTimer as NodeJS.Timeout);
+    session.kickTimer = null;
+    session.kickTimerMeta = null;
+  }
+
+  getKickTimerInfo(session: Session | null | undefined): { remainingSec: number; durationSec: number; requestedBy: string | null } | null {
+    const meta = session?.kickTimerMeta;
+    if (!session?.kickTimer || !meta) return null;
+    const remainingMs = Math.max(0, meta.firesAtMs - Date.now());
+    return {
+      remainingSec: Math.ceil(remainingMs / 1000),
+      durationSec: meta.durationSec,
+      requestedBy: meta.requestedBy ?? null,
+    };
+  }
+
+  scheduleKickTimer(session: Session, durationSec: number, options: { requestedBy?: string | null } = {}): { durationSec: number } {
+    this._clearKickTimer(session);
+    const safeDurationSec = Math.max(1, Math.floor(durationSec));
+    session.kickTimerMeta = {
+      firesAtMs: Date.now() + safeDurationSec * 1000,
+      durationSec: safeDurationSec,
+      requestedBy: options.requestedBy ? String(options.requestedBy) : null,
+    };
+    session.kickTimer = setTimeout(() => {
+      void this._executeKickTimer(session);
+    }, safeDurationSec * 1000);
+    (session.kickTimer as NodeJS.Timeout | null)?.unref?.();
+    return { durationSec: safeDurationSec };
+  }
+
+  cancelKickTimer(session: Session | null | undefined): boolean {
+    if (!session?.kickTimer) return false;
+    this._clearKickTimer(session);
+    return true;
+  }
+
+  async _executeKickTimer(session: Session): Promise<void> {
+    const meta = session.kickTimerMeta;
+    session.kickTimer = null;
+    session.kickTimerMeta = null;
+
+    const guildId = String(session?.guildId ?? '').trim();
+    const channelId = String(session?.connection?.channelId ?? '').trim();
+    if (!guildId || !channelId) return;
+
+    const rest = this.rest;
+    if (!rest || typeof rest.disconnectMemberFromVoice !== 'function') {
+      await this._notifySessionChannel(
+        session,
+        'Kick timer fired, but I cannot disconnect members because the voice moderation API is unavailable.'
+      );
+      return;
+    }
+
+    const store = this.voiceStateStore;
+    const members = typeof store?.getUsersInChannel === 'function'
+      ? store.getUsersInChannel(guildId, channelId)
+      : [];
+    const targets = members.filter((userId) => Boolean(userId) && (!this.botUserId || userId !== this.botUserId));
+
+    if (!targets.length) {
+      await this._notifySessionChannel(
+        session,
+        'Kick timer fired, but nobody was left in the voice channel to disconnect.'
+      );
+      return;
+    }
+
+    let disconnected = 0;
+    let permissionError = false;
+    let otherError = false;
+    for (const userId of targets) {
+      try {
+        await rest.disconnectMemberFromVoice(guildId, userId);
+        disconnected += 1;
+      } catch (err) {
+        if (this._isVoiceModerationPermissionError(err)) {
+          permissionError = true;
+        } else {
+          otherError = true;
+        }
+        this.logger?.warn?.('Failed to disconnect member during kick timer', {
+          guildId,
+          channelId,
+          userId,
+          botUserId: this.botUserId,
+          requestedBy: meta?.requestedBy ?? null,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    this.logger?.info?.('Kick timer executed', {
+      guildId,
+      channelId,
+      durationSec: meta?.durationSec ?? null,
+      requestedBy: meta?.requestedBy ?? null,
+      targets: targets.length,
+      disconnected,
+    });
+
+    if (disconnected > 0) {
+      const suffix = permissionError || otherError ? ' Some members could not be disconnected.' : '';
+      await this._notifySessionChannel(
+        session,
+        `Kick timer fired: disconnected **${disconnected}** member${disconnected === 1 ? '' : 's'} from voice.${suffix}`
+      );
+    } else if (permissionError) {
+      await this._notifySessionChannel(
+        session,
+        'Kick timer fired, but the disconnect was rejected (403). This uses the same action as earrape protection — if that can remove someone but this cannot, check that I still have **Move Members** in this channel.'
+      );
+    } else {
+      await this._notifySessionChannel(
+        session,
+        'Kick timer fired, but disconnecting members failed due to an API error.'
+      );
+    }
+  }
+
   setBotUserId(botUserId: string | null | undefined): void {
     this.botUserId = botUserId ? String(botUserId) : null;
+    for (const session of this.sessions.values()) {
+      session.connection.setBotUserId?.(this.botUserId);
+    }
   }
 
   listByGuild(guildId: string): Session[] {
@@ -273,11 +497,16 @@ export class SessionManager extends EventEmitter {
 
     const resolvedGuildConfig = guildConfig ?? await this._loadGuildConfig(guildId);
     const voiceProfileSettings = await this._loadVoiceProfileSettings(guildId, voiceChannelId);
+    const initialSettings = settingsFromGuildConfig(this.config, resolvedGuildConfig, voiceProfileSettings);
 
     const connectionLogger = this.logger?.child?.('voice') ?? this.logger ?? null;
     const connectionOptions: ConstructorParameters<typeof VoiceConnection>[2] = {
       ...(connectionLogger ? { logger: connectionLogger } : { logger: null }),
       ...(this.config.voiceMaxBitrate != null ? { voiceMaxBitrate: this.config.voiceMaxBitrate } : {}),
+      earrapeProtectionEnabled: Boolean(initialSettings.earrapeProtectionEnabled),
+      botUserId: this.botUserId,
+      earrapeProfileStore: this.earrapeProfiles,
+      onEarrapeDetected: (event: EarrapeDetectionEvent) => this._handleEarrapeDetected(event),
     };
     const connection = new VoiceConnection(this.gateway, guildId, connectionOptions);
 
@@ -304,6 +533,13 @@ export class SessionManager extends EventEmitter {
       ...(this.config.enableSpotifyImport != null ? { enableSpotifyImport: this.config.enableSpotifyImport } : {}),
       ...(this.config.enableDeezerImport != null ? { enableDeezerImport: this.config.enableDeezerImport } : {}),
       ...(this.config.enableTidalImport != null ? { enableTidalImport: this.config.enableTidalImport } : {}),
+      ...(this.config.nodeLinkEnabled != null ? { nodeLinkEnabled: this.config.nodeLinkEnabled } : {}),
+      ...(this.config.nodeLinkBaseUrl != null ? { nodeLinkBaseUrl: this.config.nodeLinkBaseUrl } : {}),
+      ...(this.config.nodeLinkPassword != null ? { nodeLinkPassword: this.config.nodeLinkPassword } : {}),
+      ...(this.config.nodeLinkDefaultSearch != null ? { nodeLinkDefaultSearch: this.config.nodeLinkDefaultSearch } : {}),
+      ...(this.config.nodeLinkRoutingMode != null ? { nodeLinkRoutingMode: this.config.nodeLinkRoutingMode } : {}),
+      ...(this.config.nodeLinkRequestTimeoutMs != null ? { nodeLinkRequestTimeoutMs: this.config.nodeLinkRequestTimeoutMs } : {}),
+      ...(this.config.nodeLinkStreamStartTimeoutMs != null ? { nodeLinkStreamStartTimeoutMs: this.config.nodeLinkStreamStartTimeoutMs } : {}),
       ...(this.config.spotifyClientId != null ? { spotifyClientId: this.config.spotifyClientId } : {}),
       ...(this.config.spotifyClientSecret != null ? { spotifyClientSecret: this.config.spotifyClientSecret } : {}),
       ...(this.config.spotifyRefreshToken != null ? { spotifyRefreshToken: this.config.spotifyRefreshToken } : {}),
@@ -326,7 +562,7 @@ export class SessionManager extends EventEmitter {
       ...(voiceProfileSettings ? { voiceProfileSettings } : {}),
       connection,
       player,
-      settings: settingsFromGuildConfig(this.config, resolvedGuildConfig, voiceProfileSettings),
+      settings: initialSettings,
       votes: {
         trackId: null,
         voters: new Set(),
@@ -468,6 +704,10 @@ export class SessionManager extends EventEmitter {
     for (const session of sessions) {
       const previous = session.settings;
       session.settings = settingsFromGuildConfig(this.config, guildConfig, session.voiceProfileSettings);
+      const earrapeProtectionEnabled = Boolean(session.settings.earrapeProtectionEnabled);
+      if (Boolean(previous.earrapeProtectionEnabled) !== earrapeProtectionEnabled) {
+        session.connection.setEarrapeProtectionEnabled?.(earrapeProtectionEnabled);
+      }
 
       if (previous.stayInVoiceEnabled !== session.settings.stayInVoiceEnabled) {
         stayInVoiceChanged = true;
@@ -511,6 +751,9 @@ export class SessionManager extends EventEmitter {
     const previous = session.settings;
     const guildConfig = await this._loadGuildConfig(session.guildId);
     session.settings = settingsFromGuildConfig(this.config, guildConfig, session.voiceProfileSettings);
+    if (Boolean(previous.earrapeProtectionEnabled) !== Boolean(session.settings.earrapeProtectionEnabled)) {
+      session.connection.setEarrapeProtectionEnabled?.(Boolean(session.settings.earrapeProtectionEnabled));
+    }
 
     if (previous.stayInVoiceEnabled !== session.settings.stayInVoiceEnabled) {
       if (session.settings.stayInVoiceEnabled) {
@@ -563,6 +806,10 @@ export class SessionManager extends EventEmitter {
         } else {
           this._scheduleIdleTimeout(session);
         }
+      }
+
+      if (key === 'earrapeProtectionEnabled') {
+        session.connection.setEarrapeProtectionEnabled?.(Boolean(value));
       }
 
       if (['stayInVoiceEnabled', 'volumePercent'].includes(key)) {
@@ -678,6 +925,7 @@ export class SessionManager extends EventEmitter {
       this.sessions.delete(session.sessionId!);
       this._stopPlaybackDiagnostics(session);
       this._clearIdleTimer(session);
+      this._clearKickTimer(session);
 
       try {
         session.player.stop?.();

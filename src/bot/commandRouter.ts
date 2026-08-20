@@ -1,6 +1,9 @@
 import { ValidationError } from '../core/errors.ts';
+import { createTranslator, DEFAULT_LOCALE, resolveLocale, type Locale } from '../i18n/index.ts';
+import { resolveLimits } from './services/votePerks.ts';
 import { parseCommand } from '../utils/commandParser.ts';
-import { makeResponder } from './messageFormatter.ts';
+import { buildEmbed, makeResponder, sourceColor } from './messageFormatter.ts';
+import { buildTrackAuthor } from './commands/helpers/formatting.ts';
 import { CommandRegistry } from './commandRegistry.ts';
 import { registerCommands } from './commands/index.ts';
 import { CommandRateLimiter } from './services/commandRateLimiter.ts';
@@ -29,11 +32,17 @@ import type { BivariantCallback, CommandDefinition, MessagePayload, ReplyOptions
 
 type RouterContextOptions = {
   prefix?: string;
-  guildConfig?: { prefix?: string; settings?: { minimalMode?: boolean } } | null;
+  hasVoted?: boolean;
+  guildConfig?: { prefix?: string; settings?: { minimalMode?: boolean; language?: string | null } } | null;
+  locale?: Locale;
 };
 
 type RouterConfig = {
   prefix: string;
+  maxPlaylistTracks?: number | null;
+  searchResultLimit?: number;
+  playCommandCooldownMs?: number;
+  maxFavoritesPerUser?: number;
   allowDefaultPrefixFallback?: boolean;
   commandRateLimitEnabled?: boolean;
   commandUserWindowMs?: number;
@@ -48,7 +57,7 @@ type RouterConfig = {
 };
 
 type GuildConfigResolver = {
-  get: (guildId: string) => Promise<{ prefix?: string; settings?: { minimalMode?: boolean } } | null>;
+  get: (guildId: string) => Promise<{ prefix?: string; settings?: { minimalMode?: boolean; language?: string | null } } | null>;
 };
 
 type RouterRest = {
@@ -68,6 +77,7 @@ type SessionLookup = {
   settings?: {
     musicLogChannelId?: string | null;
     stayInVoiceEnabled?: boolean;
+    earrapeProtectionEnabled?: boolean;
     minimalMode?: boolean;
     dedupeEnabled?: boolean;
     voteSkipRatio?: number;
@@ -146,6 +156,8 @@ type LibraryLike = {
 
 type PermissionServiceLike = {
   canBotSendMessages: (guildId: string, channelId: string) => Promise<boolean | null>;
+  canBotJoinAndSpeak?: (guildId: string, channelId: string) => Promise<boolean | null>;
+  canBotMoveMembers?: (guildId: string, channelId: string) => Promise<boolean | null>;
 };
 
 type MetricsLike = {
@@ -202,6 +214,7 @@ type CommandRouterOptions = {
   metrics?: MetricsLike | null;
   errorReporter?: ErrorReporterLike | null;
   commandRateLimiter?: CommandRateLimiter | null;
+  voteService?: { hasVoted: (userId: string) => boolean } | null;
 };
 
 export class CommandRouter {
@@ -223,9 +236,11 @@ export class CommandRouter {
   guildOpLocks: Map<string, number>;
   helpPaginations: Map<string, HelpPaginationState>;
   searchReactionSelections: Map<string, SearchReactionState>;
+  nowPlayingMessages: Map<string, { channelId: string; messageId: string }>;
   weeklySweepHandle: NodeJS.Timeout | null;
   ephemeralCleanupHandle: NodeJS.Timeout | null;
   commandRateLimiter: CommandRateLimiter;
+  voteService: { hasVoted: (userId: string) => boolean } | null;
   responder: ReturnType<typeof makeResponder>;
   registry: CommandRegistry;
   constructor(options: CommandRouterOptions) {
@@ -247,6 +262,7 @@ export class CommandRouter {
     this.guildOpLocks = new Map();
     this.helpPaginations = new Map();
     this.searchReactionSelections = new Map();
+    this.nowPlayingMessages = new Map();
     this.weeklySweepHandle = null;
     this.ephemeralCleanupHandle = null;
     const rateLimiterOptions = {
@@ -259,6 +275,7 @@ export class CommandRouter {
       ...(this.config.commandRateLimitBypass !== undefined ? { bypassCommands: this.config.commandRateLimitBypass } : {}),
     };
     this.commandRateLimiter = options.commandRateLimiter ?? new CommandRateLimiter(rateLimiterOptions);
+    this.voteService = options.voteService ?? null;
 
     this.responder = makeResponder(this.rest, this.config.enableEmbeds !== undefined
       ? { enableEmbeds: this.config.enableEmbeds }
@@ -311,20 +328,18 @@ export class CommandRouter {
       return;
     }
 
+    const locale = await this._resolveLocale(
+      message.author?.id ?? message.user_id ?? message.member?.user?.id ?? null,
+      guildConfig
+    );
+
+    const authorId = message.author?.id ?? message.user_id ?? message.member?.user?.id ?? null;
     const context = this._buildContext(message, parsed, command, {
       prefix: configuredPrefix,
       guildConfig,
+      locale,
+      hasVoted: authorId ? Boolean(this.voteService?.hasVoted(authorId)) : false,
     });
-    if (context.guildId && this.sessions.has(context.guildId, {
-      voiceChannelId: context.activeVoiceChannelId,
-      textChannelId: context.channelId,
-    })) {
-      this.sessions.bindTextChannel(context.guildId, context.channelId, {
-        voiceChannelId: context.activeVoiceChannelId,
-        textChannelId: context.channelId,
-      });
-    }
-
     try {
       if (
         context.guildId
@@ -350,12 +365,12 @@ export class CommandRouter {
       });
       if (!rateCheck.allowed) {
         const retrySec = Math.max(0.1, (rateCheck.retryAfterMs ?? 1_000) / 1000).toFixed(1);
-        throw new ValidationError(`Rate limit hit (${rateCheck.scope}). Please retry in ${retrySec}s.`);
+        throw new ValidationError(context.t('errors.rateLimit', { scope: String(rateCheck.scope), seconds: retrySec }));
       }
 
       const commandName = String(command.name ?? '').trim();
       if (!command.execute || !commandName) {
-        throw new ValidationError(`Command "${command.name}" is not executable.`);
+        throw new ValidationError(context.t('errors.notExecutable', { command: String(command.name) }));
       }
       await command.execute(context);
       this.metrics?.commandsTotal?.inc?.(1, { command: commandName, outcome: 'success' });
@@ -363,7 +378,10 @@ export class CommandRouter {
       const commandName = String(command.name ?? '').trim() || 'unknown';
       if (err instanceof ValidationError) {
         this.metrics?.commandsTotal?.inc?.(1, { command: commandName, outcome: 'validation_error' });
-        await context.reply.warning(err.message);
+        const localized = err.translationKey
+          ? context.t.optional(err.translationKey, err.translationParams ?? undefined)
+          : null;
+        await context.reply.warning(localized ?? err.message);
         return;
       }
 
@@ -381,7 +399,7 @@ export class CommandRouter {
         channelId: context.channelId,
       });
 
-      await context.reply.error('Command failed unexpectedly. Please try again.');
+      await context.reply.error(context.t('errors.unexpected'));
     }
   }
 
@@ -448,6 +466,7 @@ export class CommandRouter {
       config: {
         ...this.config,
         ...(options.guildConfig?.settings?.minimalMode === true ? { minimalMode: true } : {}),
+        ...resolveLimits(this.config, options.hasVoted === true),
       },
       prefix: options.prefix ?? this.config.prefix,
       logger: this.logger,
@@ -457,6 +476,8 @@ export class CommandRouter {
       guildConfigs: this.guildConfigs,
 
       guildConfig: options.guildConfig ?? null,
+      locale: options.locale ?? DEFAULT_LOCALE,
+      t: createTranslator(options.locale ?? DEFAULT_LOCALE),
       voiceStateStore: this.voiceStateStore,
       lyrics: this.lyrics,
       library: this.library,
@@ -533,7 +554,7 @@ export class CommandRouter {
     if (!guildId) return fn();
     const lockKey = `${String(guildId)}:${String(key ?? 'default')}`;
     if (this.guildOpLocks.has(lockKey)) {
-      throw new ValidationError('This action is already running. Please retry in a moment.');
+      throw new ValidationError('This action is already running. Please retry in a moment.', { translationKey: 'errors.actionRunning' });
     }
     this.guildOpLocks.set(lockKey, Date.now());
     try {
@@ -541,6 +562,39 @@ export class CommandRouter {
     } finally {
       this.guildOpLocks.delete(lockKey);
     }
+  }
+
+  async _resolveLocale(
+    userId: string | null,
+    guildConfig?: { settings?: { language?: string | null } } | null
+  ): Promise<Locale> {
+    let userLocale: string | null = null;
+
+    const library = this.library as { getUserLocale?: (userId: string) => Promise<string | null> } | null;
+    if (userId && typeof library?.getUserLocale === 'function') {
+      try {
+        userLocale = await library.getUserLocale(userId);
+      } catch (err) {
+        this.logger?.debug?.('Failed to resolve user locale', {
+          userId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    return resolveLocale({
+      userLocale,
+      guildLocale: guildConfig?.settings?.language ?? null,
+      fallbackLocale: this.config.defaultLanguage,
+    });
+  }
+
+  async _resolveGuildLocale(guildId: string | null): Promise<Locale> {
+    const guildConfig = await this._resolveGuildConfig(guildId);
+    return resolveLocale({
+      guildLocale: guildConfig?.settings?.language ?? null,
+      fallbackLocale: this.config.defaultLanguage,
+    });
   }
 
   async _resolveGuildConfig(guildId: string | null) {
@@ -586,14 +640,18 @@ export class CommandRouter {
         }
       }
 
-      await this._safeReply(
-        channelId,
-        'info',
-        `Now playing${voiceChannelTag}: **${track.title}** (${track.duration})`,
-        null,
-        null,
-        session?.settings?.minimalMode ? { minimalMode: true } : undefined
-      );
+      const eventT = createTranslator(await this._resolveGuildLocale(session?.guildId ?? null));
+      const published = await this._publishNowPlaying(session, track, channelId, voiceChannelTag);
+      if (!published) {
+        await this._safeReply(
+          channelId,
+          'info',
+          eventT('events.nowPlaying', { channel: voiceChannelTag, title: String(track.title), duration: String(track.duration) }),
+          null,
+          null,
+          session?.settings?.minimalMode ? { minimalMode: true } : undefined
+        );
+      }
       await this._emitWebhookEvent(session, 'track_start', `Now playing${voiceChannelTag}: ${summarizeTrack(track)}`);
     });
 
@@ -601,10 +659,11 @@ export class CommandRouter {
       const { session, track, error } = payload ?? {};
       const channelId = this._resolveEventChannelId(session);
       if (!channelId) return;
+      const eventT = createTranslator(await this._resolveGuildLocale(session?.guildId ?? null));
       await this._safeReply(
         channelId,
         'error',
-        `Playback error on **${track?.title ?? 'unknown'}**: ${error?.message ?? 'unknown error'}`,
+        eventT('events.trackError', { title: String(track?.title ?? eventT('common.unknown')), error: String(error?.message ?? eventT('errors.unknown')) }),
         null,
         null,
         session?.settings?.minimalMode ? { minimalMode: true } : undefined
@@ -615,6 +674,7 @@ export class CommandRouter {
     this.sessions.on('queueEmpty', async (payload?: SessionEventPayload) => {
       const { session, reason = null } = payload ?? {};
       if (!session?.guildId) return;
+      this.nowPlayingMessages.delete(String(session.guildId));
       const activeSession = this.sessions.get(session.guildId, { sessionId: session?.sessionId });
       if (activeSession && activeSession !== session) return;
       const player = session?.player ?? null;
@@ -638,13 +698,14 @@ export class CommandRouter {
       if (!channelId) return;
 
       const idleSeconds = Math.floor(this.config.sessionIdleMs / 1000);
+      const eventT = createTranslator(await this._resolveGuildLocale(session?.guildId ?? null));
       const suffix = session.settings?.stayInVoiceEnabled
-        ? '24/7 mode is enabled, so I will stay connected.'
-        : `I will disconnect after ${idleSeconds}s of inactivity.`;
+        ? eventT('events.queueEmptyStay')
+        : eventT('events.queueEmptyDisconnect', { seconds: idleSeconds });
       await this._safeReply(
         channelId,
         'info',
-        `Queue is empty. ${suffix}`,
+        eventT('events.queueEmpty', { suffix }),
         null,
         null,
         session?.settings?.minimalMode ? { minimalMode: true } : undefined
@@ -658,9 +719,10 @@ export class CommandRouter {
       if (!channelId) return;
       if (reason === 'manual_command') return;
 
+      const eventT = createTranslator(await this._resolveGuildLocale(session?.guildId ?? null));
       const reasonText = reason === 'idle_timeout'
-        ? 'Session closed due to inactivity.'
-        : `Session closed (${reason}).`;
+        ? eventT('events.sessionClosedIdle')
+        : eventT('events.sessionClosed', { reason: String(reason) });
 
       await this._safeReply(channelId, 'warning', reasonText, null, null, session?.settings?.minimalMode ? { minimalMode: true } : undefined);
       await this._emitWebhookEvent(session, 'session_closed', reasonText);
@@ -700,6 +762,62 @@ export class CommandRouter {
     const ratio = Number.isFinite(session?.settings?.voteSkipRatio) ? Number(session?.settings?.voteSkipRatio) : 0.5;
     const minVotes = Number.isFinite(session?.settings?.voteSkipMinVotes) ? Number(session?.settings?.voteSkipMinVotes) : 2;
     return Math.max(minVotes, Math.ceil(listeners * ratio));
+  }
+
+  async _publishNowPlaying(
+    session: SessionLookup | null | undefined,
+    track: Record<string, unknown>,
+    channelId: string,
+    voiceChannelTag: string,
+  ): Promise<boolean> {
+    if (session?.settings?.minimalMode === true) return false;
+    if (this.config.enableEmbeds === false) return false;
+
+    const guildId = String(session?.guildId ?? '').trim();
+    if (!guildId) return false;
+
+    const title = String(track?.title ?? '').trim() || 'Unknown';
+    const duration = String(track?.duration ?? '').trim() || 'Unknown';
+    const url = String(track?.url ?? '').trim();
+    const requestedBy = String(track?.requestedBy ?? '').trim();
+
+    const descriptionParts = [`**${title}**`, `\`${duration}\``];
+    if (requestedBy) descriptionParts.push(`• <@${requestedBy}>`);
+
+    const embed = buildEmbed({
+      title: `Now playing${voiceChannelTag}`,
+      description: descriptionParts.join(' '),
+      color: sourceColor(track?.source as string | null | undefined),
+      thumbnailUrl: (track?.thumbnailUrl as string | null | undefined) ?? null,
+      author: buildTrackAuthor(track as never),
+      url: url || null,
+    });
+
+    const payload: MessagePayload = {
+      embeds: [embed],
+      allowed_mentions: { parse: [], users: [], roles: [], replied_user: false },
+    };
+
+    const existing = this.nowPlayingMessages.get(guildId);
+    if (existing && existing.channelId === channelId) {
+      const edited = await this.rest.editMessage(channelId, existing.messageId, payload).catch(() => null);
+      if (edited) return true;
+      this.nowPlayingMessages.delete(guildId);
+    }
+
+    const sent = await this.rest.sendMessage(channelId, payload).catch((error: unknown) => {
+      this.logger?.debug?.('Failed to publish now playing message', {
+        guildId,
+        channelId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    });
+    if (!sent) return false;
+
+    const messageId = String((sent as { id?: unknown })?.id ?? '').trim();
+    if (messageId) this.nowPlayingMessages.set(guildId, { channelId, messageId });
+    return true;
   }
 
   async _emitWebhookEvent(session: SessionLookup | null | undefined, type: string, text: string) {

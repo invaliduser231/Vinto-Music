@@ -8,6 +8,8 @@ import {
   normalizeGuildId,
   normalizePlaylistName,
   normalizePlaylistNameKey,
+  normalizeFavoriteAlias,
+  normalizeFavoriteAliasKey,
   normalizeStationName,
   normalizeStationNameKey,
   normalizeStationTags,
@@ -29,6 +31,8 @@ interface StoredTrack {
   requestedBy: string | null;
   savedAt: Date;
   artist?: string | null;
+  alias?: string | null;
+  aliasKey?: string | null;
   playedAt?: string | Date | null;
   [key: string]: unknown;
 }
@@ -129,10 +133,14 @@ interface TasteRow {
   count: number;
 }
 
+const USER_LOCALE_CACHE_TTL_MS = 5 * 60 * 1000;
+const USER_LOCALE_CACHE_MAX = 5000;
+
 interface UserProfileDoc {
   userId: string;
   guildStats?: UserGuildStats[];
   taste?: TasteRow[];
+  locale?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
   [key: string]: unknown;
@@ -219,6 +227,8 @@ export class MusicLibraryStore {
   maxSavedTracksPerPlaylist: number;
   maxFavoritesPerUser: number;
   maxHistoryTracks: number;
+  _rmwChains: Map<string, Promise<unknown>>;
+  userLocaleCache: Map<string, { locale: string | null; expiresAt: number }>;
 
   constructor(options: MusicLibraryStoreOptions) {
     this.guildPlaylists = options.guildPlaylistsCollection;
@@ -237,6 +247,22 @@ export class MusicLibraryStore {
     );
     this.maxFavoritesPerUser = toPositiveInt(options.maxFavoritesPerUser, 500);
     this.maxHistoryTracks = toPositiveInt(options.maxHistoryTracks, 200);
+    this._rmwChains = new Map();
+    this.userLocaleCache = new Map();
+  }
+
+  async _serialize<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const previous = this._rmwChains.get(key) ?? Promise.resolve();
+    const run = previous.then(() => fn(), () => fn());
+    const tail = run.then(() => undefined, () => undefined);
+    this._rmwChains.set(key, tail);
+    try {
+      return await run;
+    } finally {
+      if (this._rmwChains.get(key) === tail) {
+        this._rmwChains.delete(key);
+      }
+    }
   }
 
   async init() {
@@ -356,7 +382,7 @@ export class MusicLibraryStore {
     const templateKey = normalizePlaylistNameKey(name);
     const normalizedTracks = (Array.isArray(tracks) ? tracks : []).map((track) => normalizeTrack(track as TrackInputLike, createdBy as TrackRequesterLike));
     if (!normalizedTracks.length) {
-      throw new ValidationError('Template requires at least one track.');
+      throw new ValidationError('Template requires at least one track.', { translationKey: 'store.templateNeedsTrack' });
     }
 
     const config = await this.getGuildFeatureConfig(normalizedGuildId);
@@ -647,6 +673,60 @@ export class MusicLibraryStore {
     };
   }
 
+  async getUserLocale(userId: unknown): Promise<string | null> {
+    const normalizedUserId = normalizeUserId(userId);
+    if (!normalizedUserId || !this.userProfiles) return null;
+
+    const cached = this.userLocaleCache.get(normalizedUserId);
+    if (cached && cached.expiresAt > Date.now()) return cached.locale;
+
+    let locale: string | null = null;
+    try {
+      const doc = await this.userProfiles.findOne(
+        { userId: normalizedUserId },
+        { projection: { _id: 0, locale: 1 } }
+      );
+      locale = doc?.locale != null ? String(doc.locale) : null;
+    } catch (err) {
+      this.logger?.warn?.('Failed to read user locale', {
+        userId: normalizedUserId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    }
+
+    this._cacheUserLocale(normalizedUserId, locale);
+    return locale;
+  }
+
+  async setUserLocale(userId: unknown, locale: unknown): Promise<string | null> {
+    const normalizedUserId = normalizeUserId(userId);
+    const collection = this._ensureFeatureCollection(this.userProfiles, 'User profiles');
+    const nextLocale = locale == null ? null : String(locale).trim() || null;
+    const now = new Date();
+
+    await collection.updateOne(
+      { userId: normalizedUserId },
+      {
+        $set: { locale: nextLocale, updatedAt: now },
+        $setOnInsert: { userId: normalizedUserId, createdAt: now },
+      },
+      { upsert: true }
+    );
+
+    this._cacheUserLocale(normalizedUserId, nextLocale);
+    return nextLocale;
+  }
+
+  _cacheUserLocale(userId: string, locale: string | null) {
+    if (this.userLocaleCache.size >= USER_LOCALE_CACHE_MAX && !this.userLocaleCache.has(userId)) {
+      const oldest = this.userLocaleCache.keys().next().value;
+      if (oldest !== undefined) this.userLocaleCache.delete(oldest);
+    }
+    this.userLocaleCache.delete(userId);
+    this.userLocaleCache.set(userId, { locale, expiresAt: Date.now() + USER_LOCALE_CACHE_TTL_MS });
+  }
+
   async getGuildTopTracks(guildId: unknown, days: number = 7, limit: number = 10) {
     const normalizedGuildId = normalizeGuildId(guildId);
     const safeDays = Math.max(1, Math.min(90, toPositiveInt(days, 7)));
@@ -852,7 +932,14 @@ export class MusicLibraryStore {
     };
   }
 
-  async addTracksToGuildPlaylist(guildId: unknown, name: unknown, tracks: unknown[], addedBy: unknown = null) {
+  addTracksToGuildPlaylist(guildId: unknown, name: unknown, tracks: unknown[], addedBy: unknown = null) {
+    return this._serialize(
+      `pl:${normalizeGuildId(guildId)}:${normalizePlaylistNameKey(name)}`,
+      () => this._addTracksToGuildPlaylistLocked(guildId, name, tracks, addedBy)
+    );
+  }
+
+  async _addTracksToGuildPlaylistLocked(guildId: unknown, name: unknown, tracks: unknown[], addedBy: unknown = null) {
     const normalizedGuildId = normalizeGuildId(guildId);
     const normalizedName = normalizePlaylistName(name);
     const nameKey = normalizePlaylistNameKey(name);
@@ -867,7 +954,7 @@ export class MusicLibraryStore {
 
     const nextTracks = Array.isArray(tracks) ? tracks : [];
     if (!nextTracks.length) {
-      throw new ValidationError('No tracks to add.');
+      throw new ValidationError('No tracks to add.', { translationKey: 'store.noTracksToAdd' });
     }
 
     const sanitized: NormalizedStoredTrack[] = [];
@@ -900,13 +987,20 @@ export class MusicLibraryStore {
     };
   }
 
-  async removeTrackFromGuildPlaylist(guildId: unknown, name: unknown, index: unknown) {
+  removeTrackFromGuildPlaylist(guildId: unknown, name: unknown, index: unknown) {
+    return this._serialize(
+      `pl:${normalizeGuildId(guildId)}:${normalizePlaylistNameKey(name)}`,
+      () => this._removeTrackFromGuildPlaylistLocked(guildId, name, index)
+    );
+  }
+
+  async _removeTrackFromGuildPlaylistLocked(guildId: unknown, name: unknown, index: unknown) {
     const normalizedGuildId = normalizeGuildId(guildId);
     const normalizedName = normalizePlaylistName(name);
     const nameKey = normalizePlaylistNameKey(name);
     const safeIndex = toPositiveInt(index, 0);
     if (safeIndex <= 0) {
-      throw new ValidationError('Track index must be a positive integer.');
+      throw new ValidationError('Track index must be a positive integer.', { translationKey: 'store.trackIndexPositive' });
     }
 
     const current = await this.guildPlaylists.findOne({ guildId: normalizedGuildId, nameKey });
@@ -916,7 +1010,7 @@ export class MusicLibraryStore {
 
     const tracks = Array.isArray(current.tracks) ? [...current.tracks] : [];
     if (safeIndex > tracks.length) {
-      throw new ValidationError('Track index out of range.');
+      throw new ValidationError('Track index out of range.', { translationKey: 'store.trackIndexRange' });
     }
 
     const [removed] = tracks.splice(safeIndex - 1, 1);
@@ -933,9 +1027,17 @@ export class MusicLibraryStore {
     return removed ?? null;
   }
 
-  async addUserFavorite(userId: unknown, track: unknown) {
+  addUserFavorite(userId: unknown, track: unknown) {
+    return this._serialize(`fav:${normalizeUserId(userId)}`, () => this._addUserFavoriteLocked(userId, track));
+  }
+
+  async _addUserFavoriteLocked(userId: unknown, track: unknown) {
     const normalizedUserId = normalizeUserId(userId);
-    const normalizedTrack = normalizeTrack(track as TrackInputLike, normalizedUserId as TrackRequesterLike);
+    const normalizedTrack = {
+      ...normalizeTrack(track as TrackInputLike, normalizedUserId as TrackRequesterLike),
+      alias: null,
+      aliasKey: null,
+    };
 
     const current = await this.userFavorites.findOne({ userId: normalizedUserId });
     const existingTracks = Array.isArray(current?.tracks) ? current.tracks : [];
@@ -989,7 +1091,7 @@ export class MusicLibraryStore {
     const normalizedUserId = normalizeUserId(userId);
     const safeIndex = toPositiveInt(index, 0);
     if (safeIndex <= 0) {
-      throw new ValidationError('Favorite index must be a positive integer.');
+      throw new ValidationError('Favorite index must be a positive integer.', { translationKey: 'store.favoriteIndexPositive' });
     }
 
     const doc = await this.userFavorites.findOne(
@@ -1000,11 +1102,33 @@ export class MusicLibraryStore {
     return tracks[safeIndex - 1] ?? null;
   }
 
-  async removeUserFavorite(userId: unknown, index: unknown) {
+  async getUserFavoriteByAlias(userId: unknown, alias: unknown) {
+    const normalizedUserId = normalizeUserId(userId);
+    const aliasKey = normalizeFavoriteAliasKey(alias);
+    const doc = await this.userFavorites.findOne(
+      { userId: normalizedUserId },
+      { projection: { _id: 0, tracks: 1 } }
+    );
+    const tracks = Array.isArray(doc?.tracks) ? doc.tracks : [];
+    return tracks.find((track) => {
+      if (!track || typeof track !== 'object') return false;
+      const explicitKey = String(track.aliasKey ?? '').trim().toLowerCase();
+      if (explicitKey) return explicitKey === aliasKey;
+      const explicitAlias = String(track.alias ?? '').trim();
+      if (!explicitAlias) return false;
+      return normalizeFavoriteAliasKey(explicitAlias) === aliasKey;
+    }) ?? null;
+  }
+
+  removeUserFavorite(userId: unknown, index: unknown) {
+    return this._serialize(`fav:${normalizeUserId(userId)}`, () => this._removeUserFavoriteLocked(userId, index));
+  }
+
+  async _removeUserFavoriteLocked(userId: unknown, index: unknown) {
     const normalizedUserId = normalizeUserId(userId);
     const safeIndex = toPositiveInt(index, 0);
     if (safeIndex <= 0) {
-      throw new ValidationError('Favorite index must be a positive integer.');
+      throw new ValidationError('Favorite index must be a positive integer.', { translationKey: 'store.favoriteIndexPositive' });
     }
 
     const current = await this.userFavorites.findOne({ userId: normalizedUserId });
@@ -1024,6 +1148,55 @@ export class MusicLibraryStore {
       }
     );
     return removed ?? null;
+  }
+
+  renameUserFavorite(userId: unknown, index: unknown, alias: unknown) {
+    return this._serialize(`fav:${normalizeUserId(userId)}`, () => this._renameUserFavoriteLocked(userId, index, alias));
+  }
+
+  async _renameUserFavoriteLocked(userId: unknown, index: unknown, alias: unknown) {
+    const normalizedUserId = normalizeUserId(userId);
+    const safeIndex = toPositiveInt(index, 0);
+    if (safeIndex <= 0) {
+      throw new ValidationError('Favorite index must be a positive integer.', { translationKey: 'store.favoriteIndexPositive' });
+    }
+
+    const normalizedAlias = normalizeFavoriteAlias(alias);
+    const normalizedAliasKey = normalizeFavoriteAliasKey(normalizedAlias);
+    const current = await this.userFavorites.findOne({ userId: normalizedUserId });
+    const tracks = Array.isArray(current?.tracks) ? [...current.tracks] : [];
+    if (safeIndex > tracks.length) {
+      throw new ValidationError('Favorite index out of range.', { translationKey: 'favorites.indexOutOfRange' });
+    }
+
+    const duplicate = tracks.some((track, idx) => {
+      if (!track || typeof track !== 'object' || idx === (safeIndex - 1)) return false;
+      const trackAliasKey = String(track.aliasKey ?? '').trim().toLowerCase();
+      if (trackAliasKey) return trackAliasKey === normalizedAliasKey;
+      const trackAlias = String(track.alias ?? '').trim();
+      if (!trackAlias) return false;
+      return normalizeFavoriteAliasKey(trackAlias) === normalizedAliasKey;
+    });
+    if (duplicate) {
+      throw new ValidationError('Alias already exists in your favorites.', { translationKey: 'store.aliasExists' });
+    }
+
+    const target = tracks[safeIndex - 1] as StoredTrack;
+    tracks[safeIndex - 1] = {
+      ...target,
+      alias: normalizedAlias,
+      aliasKey: normalizedAliasKey,
+    };
+    await this.userFavorites.updateOne(
+      { userId: normalizedUserId },
+      {
+        $set: {
+          tracks,
+          updatedAt: new Date(),
+        },
+      }
+    );
+    return tracks[safeIndex - 1] ?? null;
   }
 
   async appendGuildHistory(guildId: unknown, track: unknown) {

@@ -108,6 +108,54 @@ test('loadConfig accepts optional RSS exit threshold', () => {
   assert.equal(config.memoryRssExitMb, 1536);
 });
 
+test('loadConfig parses NodeLink backend settings', () => {
+  const config = loadConfig(buildEnv({
+    NODELINK_ENABLED: '1',
+    NODELINK_BASE_URL: 'nodelink:3000/',
+    NODELINK_PASSWORD: 'secret',
+    NODELINK_DEFAULT_SEARCH: 'ytsearch',
+    NODELINK_ROUTING_MODE: 'all',
+    NODELINK_REQUEST_TIMEOUT_MS: '12000',
+    NODELINK_STREAM_START_TIMEOUT_MS: '7000',
+  }));
+
+  assert.equal(config.nodeLinkEnabled, true);
+  assert.equal(config.nodeLinkBaseUrl, 'http://nodelink:3000');
+  assert.equal(config.nodeLinkPassword, 'secret');
+  assert.equal(config.nodeLinkDefaultSearch, 'ytsearch');
+  assert.equal(config.nodeLinkRoutingMode, 'all');
+  assert.equal(config.nodeLinkRequestTimeoutMs, 12000);
+  assert.equal(config.nodeLinkStreamStartTimeoutMs, 7000);
+});
+
+test('loadConfig defaults NodeLink routing mode to smart and accepts aliases', () => {
+  const defaultConfig = loadConfig(buildEnv());
+  const aliasConfig = loadConfig(buildEnv({
+    NODELINK_ROUTING_MODE: 'youtube',
+  }));
+  const autoConfig = loadConfig(buildEnv({
+    NODELINK_ROUTING_MODE: 'auto',
+  }));
+
+  assert.equal(defaultConfig.nodeLinkRoutingMode, 'smart');
+  assert.equal(aliasConfig.nodeLinkRoutingMode, 'youtube-only');
+  assert.equal(autoConfig.nodeLinkRoutingMode, 'smart');
+});
+
+test('loadConfig rejects invalid NodeLink routing mode values', () => {
+  assert.throws(
+    () => loadConfig(buildEnv({ NODELINK_ROUTING_MODE: 'invalid-mode' })),
+    /NODELINK_ROUTING_MODE must be one of: smart, all, youtube-only, auto/
+  );
+});
+
+test('loadConfig requires NodeLink base URL when enabled', () => {
+  assert.throws(
+    () => loadConfig(buildEnv({ NODELINK_ENABLED: '1' })),
+    /NODELINK_BASE_URL is required/
+  );
+});
+
 
 
 

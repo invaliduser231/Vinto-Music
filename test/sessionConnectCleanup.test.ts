@@ -78,9 +78,6 @@ test('join destroys newly created session if connect fails', async () => {
           },
         };
       },
-      bindTextChannel(guildId: string, channelId: string) {
-        calls.push(['bindTextChannel', guildId, channelId]);
-      },
       async destroy(guildId: string, reason: string) {
         calls.push(['destroy', guildId, reason]);
         return true;
@@ -92,7 +89,6 @@ test('join destroys newly created session if connect fails', async () => {
   assert.deepEqual(calls, [
     ['has'],
     ['ensure'],
-    ['bindTextChannel', 'guild-1', 'text-1'],
     ['connect'],
     ['destroy', 'guild-1', 'connect_failed'],
   ]);
@@ -123,9 +119,6 @@ test('join does not destroy existing session when reconnect fails', async () => 
           },
         };
       },
-      bindTextChannel(guildId: string, channelId: string) {
-        calls.push(['bindTextChannel', guildId, channelId]);
-      },
       async destroy(guildId: string, reason: string) {
         calls.push(['destroy', guildId, reason]);
         return true;
@@ -137,7 +130,6 @@ test('join does not destroy existing session when reconnect fails', async () => 
   assert.deepEqual(calls, [
     ['has'],
     ['ensure'],
-    ['bindTextChannel', 'guild-1', 'text-1'],
     ['connect'],
   ]);
 });

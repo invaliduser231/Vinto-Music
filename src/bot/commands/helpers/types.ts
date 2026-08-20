@@ -1,3 +1,6 @@
+import type { Locale, TranslationKey, Translator } from '../../../i18n/index.ts';
+import type { PermissionFlag } from '../../permissions/flags.ts';
+import type { PermissionCheck } from '../../permissions/resolver.ts';
 import type { BivariantCallback, CommandDefinition, MessagePayload } from '../../../types/core.ts';
 
 export type GuildConfigLike = {
@@ -6,12 +9,14 @@ export type GuildConfigLike = {
   settings: {
     dedupeEnabled: boolean;
     stayInVoiceEnabled: boolean;
+    earrapeProtectionEnabled?: boolean;
     minimalMode?: boolean;
     volumePercent: number;
     voteSkipRatio: number;
     voteSkipMinVotes: number;
     djRoleIds: string[];
     musicLogChannelId: string | null;
+    language?: string | null;
   };
 };
 
@@ -55,6 +60,7 @@ export type SessionLike = {
   settings: {
     dedupeEnabled: boolean;
     stayInVoiceEnabled: boolean;
+    earrapeProtectionEnabled?: boolean;
     minimalMode?: boolean;
     voteSkipRatio: number;
     voteSkipMinVotes: number;
@@ -123,6 +129,7 @@ export type SessionLike = {
     searchCandidates: (query: string, limit: number, options?: { requestedBy?: string | null }) => Promise<TrackDataLike[]>;
     getProgressSeconds: () => number;
     previewTracks: (query: string, options?: { requestedBy?: string | null; limit?: number }) => Promise<TrackDataLike[]>;
+    isNodeLinkStreamingEnabled?: () => boolean;
     on: (event: string, listener: BivariantCallback<unknown[], void | Promise<void>>) => unknown;
     off: (event: string, listener: BivariantCallback<unknown[], void | Promise<void>>) => unknown;
     [key: string]: unknown;
@@ -139,6 +146,8 @@ export type LibraryLike = {
     [key: string]: unknown;
   }>;
   patchGuildFeatureConfig: (guildId: string, patch: Record<string, unknown>) => Promise<unknown>;
+  getUserLocale?: (userId: string) => Promise<string | null>;
+  setUserLocale?: (userId: string, locale: string | null) => Promise<string | null>;
   getVoiceProfile: (guildId: string, channelId: string) => Promise<{ moodPreset?: string | null; stayInVoiceEnabled?: boolean | null } | null>;
   setVoiceProfile: (guildId: string, channelId: string, patch: Record<string, unknown>) => Promise<unknown>;
   listGuildStations?: (guildId: string) => Promise<RadioStationDataLike[]>;
@@ -192,11 +201,15 @@ export type CommandContextLike = {
     maxConcurrentVoiceChannelsPerGuild?: number;
     maxPlaylistTracks?: number;
     playCommandCooldownMs?: number;
+    voteUrl?: string | null;
     voteSkipRatio?: number;
     voteSkipMinVotes?: number;
     searchResultLimit?: number;
     [key: string]: unknown;
   };
+  locale: Locale;
+  t: Translator;
+  voteService?: { hasVoted?: (userId: string) => boolean; enabled?: boolean } | null;
   guildConfig?: GuildConfigLike | null;
   guildConfigs?: {
     get: (guildId: string) => Promise<GuildConfigLike>;
@@ -224,6 +237,12 @@ export type CommandContextLike = {
   };
   permissionService?: {
     canBotJoinAndSpeak?: (guildId: string, voiceChannelId: string) => Promise<boolean | null>;
+    canBotMoveMembers?: (guildId: string, voiceChannelId: string) => Promise<boolean | null>;
+    checkBotPermissions?: (
+      guildId: string,
+      channelId: string,
+      required: readonly PermissionFlag[]
+    ) => Promise<PermissionCheck>;
   } | null;
   guildStateCache?: {
     resolveOwnerId?: (guildId: string) => string | null;
@@ -231,6 +250,11 @@ export type CommandContextLike = {
   } | null;
   rest?: {
     sendMessage?: (channelId: string, payload: MessagePayload) => Promise<unknown>;
+    sendFile?: (
+      channelId: string,
+      file: { filename: string; contentType: string; data: Uint8Array; description?: string | null },
+      payload?: MessagePayload | string
+    ) => Promise<unknown>;
     editMessage?: (channelId: string, messageId: string, payload: MessagePayload) => Promise<unknown>;
     getGuildMember?: (guildId: string, userId: string) => Promise<unknown>;
     getGuild?: (guildId: string) => Promise<unknown>;
@@ -263,9 +287,9 @@ export type CommandHelperBundle = {
   parseRoleId: (value: unknown) => string | null;
   parseTextChannelId: (value: unknown) => string | null;
   resolveActiveVoiceChannelOrThrow: (ctx: CommandContextLike, options?: { fallbackCommand?: string | null }) => Promise<string>;
-  ensureManageGuildAccess: (ctx: CommandContextLike, actionLabel: string) => Promise<void>;
+  ensureManageGuildAccess: (ctx: CommandContextLike, actionLabel: TranslationKey) => Promise<void>;
   getSessionOrThrow: (ctx: CommandContextLike) => SessionLike;
   ensureConnectedSession: (ctx: CommandContextLike, explicitChannelId?: string | null) => Promise<SessionLike>;
-  ensureDjAccess: (ctx: CommandContextLike, session: SessionLike, actionLabel: string) => void;
-  parseRequiredInteger: (value: unknown, label: string) => number;
+  ensureDjAccess: (ctx: CommandContextLike, session: SessionLike, actionLabel: TranslationKey) => void;
+  parseRequiredInteger: (value: unknown, label: TranslationKey, t: Translator) => number;
 };

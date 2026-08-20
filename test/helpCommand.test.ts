@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { registerCommands } from '../src/bot/commands/index.ts';
 import { CommandRegistry } from '../src/bot/commandRegistry.ts';
+import { createTranslator } from '../src/i18n/index.ts';
 
 type HelpExecute = NonNullable<NonNullable<ReturnType<CommandRegistry['resolve']>>['execute']>;
 
@@ -48,6 +49,7 @@ test('help command sends paginated embed payload', async () => {
   let registeredPagination: HelpPaginationRegistration | null = null;
 
   await execute({
+    t: createTranslator('en'),
     prefix,
     registry,
     channelId,
@@ -96,6 +98,7 @@ test('help command sends single command description embed payload', async () => 
   let registeredPagination: HelpPaginationRegistration | null = null;
 
   await execute({
+    t: createTranslator('en'),
     prefix,
     registry,
     channelId,
@@ -133,6 +136,7 @@ test('help command formats command alternatives without spaced pipes', async () 
   let sentPayload: HelpPayload | null = null;
 
   await execute({
+    t: createTranslator('en'),
     prefix,
     registry,
     channelId,
@@ -165,6 +169,7 @@ test('help command sends arbitrary page for paginated embed payload', async () =
   const pageIndex = +pageNum - 1;
 
   await execute({
+    t: createTranslator('en'),
     prefix,
     registry,
     channelId,

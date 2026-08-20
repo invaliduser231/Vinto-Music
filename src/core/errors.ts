@@ -5,6 +5,8 @@ export interface AppErrorOptions {
   status?: number | null;
   cause?: unknown;
   details?: Dict | null;
+  translationKey?: string | null;
+  translationParams?: Record<string, string | number> | null;
 }
 
 export class AppError extends Error {
@@ -13,6 +15,8 @@ export class AppError extends Error {
   status: number | null;
   override cause: unknown;
   details: Dict | null;
+  translationKey: string | null;
+  translationParams: Record<string, string | number> | null;
 
   constructor(message: string, options: AppErrorOptions = {}) {
     super(message);
@@ -21,6 +25,8 @@ export class AppError extends Error {
     this.status = options.status ?? null;
     this.cause = options.cause;
     this.details = options.details ?? null;
+    this.translationKey = options.translationKey ?? null;
+    this.translationParams = options.translationParams ?? null;
   }
 }
 

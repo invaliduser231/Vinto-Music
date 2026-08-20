@@ -1,4 +1,6 @@
 import { ValidationError } from '../../../core/errors.ts';
+import { ensurePermissionCheck } from '../../permissions/require.ts';
+import type { PermissionFlag } from '../../permissions/flags.ts';
 import { applyMoodPreset } from '../advancedCommands.ts';
 import type { CommandContextLike, GuildConfigLike, LibraryLike, SessionLike } from './types.ts';
 
@@ -20,9 +22,9 @@ type MemberLike = {
   mute?: boolean;
 };
 
-export function ensureGuild(ctx: Pick<CommandContextLike, 'guildId'>): void {
+export function ensureGuild(ctx: Pick<CommandContextLike, 'guildId' | 't'>): void {
   if (!ctx.guildId) {
-    throw new ValidationError('This command can only be used in a guild channel.');
+    throw new ValidationError(ctx.t('errors.guildOnly'));
   }
 }
 
@@ -32,7 +34,7 @@ export function getSessionOrThrow(ctx: CommandContextLike): SessionLike {
     textChannelId: ctx.channelId,
   });
   if (!session) {
-    throw new ValidationError('No active player in this channel.');
+    throw new ValidationError(ctx.t('errors.noActivePlayer'));
   }
   return session;
 }
@@ -40,7 +42,7 @@ export function getSessionOrThrow(ctx: CommandContextLike): SessionLike {
 export async function getGuildConfigOrThrow(ctx: CommandContextLike): Promise<GuildConfigLike> {
   ensureGuild(ctx);
   if (!ctx.guildConfigs) {
-    throw new ValidationError('Guild config store is not available.');
+    throw new ValidationError(ctx.t('errors.guildConfigUnavailable'));
   }
 
   if (ctx.guildConfig && ctx.guildConfig.guildId === ctx.guildId) {
@@ -55,7 +57,7 @@ export async function getGuildConfigOrThrow(ctx: CommandContextLike): Promise<Gu
 export async function updateGuildConfig(ctx: CommandContextLike, patch: Record<string, unknown>): Promise<GuildConfigLike> {
   ensureGuild(ctx);
   if (!ctx.guildConfigs) {
-    throw new ValidationError('Guild config store is not available.');
+    throw new ValidationError(ctx.t('errors.guildConfigUnavailable'));
   }
 
   const updated = await ctx.guildConfigs.update(ctx.guildId, patch);
@@ -129,21 +131,32 @@ type PreparedSessionConnection = {
   session: SessionLike;
 };
 
+type PrepareSessionConnectionOptions = {
+  bindTextChannel?: boolean;
+};
+
+const VOICE_PLAYBACK_PERMISSIONS: readonly PermissionFlag[] = ['VIEW_CHANNEL', 'CONNECT', 'SPEAK'];
+
 export async function prepareSessionConnection(
   ctx: CommandContextLike,
   explicitChannelId: string | null = null,
+  options: PrepareSessionConnectionOptions = {},
 ): Promise<PreparedSessionConnection> {
   const resolvedVoice = explicitChannelId ?? await resolveActiveVoiceChannelOrThrow(ctx, { fallbackCommand: 'play' });
 
-  if (ctx.permissionService?.canBotJoinAndSpeak) {
-    const canVoice = await ctx.permissionService.canBotJoinAndSpeak(ctx.guildId, resolvedVoice);
-    if (canVoice === false) {
-      throw new ValidationError('I do not have permission to connect and speak in that voice channel.');
+  if (ctx.permissionService?.checkBotPermissions) {
+    const check = await ctx.permissionService.checkBotPermissions(
+      ctx.guildId,
+      resolvedVoice,
+      VOICE_PLAYBACK_PERMISSIONS
+    );
+    if (check.known && !check.ok) {
+      ensurePermissionCheck(ctx.t, check, { channelMention: `<#${resolvedVoice}>` });
     }
   }
 
   if (await isBotCurrentlyDeafened(ctx)) {
-    throw new ValidationError('Cannot connect to VC because I am Deafened - please undeafen me.');
+    throw new ValidationError(ctx.t('errors.botDeafened'));
   }
 
   const selector = { voiceChannelId: resolvedVoice };
@@ -174,7 +187,9 @@ export async function prepareSessionConnection(
     ? session.connection.hasUsablePlayer()
     : true;
 
-  ctx.sessions.bindTextChannel(ctx.guildId, ctx.channelId, selector);
+  if (options.bindTextChannel === true) {
+    ctx.sessions.bindTextChannel(ctx.guildId, ctx.channelId, selector);
+  }
   return {
     hadSession,
     hasUsablePlayer,
@@ -209,7 +224,7 @@ export async function connectPreparedSession(
       await ctx.sessions.destroy(ctx.guildId, 'connect_failed', { sessionId: session.sessionId }).catch(() => null);
     }
     if (await isBotCurrentlyDeafened(ctx)) {
-      throw new ValidationError('Cannot connect to VC because I am Deafened - please undeafen me.');
+      throw new ValidationError(ctx.t('errors.botDeafened'));
     }
     throw err;
   }
@@ -230,7 +245,7 @@ export async function applyVoiceProfileIfConfigured(ctx: CommandContextLike, ses
   const profile = await ctx.library.getVoiceProfile(ctx.guildId, channelId).catch(() => null);
   const moodPreset = String(profile?.moodPreset ?? '').trim().toLowerCase();
   if (moodPreset) {
-    applyMoodPreset(session.player, moodPreset);
+    applyMoodPreset(session.player, moodPreset, ctx.t);
   }
 }
 
@@ -242,15 +257,15 @@ export async function resolveQueueGuard(ctx: CommandContextLike) {
 
 export function requireLibrary(ctx: CommandContextLike): LibraryLike {
   if (!ctx.library) {
-    throw new ValidationError('Music library storage is unavailable.');
+    throw new ValidationError(ctx.t('errors.libraryUnavailable'));
   }
   return ctx.library;
 }
 
-export function ensureSessionTrack(_ctx: CommandContextLike, session: SessionLike): void {
+export function ensureSessionTrack(ctx: CommandContextLike, session: SessionLike): void {
   const current = session?.player?.displayTrack ?? session?.player?.currentTrack ?? null;
   if (!current) {
-    throw new ValidationError('Nothing is currently playing.');
+    throw new ValidationError(ctx.t('errors.nothingPlaying'));
   }
 }
 

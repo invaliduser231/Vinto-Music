@@ -26,13 +26,22 @@ export interface EmbedImage {
 
 export interface EmbedFooter {
   text: string;
+  icon_url?: string;
+}
+
+export interface EmbedAuthor {
+  name: string;
+  url?: string;
+  icon_url?: string;
 }
 
 export interface EmbedPayload {
   color: number;
   timestamp: string;
   title?: string;
+  url?: string;
   description?: string;
+  author?: EmbedAuthor;
   fields?: EmbedField[];
   thumbnail?: EmbedImage;
   image?: EmbedImage;
@@ -69,8 +78,13 @@ export interface MessagePayload {
 
 export interface ResponderEmbedOptions {
   minimalMode?: boolean;
+  footer?: string | null;
   thumbnailUrl?: string | null;
   imageUrl?: string | null;
+  author?: EmbedAuthor | null;
+  url?: string | null;
+  footerIconUrl?: string | null;
+  color?: number | null;
 }
 
 export interface RestLike {

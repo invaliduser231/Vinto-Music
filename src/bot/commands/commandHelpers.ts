@@ -22,6 +22,7 @@ export {
   parseVoiceChannelArgument,
   trackLabel,
   trackLabelWithLink,
+  buildTrackAuthor,
 } from './helpers/formatting.ts';
 
 export { fetchGlobalGuildAndUserCounts } from './helpers/guildStats.ts';

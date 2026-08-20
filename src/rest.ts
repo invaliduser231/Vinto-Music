@@ -91,13 +91,15 @@ function toQueryString(query: Record<string, string | number | boolean | null | 
   return encoded ? `?${encoded}` : '';
 }
 
+const MAX_RETRY_AFTER_MS = 60_000;
+
 function parseRetryAfterMs(value: unknown): number | null {
   if (value == null) return null;
 
   const asNumber = Number.parseFloat(String(value));
   if (!Number.isFinite(asNumber) || asNumber < 0) return null;
 
-  return Math.ceil(asNumber * 1000);
+  return Math.min(MAX_RETRY_AFTER_MS, Math.ceil(asNumber * 1000));
 }
 
 function parseRateLimitResetMs(value: unknown): number | null {
@@ -107,7 +109,7 @@ function parseRateLimitResetMs(value: unknown): number | null {
   if (!Number.isFinite(asNumber) || asNumber < 0) return null;
 
   const resetAtMs = asNumber >= 1e12 ? asNumber : (asNumber * 1000);
-  return Math.max(0, Math.ceil(resetAtMs - Date.now()));
+  return Math.min(MAX_RETRY_AFTER_MS, Math.max(0, Math.ceil(resetAtMs - Date.now())));
 }
 
 function parseGlobalRateLimitFlag(value: unknown): boolean {
@@ -439,6 +441,15 @@ export class RestClient {
     return this.request('GET', `/guilds/${guildId}/members`, { query });
   }
 
+  async disconnectMemberFromVoice(guildId: string, userId: string) {
+    return this.request('PATCH', `/guilds/${guildId}/members/${userId}`, {
+      body: {
+        channel_id: null,
+      },
+      retryUnsafe: false,
+    });
+  }
+
   async listGuildRoles(guildId: string) {
     return this.request('GET', `/guilds/${guildId}/roles`);
   }
@@ -479,6 +490,89 @@ export class RestClient {
 
       throw err;
     }
+  }
+
+  async requestAttachmentUpload(channelId: string, file: {
+    filename: string;
+    size: number;
+    contentType: string;
+  }) {
+    const response = await this.request('POST', `/channels/${channelId}/attachments`, {
+      body: {
+        files: [{
+          id: 0,
+          filename: file.filename,
+          file_size: file.size,
+          content_type: file.contentType,
+        }],
+      },
+      retryUnsafe: false,
+    }) as { attachments?: Array<Record<string, unknown>> } | null;
+
+    const slot = response?.attachments?.[0];
+    if (!slot) {
+      throw new RestError('Attachment upload slot missing in response', { status: null });
+    }
+
+    const uploadUrl = String(slot.upload_url ?? '');
+    const uploadFilename = String(slot.upload_filename ?? '');
+    const uploadMode = String(slot.upload_mode ?? 'singlepart');
+
+    if (!uploadUrl || !uploadFilename) {
+      throw new RestError('Attachment upload slot is incomplete', { status: null });
+    }
+    if (uploadMode !== 'singlepart') {
+      throw new RestError(`Unsupported attachment upload mode: ${uploadMode}`, { status: null });
+    }
+
+    return { uploadUrl, uploadFilename };
+  }
+
+  async uploadAttachmentData(uploadUrl: string, data: Uint8Array, contentType: string) {
+    const res = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': contentType },
+      body: data,
+      signal: AbortSignal.timeout(Math.max(this.timeoutMs, 30_000)),
+    });
+
+    if (!res.ok) {
+      throw new RestError(`Attachment upload failed: ${res.status} ${res.statusText}`, {
+        status: res.status,
+      });
+    }
+  }
+
+  async sendFile(channelId: string, file: {
+    filename: string;
+    contentType: string;
+    data: Uint8Array;
+    description?: string | null;
+  }, payload: MessagePayload | string = {}) {
+    const slot = await this.requestAttachmentUpload(channelId, {
+      filename: file.filename,
+      size: file.data.byteLength,
+      contentType: file.contentType,
+    });
+
+    await this.uploadAttachmentData(slot.uploadUrl, file.data, file.contentType);
+
+    const rawPayload: MessagePayload = typeof payload === 'string' ? { content: payload } : { ...(payload ?? {}) };
+    const body: MessagePayload = (rawPayload.content || Array.isArray(rawPayload.embeds))
+      ? normalizeMessagePayload(rawPayload)
+      : { ...rawPayload, nonce: rawPayload.nonce ?? buildMessageNonce() };
+    return this.request('POST', `/channels/${channelId}/messages`, {
+      body: {
+        ...body,
+        attachments: [{
+          id: 0,
+          filename: file.filename,
+          uploaded_filename: slot.uploadFilename,
+          ...(file.description ? { description: file.description } : {}),
+        }],
+      },
+      retryUnsafe: false,
+    });
   }
 
   async editMessage(channelId: string, messageId: string, payload: MessagePayload | string) {

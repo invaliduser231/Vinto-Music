@@ -1,3 +1,4 @@
+import type { TranslationKey } from '../../../i18n/index.ts';
 import { ValidationError } from '../../../core/errors.ts';
 import {
   ADMINISTRATOR_PERMISSION,
@@ -79,7 +80,7 @@ export function enforcePlayCooldown(ctx: CommandContextLike) {
   const last = playCooldowns.get(key) ?? 0;
   const remainingMs = cooldownMs - (now - last);
   if (remainingMs > 0) {
-    throw new ValidationError(`You are using play too quickly. Please wait ${(remainingMs / 1000).toFixed(1)}s.`);
+    throw new ValidationError(ctx.t('access.playCooldown', { seconds: (remainingMs / 1000).toFixed(1) }));
   }
 
   playCooldowns.set(key, now);
@@ -432,21 +433,21 @@ export function userHasDjAccessByConfig(ctx: CommandContextLike, guildConfig: Gu
   return getMemberRoleIds(ctx).some((roleId) => djRoles.has(roleId));
 }
 
-export function ensureDjAccess(ctx: CommandContextLike, session: SessionLike, actionLabel: string) {
+export function ensureDjAccess(ctx: CommandContextLike, session: SessionLike, actionLabel: TranslationKey) {
   if (userHasDjAccess(ctx, session)) return;
-  throw new ValidationError(`You need a DJ role to ${actionLabel}.`);
+  throw new ValidationError(ctx.t('access.needDjRole', { action: ctx.t(actionLabel) }));
 }
 
-export function ensureDjAccessByConfig(ctx: CommandContextLike, guildConfig: GuildConfigLike, actionLabel: string) {
+export function ensureDjAccessByConfig(ctx: CommandContextLike, guildConfig: GuildConfigLike, actionLabel: TranslationKey) {
   if (userHasDjAccessByConfig(ctx, guildConfig)) return;
-  throw new ValidationError(`You need a DJ role to ${actionLabel}.`);
+  throw new ValidationError(ctx.t('access.needDjRole', { action: ctx.t(actionLabel) }));
 }
 
-export async function ensureManageGuildAccess(ctx: CommandContextLike, actionLabel: string) {
+export async function ensureManageGuildAccess(ctx: CommandContextLike, actionLabel: TranslationKey) {
   const { value: permission, diagnostics } = await resolveManageGuildPermission(ctx);
   if (permission === true) return;
   if (permission === false) {
-    throw new ValidationError(`You need the "Manage Server" permission to ${actionLabel}.`);
+    throw new ValidationError(ctx.t('access.needManageGuild', { action: ctx.t(actionLabel) }));
   }
   throw new ValidationError(buildManageGuildVerificationMessage(ctx, diagnostics));
 }

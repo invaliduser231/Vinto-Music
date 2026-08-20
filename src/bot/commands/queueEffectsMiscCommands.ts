@@ -21,6 +21,7 @@ import {
   fetchGlobalGuildCount,
   getCachedGlobalGuildAndUserCounts,
   formatUptimeCompact,
+  formatSeconds,
 } from './commandHelpers.ts';
 import { createProgressReporter } from './responseUtils.ts';
 import type { CommandRegistry } from '../commandRegistry.ts';
@@ -575,18 +576,18 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
       const typedCtx = ctx as QueueEffectsContext;
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
-      ensureDjAccess(ctx, session, 'remove tracks');
+      ensureDjAccess(ctx, session, 'access.removeTracks');
 
-      const index = parseRequiredInteger(ctx.args[0], 'Index');
+      const index = parseRequiredInteger(ctx.args[0], 'field.index', ctx.t);
       const removed = session.player.removeFromQueue(index);
 
       if (!removed) {
-        await ctx.reply.warning('Invalid queue index.');
+        await ctx.reply.warning(ctx.t('queue.invalidIndex'));
         return;
       }
 
       typedCtx.sessions.markSnapshotDirty?.(session, true);
-      await ctx.reply.success(`Removed: ${trackLabel(removed)}`);
+      await ctx.reply.success(ctx.t('queue.removed', { track: trackLabel(removed) }));
     },
   }));
 
@@ -599,13 +600,13 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
       const typedCtx = ctx as QueueEffectsContext;
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
-      ensureDjAccess(ctx, session, 'clear the queue');
+      ensureDjAccess(ctx, session, 'access.clearQueue');
 
       const removed = session.player.pendingTracks.length;
       session.player.clearQueue();
 
       typedCtx.sessions.markSnapshotDirty?.(session, true);
-      await ctx.reply.success(`Cleared ${removed} pending track(s).`);
+      await ctx.reply.success(ctx.t('queue.cleared', { count: removed }));
     },
   }));
 
@@ -618,11 +619,11 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
       const typedCtx = ctx as QueueEffectsContext;
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
-      ensureDjAccess(ctx, session, 'shuffle the queue');
+      ensureDjAccess(ctx, session, 'access.shuffleQueue');
 
       const count = session.player.shuffleQueue();
       typedCtx.sessions.markSnapshotDirty?.(session, true);
-      await ctx.reply.success(`Shuffled ${count} pending track(s).`);
+      await ctx.reply.success(ctx.t('queue.shuffled', { count: Number(count) }));
     },
   }));
 
@@ -635,17 +636,17 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
       const typedCtx = ctx as QueueEffectsContext;
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
-      ensureDjAccess(ctx, session, 'change loop mode');
+      ensureDjAccess(ctx, session, 'access.changeLoop');
 
       if (!ctx.args.length) {
-        await ctx.reply.info(`Current loop mode: **${session.player.loopMode}**`);
+        await ctx.reply.info(ctx.t('loop.current', { mode: String(session.player.loopMode ?? 'off') }));
         return;
       }
 
       const modeArg = String(ctx.args[0] ?? 'off');
       const mode = session.player.setLoopMode(modeArg);
       typedCtx.sessions.markSnapshotDirty?.(session, true);
-      await ctx.reply.success(`Loop mode set to **${mode}**.`);
+      await ctx.reply.success(ctx.t('loop.set', { mode: String(mode) }));
     },
   }));
 
@@ -658,17 +659,72 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
       const typedCtx = ctx as QueueEffectsContext;
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
-      ensureDjAccess(ctx, session, 'change volume');
+      ensureDjAccess(ctx, session, 'access.changeVolume');
 
       if (!ctx.args.length) {
-        await ctx.reply.info(`Current volume: **${session.player.volumePercent}%**`);
+        await ctx.reply.info(ctx.t('volume.current', { percent: Number(session.player.volumePercent ?? 100) }));
         return;
       }
 
-      const volumeArg = parseRequiredInteger(ctx.args[0], 'Volume');
+      const volumeArg = parseRequiredInteger(ctx.args[0], 'field.volume', ctx.t);
       const next = session.player.setVolumePercent(volumeArg);
       typedCtx.sessions.markSnapshotDirty?.(session, true);
-      await ctx.reply.success(`Volume set to **${next}%**.`);
+      await ctx.reply.success(ctx.t('volume.set', { percent: next }));
+    },
+  }));
+
+  registry.register(createCommand({
+    name: 'kicktimer',
+    aliases: ['mentalhealthkicktimer'],
+    description: 'Schedule disconnecting everyone from voice after a delay.',
+    usage: 'kicktimer <seconds|off>',
+    async execute(ctx: CommandContextLike) {
+      const typedCtx = ctx as QueueEffectsContext;
+      ensureGuild(ctx);
+      const session = getSessionOrThrow(ctx);
+      ensureDjAccess(ctx, session, 'access.manageKickTimer');
+
+      const sessions = typedCtx.sessions as QueueEffectsContext['sessions'] & {
+        scheduleKickTimer?: (session: SessionLike, durationSec: number, options?: { requestedBy?: string | null }) => { durationSec: number };
+        cancelKickTimer?: (session: SessionLike) => boolean;
+        getKickTimerInfo?: (session: SessionLike) => { remainingSec: number; durationSec: number; requestedBy: string | null } | null;
+      };
+
+      const rawArg = String(ctx.args[0] ?? '').trim().toLowerCase();
+
+      if (!rawArg) {
+        const info = sessions.getKickTimerInfo?.(session) ?? null;
+        if (!info) {
+          await ctx.reply.info(ctx.t('kicktimer.inactive', { prefix: ctx.prefix }));
+          return;
+        }
+        await ctx.reply.info(
+          ctx.t('kicktimer.active', { remaining: formatSeconds(info.remainingSec), total: formatSeconds(info.durationSec) })
+        );
+        return;
+      }
+
+      if (['off', 'cancel', 'stop', 'clear', '0'].includes(rawArg)) {
+        const cancelled = sessions.cancelKickTimer?.(session) ?? false;
+        await ctx.reply.success(cancelled ? ctx.t('kicktimer.cancelled') : ctx.t('kicktimer.noneActive'));
+        return;
+      }
+
+      const seconds = parseRequiredInteger(ctx.args[0], 'field.seconds', ctx.t);
+      const minSeconds = 5;
+      const maxSeconds = 86_400;
+      if (seconds < minSeconds || seconds > maxSeconds) {
+        throw new ValidationError(ctx.t('kicktimer.rangeError', { min: minSeconds, max: maxSeconds }));
+      }
+
+      if (typeof sessions.scheduleKickTimer !== 'function') {
+        throw new ValidationError(ctx.t('kicktimer.unavailable'));
+      }
+
+      sessions.scheduleKickTimer(session, seconds, { requestedBy: ctx.authorId });
+      await ctx.reply.success(
+        ctx.t('kicktimer.set', { duration: formatSeconds(seconds), prefix: ctx.prefix })
+      );
     },
   }));
 
@@ -680,12 +736,12 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
-      ensureDjAccess(ctx, session, 'change audio filters');
+      ensureDjAccess(ctx, session, 'access.changeFilters');
 
       if (!ctx.args.length) {
         await ctx.reply.info(
-          `Current filter: **${session.player.getAudioEffectsState().filterPreset}**`,
-          [{ name: 'Available', value: session.player.getAvailableFilterPresets().join(', ').slice(0, 1000) }]
+          ctx.t('filter.current', { preset: session.player.getAudioEffectsState().filterPreset }),
+          [{ name: ctx.t('common.available'), value: session.player.getAvailableFilterPresets().join(', ').slice(0, 1000) }]
         );
         return;
       }
@@ -697,7 +753,7 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
         ? session.player.refreshCurrentTrackProcessing()
         : false;
       await ctx.reply.success(
-        `Filter set to **${filter}**.${restarted ? ' Reapplying current track...' : ''}`
+        ctx.t('filter.set', { preset: filter }) + (restarted ? ` ${ctx.t('effects.reapplying')}` : '')
       );
     },
   }));
@@ -709,12 +765,12 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
-      ensureDjAccess(ctx, session, 'change EQ');
+      ensureDjAccess(ctx, session, 'access.changeEq');
 
       if (!ctx.args.length) {
         await ctx.reply.info(
-          `Current EQ: **${session.player.getAudioEffectsState().eqPreset}**`,
-          [{ name: 'Available', value: session.player.getAvailableEqPresets().join(', ').slice(0, 1000) }]
+          ctx.t('eq.current', { preset: session.player.getAudioEffectsState().eqPreset }),
+          [{ name: ctx.t('common.available'), value: session.player.getAvailableEqPresets().join(', ').slice(0, 1000) }]
         );
         return;
       }
@@ -726,7 +782,7 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
 
       const presetArg = String(args[0] ?? 'flat');
       const preset = session.player.setEqPreset(presetArg);
-      await ctx.reply.success(`EQ preset set to **${preset}**.`);
+      await ctx.reply.success(ctx.t('eq.set', { preset }));
     },
   }));
 
@@ -737,16 +793,16 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
-      ensureDjAccess(ctx, session, 'change tempo');
+      ensureDjAccess(ctx, session, 'access.changeTempo');
 
       const tempoArg = Number.parseFloat(String(ctx.args[0] ?? ''));
       if (!Number.isFinite(tempoArg)) {
-        throw new ValidationError('Provide a valid tempo ratio.');
+        throw new ValidationError(ctx.t('tempo.invalid'));
       }
       const tempo = session.player.setTempoRatio(tempoArg);
       const restarted = session.player.refreshCurrentTrackProcessing();
       await ctx.reply.success(
-        `Tempo set to **${tempo.toFixed(2)}x**.${restarted ? ' Reapplying to current track...' : ''}`
+        ctx.t('tempo.set', { value: tempo.toFixed(2) }) + (restarted ? ` ${ctx.t('effects.reapplying')}` : '')
       );
     },
   }));
@@ -758,14 +814,14 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
-      ensureDjAccess(ctx, session, 'change pitch');
+      ensureDjAccess(ctx, session, 'access.changePitch');
 
-      const pitchArg = parseRequiredInteger(ctx.args[0], 'Pitch');
+      const pitchArg = parseRequiredInteger(ctx.args[0], 'field.pitch', ctx.t);
       const pitch = session.player.setPitchSemitones(pitchArg);
       const restarted = session.player.refreshCurrentTrackProcessing();
       const signed = pitch >= 0 ? `+${pitch}` : String(pitch);
       await ctx.reply.success(
-        `Pitch set to **${signed} semitones**.${restarted ? ' Reapplying to current track...' : ''}`
+        ctx.t('pitch.set', { value: signed }) + (restarted ? ` ${ctx.t('effects.reapplying')}` : '')
       );
     },
   }));
@@ -780,11 +836,11 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
       const session = getSessionOrThrow(ctx);
 
       const state = session.player.getAudioEffectsState();
-      await ctx.reply.info('Audio effects', [
-        { name: 'Filter', value: state.filterPreset, inline: true },
-        { name: 'EQ', value: state.eqPreset, inline: true },
-        { name: 'Tempo', value: `${state.tempoRatio.toFixed(2)}x`, inline: true },
-        { name: 'Pitch', value: String(state.pitchSemitones), inline: true },
+      await ctx.reply.info(ctx.t('effects.title'), [
+        { name: ctx.t('effects.filter'), value: state.filterPreset, inline: true },
+        { name: ctx.t('effects.eq'), value: state.eqPreset, inline: true },
+        { name: ctx.t('effects.tempo'), value: `${state.tempoRatio.toFixed(2)}x`, inline: true },
+        { name: ctx.t('effects.pitch'), value: String(state.pitchSemitones), inline: true },
       ]);
     },
   }));
@@ -804,7 +860,7 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
         voiceChannelId: ctx.activeVoiceChannelId,
         textChannelId: ctx.channelId,
       }) : 0;
-      await ctx.reply.info(`Vote-skip progress: **${current}/${needed}**`);
+      await ctx.reply.info(ctx.t('voteskip.progress', { current, needed }));
     },
   }));
 
@@ -829,28 +885,28 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
       const effectiveQuery = query || fallback;
 
       if (!effectiveQuery) {
-        throw new ValidationError('Provide a song query or play a track first.');
+        throw new ValidationError(ctx.t('lyrics.needQuery'));
       }
 
       await typedCtx.safeTyping?.();
       if (!typedCtx.lyrics) {
-        throw new ValidationError('Lyrics service is not available.');
+        throw new ValidationError(ctx.t('lyrics.unavailable'));
       }
       const result = await typedCtx.lyrics.search(effectiveQuery);
       if (!result) {
-        await typedCtx.reply.warning(`No lyrics found for: **${effectiveQuery}**`);
+        await typedCtx.reply.warning(typedCtx.t('lyrics.notFound', { query: effectiveQuery }));
         return;
       }
 
       const pages = splitTextIntoPages(result.lyrics, 900);
       if (!pages.length) {
-        await typedCtx.reply.warning(`No lyrics found for: **${effectiveQuery}**`);
+        await typedCtx.reply.warning(typedCtx.t('lyrics.notFound', { query: effectiveQuery }));
         return;
       }
 
       const payloads = pages.map((pageText: string, idx: number) => buildLyricsPagePayload(
         typedCtx,
-        `Lyrics for ${effectiveQuery}`,
+        typedCtx.t('lyrics.title', { query: effectiveQuery }),
         String(result.source ?? 'unknown'),
         pageText,
         idx + 1,
@@ -866,55 +922,55 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
     usage: 'stats',
     async execute(ctx: CommandContextLike) {
       const typedCtx = ctx as QueueEffectsContext;
-      const progress = await createProgressReporter(typedCtx, 'Collecting runtime statistics...', null, null, { replyReference: true });
+      const progress = await createProgressReporter(typedCtx, typedCtx.t('stats.collecting'), null, null, { replyReference: true });
       const uptimeSeconds = Math.floor((Date.now() - (typedCtx.startedAt ?? Date.now())) / 1000);
       const mem = process.memoryUsage();
       const cachedCounts = getCachedGlobalGuildAndUserCounts(typedCtx.rest);
-      await progress.info('Runtime statistics', [
-        { name: 'Uptime', value: formatUptimeCompact(uptimeSeconds), inline: true },
-        { name: 'Guild sessions', value: String(typedCtx.sessions.sessions?.size ?? 0), inline: true },
-        { name: 'Servers total', value: cachedCounts?.guildCount == null ? 'counting...' : String(cachedCounts.guildCount), inline: true },
+      await progress.info(typedCtx.t('stats.title'), [
+        { name: typedCtx.t('stats.uptime'), value: formatUptimeCompact(uptimeSeconds), inline: true },
+        { name: typedCtx.t('stats.guildSessions'), value: String(typedCtx.sessions.sessions?.size ?? 0), inline: true },
+        { name: typedCtx.t('stats.serversTotal'), value: cachedCounts?.guildCount == null ? typedCtx.t('stats.counting') : String(cachedCounts.guildCount), inline: true },
         {
-          name: 'Users total',
+          name: typedCtx.t('stats.usersTotal'),
           value: cachedCounts?.userCount == null
-            ? 'counting...'
-            : (cachedCounts.incompleteGuildCount > 0 ? `${cachedCounts.userCount} (partial)` : String(cachedCounts.userCount)),
+            ? typedCtx.t('stats.counting')
+            : (cachedCounts.incompleteGuildCount > 0 ? typedCtx.t('stats.partial', { count: cachedCounts.userCount }) : String(cachedCounts.userCount)),
           inline: true,
         },
-        { name: 'Heap Used', value: `${Math.round(mem.heapUsed / 1024 / 1024)} MB`, inline: true },
+        { name: typedCtx.t('stats.heapUsed'), value: `${Math.round(mem.heapUsed / 1024 / 1024)} MB`, inline: true },
       ]);
 
       if (cachedCounts?.guildCount == null) {
         const fastGuildCount = await fetchGlobalGuildCount(typedCtx.rest).catch(() => null);
         if (fastGuildCount != null) {
-          await progress.info('Runtime statistics', [
-            { name: 'Uptime', value: formatUptimeCompact(uptimeSeconds), inline: true },
-            { name: 'Guild sessions', value: String(typedCtx.sessions.sessions?.size ?? 0), inline: true },
-            { name: 'Servers total', value: String(fastGuildCount), inline: true },
-            { name: 'Users total', value: 'counting...', inline: true },
-            { name: 'Heap Used', value: `${Math.round(mem.heapUsed / 1024 / 1024)} MB`, inline: true },
+          await progress.info(typedCtx.t('stats.title'), [
+            { name: typedCtx.t('stats.uptime'), value: formatUptimeCompact(uptimeSeconds), inline: true },
+            { name: typedCtx.t('stats.guildSessions'), value: String(typedCtx.sessions.sessions?.size ?? 0), inline: true },
+            { name: typedCtx.t('stats.serversTotal'), value: String(fastGuildCount), inline: true },
+            { name: typedCtx.t('stats.usersTotal'), value: typedCtx.t('stats.counting'), inline: true },
+            { name: typedCtx.t('stats.heapUsed'), value: `${Math.round(mem.heapUsed / 1024 / 1024)} MB`, inline: true },
           ]);
         }
       }
 
       const globalCounts = await fetchCachedGlobalGuildAndUserCounts(typedCtx.rest).catch(() => null);
       const serverCountLabel = globalCounts?.guildCount == null
-        ? 'n/a'
+        ? typedCtx.t('common.notAvailable')
         : String(globalCounts.guildCount);
       const userCountLabel = globalCounts?.userCount == null
-        ? 'n/a'
+        ? typedCtx.t('common.notAvailable')
         : (
           globalCounts.incompleteGuildCount > 0
-            ? `${globalCounts.userCount} (partial)`
+            ? typedCtx.t('stats.partial', { count: globalCounts.userCount })
             : String(globalCounts.userCount)
         );
 
-      await progress.info('Runtime statistics', [
-        { name: 'Uptime', value: formatUptimeCompact(uptimeSeconds), inline: true },
-        { name: 'Guild sessions', value: String(typedCtx.sessions.sessions?.size ?? 0), inline: true },
-        { name: 'Servers total', value: serverCountLabel, inline: true },
-        { name: 'Users total', value: userCountLabel, inline: true },
-        { name: 'Heap Used', value: `${Math.round(mem.heapUsed / 1024 / 1024)} MB`, inline: true },
+      await progress.info(typedCtx.t('stats.title'), [
+        { name: typedCtx.t('stats.uptime'), value: formatUptimeCompact(uptimeSeconds), inline: true },
+        { name: typedCtx.t('stats.guildSessions'), value: String(typedCtx.sessions.sessions?.size ?? 0), inline: true },
+        { name: typedCtx.t('stats.serversTotal'), value: serverCountLabel, inline: true },
+        { name: typedCtx.t('stats.usersTotal'), value: userCountLabel, inline: true },
+        { name: typedCtx.t('stats.heapUsed'), value: `${Math.round(mem.heapUsed / 1024 / 1024)} MB`, inline: true },
       ]);
     },
   }));

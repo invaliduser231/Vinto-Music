@@ -14,9 +14,12 @@ import { MongoService } from '../storage/mongo.ts';
 import { initializePlayDlAuth } from '../integrations/playDlAuth.ts';
 import { MusicLibraryStore } from '../bot/services/musicLibraryStore.ts';
 import { PermissionService } from '../bot/services/permissionService.ts';
+import { VoteService } from '../bot/services/voteService.ts';
 import { GuildStateCache } from '../bot/services/guildStateCache.ts';
+import { EarrapeProfileStore } from '../bot/services/earrapeProfileStore.ts';
 import { MonitoringServer } from '../monitoring/server.ts';
 import { initializeSentry } from '../monitoring/sentry.ts';
+import { NodeLinkClient } from '../player/musicPlayer/NodeLinkClient.ts';
 import { sanitizeBrokenLocalProxyEnv } from './proxy.ts';
 import { verifyApiConnectivity, resolveGatewayUrl } from './connectivity.ts';
 import { bindGatewayMetrics, bindSessionMetrics, createAppMetrics } from './metrics.ts';
@@ -92,6 +95,27 @@ async function fetchCurrentGuildCount(rest: GuildListRest): Promise<number | nul
   }
 
   return guildIds.size;
+}
+
+async function pushFluxerListStats(opts: {
+  apiBase: string;
+  botId: string;
+  apiKey: string;
+  serverCount: number;
+}): Promise<void> {
+  const url = `${opts.apiBase}/api/bots/${encodeURIComponent(opts.botId)}/stats`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${opts.apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ serverCount: opts.serverCount }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) {
+    throw new Error(`FluxerList stats push failed: ${res.status} ${res.statusText}`);
+  }
 }
 
 function createPresenceText(guildCount: number | null, rotationIndex: number): string {
@@ -179,12 +203,14 @@ export async function startApp() {
       settings: {
         dedupeEnabled: config.defaultDedupeEnabled,
         stayInVoiceEnabled: config.defaultStayInVoiceEnabled,
+        earrapeProtectionEnabled: false,
         minimalMode: false,
         volumePercent: config.defaultVolumePercent,
         voteSkipRatio: config.voteSkipRatio,
         voteSkipMinVotes: config.voteSkipMinVotes,
         djRoleIds: [],
         musicLogChannelId: null,
+        language: config.defaultLanguage,
       },
     },
   });
@@ -206,12 +232,18 @@ export async function startApp() {
     maxHistoryTracks: config.persistentHistorySize,
   });
   await musicLibrary.init();
+  const earrapeProfiles = new EarrapeProfileStore({
+    collection: mongo.collection('guild_earrape_profiles'),
+    logger: logger.child('earrape-profiles'),
+  });
+  await earrapeProfiles.init();
 
   const connectivityRest = rest as ConnectivityRest;
   const gatewayUrl = await resolveGatewayUrl({ config, rest: connectivityRest, logger });
   const initialGuildCount = await fetchCurrentGuildCount(rest).catch(() => null);
   let presenceRotationIndex = 0;
   let presenceUpdateHandle: NodeJS.Timeout | null = null;
+  let fluxerlistStatsHandle: NodeJS.Timeout | null = null;
   const gatewayPresenceEnabled = Boolean(config.gatewayPresenceEnabled);
   let lastPresenceText = Number.isFinite(initialGuildCount)
     ? createPresenceText(initialGuildCount, presenceRotationIndex)
@@ -236,7 +268,11 @@ export async function startApp() {
     if (!updated) return false;
 
     lastPresenceText = nextText;
-    logger.info('Gateway presence updated', { reason, guildCount, text: nextText });
+    if (reason === 'interval') {
+      logger.debug('Gateway presence updated', { reason, guildCount, text: nextText });
+    } else {
+      logger.info('Gateway presence updated', { reason, guildCount, text: nextText });
+    }
     return true;
   };
   const initialPresence = gatewayPresenceEnabled ? buildGatewayPresence(lastPresenceText) : null;
@@ -257,6 +293,7 @@ export async function startApp() {
     gateway,
     config,
     library: musicLibrary,
+    earrapeProfiles,
     rest,
     voiceStateStore: voiceStateStore ?? null,
     logger: logger.child('sessions'),
@@ -277,7 +314,7 @@ export async function startApp() {
   const memoryLogger = logger.child('memory');
   const logMemoryTelemetry = (reason: string) => {
     const telemetry = sessions.getMemoryTelemetry();
-    memoryLogger.info('Runtime memory telemetry', {
+    memoryLogger.debug('Runtime memory telemetry', {
       reason,
       sessionsTotal: telemetry.sessionsTotal,
       voiceConnectionsConnected: telemetry.voiceConnectionsConnected,
@@ -391,8 +428,17 @@ export async function startApp() {
   } satisfies PermissionServiceCtorOptions;
   const permissions = new PermissionService(permissionOptions);
 
+  const voteService = new VoteService({
+    apiBase: config.fluxerlistApiBase,
+    apiKey: config.voteRewardsEnabled ? config.fluxerlistApiKey : null,
+    botId: config.fluxerlistBotId,
+    logger: logger.child('votes'),
+    refreshIntervalMs: config.voteRefreshIntervalMs,
+  });
+
   const routerOptions = {
     config,
+    voteService,
     logger: logger.child('commands'),
     rest: rest as CommandRouterCtorOptions['rest'],
     gateway,
@@ -424,15 +470,48 @@ export async function startApp() {
     sessions.setBotUserId(normalized);
     permissions.setBotUserId(normalized);
     router.setBotUserId(normalized);
+    voteService.setBotId(config.fluxerlistBotId ?? normalized);
+    voteService.start();
     logger.info('Bot user id resolved', { source, botUserId: normalized });
   };
 
   setBotUserId(me?.id, 'rest');
 
+  const fluxerlistLogger = logger.child('fluxerlist');
+  const pushFluxerListStatsSafe = async (reason: string): Promise<void> => {
+    if (!config.fluxerlistStatsEnabled || !config.fluxerlistApiKey) return;
+    const botId = config.fluxerlistBotId ?? resolvedBotUserId;
+    if (!botId) {
+      fluxerlistLogger.debug('Skipping FluxerList stats push: bot id not resolved yet', { reason });
+      return;
+    }
+    const serverCount = await fetchCurrentGuildCount(rest).catch(() => null);
+    if (!Number.isFinite(serverCount)) {
+      fluxerlistLogger.debug('Skipping FluxerList stats push: guild count unavailable', { reason });
+      return;
+    }
+    try {
+      await pushFluxerListStats({
+        apiBase: config.fluxerlistApiBase,
+        botId,
+        apiKey: config.fluxerlistApiKey,
+        serverCount: serverCount as number,
+      });
+      fluxerlistLogger.info('FluxerList stats pushed', { reason, botId, serverCount });
+    } catch (err) {
+      fluxerlistLogger.warn('FluxerList stats push failed', {
+        reason,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      errorReporter?.captureException?.(err, { source: 'fluxerlist_stats' });
+    }
+  };
+
   gateway.on('READY', (payload) => {
     setBotUserId(payload?.user?.id, 'gateway_ready');
     const readyGuildCount = Array.isArray(payload?.guilds) ? payload.guilds.length : null;
     applyRotatingPresence('ready', readyGuildCount).catch(() => null);
+    pushFluxerListStatsSafe('ready').catch(() => null);
 
     if (!persistentRestoreStarted) {
       persistentRestoreStarted = true;
@@ -448,29 +527,70 @@ export async function startApp() {
     applyRotatingPresence('resumed').catch(() => null);
   });
 
+  const monitoringNodeLinkClient = config.nodeLinkEnabled && config.nodeLinkBaseUrl
+    ? new NodeLinkClient({
+        baseUrl: config.nodeLinkBaseUrl,
+        password: config.nodeLinkPassword,
+        requestTimeoutMs: Math.min(config.nodeLinkRequestTimeoutMs, 5_000),
+      })
+    : null;
+
   const monitoringServer = new MonitoringServer({
     enabled: config.monitoringEnabled,
     host: config.monitoringHost,
     port: config.monitoringPort,
     logger: logger.child('monitoring'),
     metrics: metricSet.registry,
-    getHealth: () => ({
-      ok: !shuttingDown && (gatewayConnected || Date.now() - startedAt < 60_000),
-      gatewayConnected,
-      shuttingDown,
-      sessions: sessions.sessions.size,
-      uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
-      memory: (() => {
-        const telemetry = sessions.getMemoryTelemetry();
+    getHealth: async () => {
+      const baseHealth = {
+        ok: !shuttingDown && (gatewayConnected || Date.now() - startedAt < 60_000),
+        gatewayConnected,
+        shuttingDown,
+        sessions: sessions.sessions.size,
+        uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
+        memory: (() => {
+          const telemetry = sessions.getMemoryTelemetry();
+          return {
+            heapUsedMb: toMegabytes(telemetry.memory.heapUsedBytes),
+            heapTotalMb: toMegabytes(telemetry.memory.heapTotalBytes),
+            rssMb: toMegabytes(telemetry.memory.rssBytes),
+            externalMb: toMegabytes(telemetry.memory.externalBytes),
+            arrayBuffersMb: toMegabytes(telemetry.memory.arrayBuffersBytes),
+          };
+        })(),
+      };
+
+      if (!monitoringNodeLinkClient) {
         return {
-          heapUsedMb: toMegabytes(telemetry.memory.heapUsedBytes),
-          heapTotalMb: toMegabytes(telemetry.memory.heapTotalBytes),
-          rssMb: toMegabytes(telemetry.memory.rssBytes),
-          externalMb: toMegabytes(telemetry.memory.externalBytes),
-          arrayBuffersMb: toMegabytes(telemetry.memory.arrayBuffersBytes),
+          ...baseHealth,
+          nodelink: {
+            configured: false,
+          },
         };
-      })(),
-    }),
+      }
+
+      try {
+        const info = await monitoringNodeLinkClient.getInfo();
+        return {
+          ...baseHealth,
+          nodelink: {
+            configured: true,
+            reachable: true,
+            isNodelink: Boolean(info.isNodelink),
+            version: String(info.version?.semver ?? '').trim() || null,
+          },
+        };
+      } catch (err) {
+        return {
+          ...baseHealth,
+          nodelink: {
+            configured: true,
+            reachable: false,
+            error: err instanceof Error ? err.message : String(err),
+          },
+        };
+      }
+    },
   });
   await monitoringServer.start().catch((err) => {
     logger.warn('Monitoring server failed to start', {
@@ -543,6 +663,12 @@ export async function startApp() {
     }, PRESENCE_ROTATION_INTERVAL_MS);
     presenceUpdateHandle.unref?.();
   }
+  if (config.fluxerlistStatsEnabled && config.fluxerlistApiKey) {
+    fluxerlistStatsHandle = setInterval(() => {
+      pushFluxerListStatsSafe('interval').catch(() => null);
+    }, config.fluxerlistStatsIntervalMs);
+    fluxerlistStatsHandle.unref?.();
+  }
 
   const shutdown = async (signal: string) => {
     if (shuttingDown) return;
@@ -561,6 +687,10 @@ export async function startApp() {
     if (presenceUpdateHandle) {
       clearInterval(presenceUpdateHandle);
       presenceUpdateHandle = null;
+    }
+    if (fluxerlistStatsHandle) {
+      clearInterval(fluxerlistStatsHandle);
+      fluxerlistStatsHandle = null;
     }
     if (unhealthyExitHandle) {
       clearInterval(unhealthyExitHandle);

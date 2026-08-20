@@ -1,4 +1,5 @@
 import { ValidationError } from '../../core/errors.ts';
+import { normalizeLocale } from '../../i18n/index.ts';
 
 function toBool(value: unknown, fallback: boolean) {
   if (typeof value === 'boolean') return value;
@@ -25,13 +26,13 @@ function normalizePrefix(value: unknown, fallback: string) {
 
   const prefix = String(value).trim();
   if (!prefix) {
-    throw new ValidationError('Prefix cannot be empty.');
+    throw new ValidationError('Prefix cannot be empty.', { translationKey: 'store.prefixEmpty' });
   }
   if (prefix.length > 5) {
-    throw new ValidationError('Prefix must be at most 5 characters.');
+    throw new ValidationError('Prefix must be at most 5 characters.', { translationKey: 'store.prefixTooLong' });
   }
   if (/\s/.test(prefix)) {
-    throw new ValidationError('Prefix cannot contain whitespace.');
+    throw new ValidationError('Prefix cannot contain whitespace.', { translationKey: 'store.prefixWhitespace' });
   }
 
   return prefix;
@@ -48,6 +49,23 @@ function normalizeRoleIds(values: unknown) {
   }
 
   return [...set].sort();
+}
+
+function normalizeLanguage(value: unknown) {
+  if (value == null) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  const locale = normalizeLocale(raw);
+  if (!locale) {
+    throw new ValidationError(`Unsupported language "${raw}".`);
+  }
+  return locale;
+}
+
+function normalizeStoredLanguage(value: unknown) {
+  if (value == null) return null;
+  return normalizeLocale(value);
 }
 
 function normalizeChannelId(value: unknown) {
@@ -69,12 +87,14 @@ function cloneConfig(config: GuildConfigDocument) {
     settings: {
       dedupeEnabled: config.settings.dedupeEnabled,
       stayInVoiceEnabled: config.settings.stayInVoiceEnabled,
+      earrapeProtectionEnabled: config.settings.earrapeProtectionEnabled,
       minimalMode: config.settings.minimalMode,
       volumePercent: config.settings.volumePercent,
       voteSkipRatio: config.settings.voteSkipRatio,
       voteSkipMinVotes: config.settings.voteSkipMinVotes,
       djRoleIds: [...config.settings.djRoleIds],
       musicLogChannelId: config.settings.musicLogChannelId,
+      language: config.settings.language,
     },
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
@@ -92,12 +112,14 @@ type GuildConfigPatch = {
   settings?: {
     dedupeEnabled?: unknown;
     stayInVoiceEnabled?: unknown;
+    earrapeProtectionEnabled?: unknown;
     minimalMode?: unknown;
     volumePercent?: unknown;
     voteSkipRatio?: unknown;
     voteSkipMinVotes?: unknown;
     djRoleIds?: unknown;
     musicLogChannelId?: unknown;
+    language?: unknown;
   } | null;
 };
 
@@ -106,12 +128,14 @@ type GuildConfigDocLike = {
   settings?: {
     dedupeEnabled?: unknown;
     stayInVoiceEnabled?: unknown;
+    earrapeProtectionEnabled?: unknown;
     minimalMode?: unknown;
     volumePercent?: unknown;
     voteSkipRatio?: unknown;
     voteSkipMinVotes?: unknown;
     djRoleIds?: unknown;
     musicLogChannelId?: unknown;
+    language?: unknown;
   } | null;
   createdAt?: unknown;
   updatedAt?: unknown;
@@ -149,12 +173,14 @@ export class GuildConfigStore {
       settings: {
         dedupeEnabled: Boolean(options.defaults?.settings?.dedupeEnabled),
         stayInVoiceEnabled: Boolean(options.defaults?.settings?.stayInVoiceEnabled),
+        earrapeProtectionEnabled: Boolean(options.defaults?.settings?.earrapeProtectionEnabled),
         minimalMode: Boolean(options.defaults?.settings?.minimalMode),
         volumePercent: normalizeVolumePercent(options.defaults?.settings?.volumePercent, 100),
         voteSkipRatio: toRatio(options.defaults?.settings?.voteSkipRatio, 0.5),
         voteSkipMinVotes: toPositiveInt(options.defaults?.settings?.voteSkipMinVotes, 2),
         djRoleIds: normalizeRoleIds(options.defaults?.settings?.djRoleIds ?? []) as string[],
         musicLogChannelId: normalizeChannelId(options.defaults?.settings?.musicLogChannelId),
+        language: normalizeStoredLanguage(options.defaults?.settings?.language),
       },
     };
 
@@ -233,12 +259,14 @@ export class GuildConfigStore {
           settings: {
             dedupeEnabled: next.settings.dedupeEnabled,
             stayInVoiceEnabled: next.settings.stayInVoiceEnabled,
+            earrapeProtectionEnabled: next.settings.earrapeProtectionEnabled,
             minimalMode: next.settings.minimalMode,
             volumePercent: next.settings.volumePercent,
             voteSkipRatio: next.settings.voteSkipRatio,
             voteSkipMinVotes: next.settings.voteSkipMinVotes,
             djRoleIds: [...next.settings.djRoleIds],
             musicLogChannelId: next.settings.musicLogChannelId,
+            language: next.settings.language,
           },
           updatedAt: now,
         },
@@ -273,6 +301,13 @@ export class GuildConfigStore {
         next.settings.stayInVoiceEnabled = toBool(settingsPatch.stayInVoiceEnabled, next.settings.stayInVoiceEnabled);
       }
 
+      if (settingsPatch.earrapeProtectionEnabled !== undefined) {
+        next.settings.earrapeProtectionEnabled = toBool(
+          settingsPatch.earrapeProtectionEnabled,
+          next.settings.earrapeProtectionEnabled
+        );
+      }
+
       if (settingsPatch.minimalMode !== undefined) {
         next.settings.minimalMode = toBool(settingsPatch.minimalMode, next.settings.minimalMode);
       }
@@ -280,7 +315,7 @@ export class GuildConfigStore {
       if (settingsPatch.volumePercent !== undefined) {
         const volume = Number.parseInt(String(settingsPatch.volumePercent), 10);
         if (!Number.isFinite(volume) || volume < 0 || volume > 200) {
-          throw new ValidationError('Volume must be an integer between 0 and 200.');
+          throw new ValidationError('Volume must be an integer between 0 and 200.', { translationKey: 'config.volumeRange' });
         }
         next.settings.volumePercent = volume;
       }
@@ -288,7 +323,7 @@ export class GuildConfigStore {
       if (settingsPatch.voteSkipRatio !== undefined) {
         const ratio = Number.parseFloat(String(settingsPatch.voteSkipRatio));
         if (!Number.isFinite(ratio) || ratio <= 0 || ratio > 1) {
-          throw new ValidationError('Vote-skip ratio must be a number between 0 and 1.');
+          throw new ValidationError('Vote-skip ratio must be a number between 0 and 1.', { translationKey: 'voteskipcfg.ratioRange' });
         }
         next.settings.voteSkipRatio = ratio;
       }
@@ -296,7 +331,7 @@ export class GuildConfigStore {
       if (settingsPatch.voteSkipMinVotes !== undefined) {
         const min = Number.parseInt(String(settingsPatch.voteSkipMinVotes), 10);
         if (!Number.isFinite(min) || min <= 0 || min > 100) {
-          throw new ValidationError('Vote-skip minimum votes must be an integer between 1 and 100.');
+          throw new ValidationError('Vote-skip minimum votes must be an integer between 1 and 100.', { translationKey: 'voteskipcfg.minRange' });
         }
         next.settings.voteSkipMinVotes = min;
       }
@@ -307,6 +342,10 @@ export class GuildConfigStore {
 
       if (settingsPatch.musicLogChannelId !== undefined) {
         next.settings.musicLogChannelId = normalizeChannelId(settingsPatch.musicLogChannelId);
+      }
+
+      if (settingsPatch.language !== undefined) {
+        next.settings.language = normalizeLanguage(settingsPatch.language);
       }
     }
 
@@ -324,12 +363,17 @@ export class GuildConfigStore {
       settings: {
         dedupeEnabled: toBool(settings.dedupeEnabled, this.defaults.settings.dedupeEnabled),
         stayInVoiceEnabled: toBool(settings.stayInVoiceEnabled, this.defaults.settings.stayInVoiceEnabled),
+        earrapeProtectionEnabled: toBool(
+          settings.earrapeProtectionEnabled,
+          this.defaults.settings.earrapeProtectionEnabled
+        ),
         minimalMode: toBool(settings.minimalMode, this.defaults.settings.minimalMode),
         volumePercent: normalizeVolumePercent(settings.volumePercent, this.defaults.settings.volumePercent),
         voteSkipRatio: toRatio(settings.voteSkipRatio, this.defaults.settings.voteSkipRatio),
         voteSkipMinVotes: toPositiveInt(settings.voteSkipMinVotes, this.defaults.settings.voteSkipMinVotes),
         djRoleIds: normalizeRoleIds(settings.djRoleIds),
         musicLogChannelId: normalizeChannelId(settings.musicLogChannelId),
+        language: normalizeStoredLanguage(settings.language) ?? this.defaults.settings.language ?? null,
       },
       createdAt,
       updatedAt,
@@ -344,11 +388,13 @@ export class GuildConfigStore {
 
     if (as.dedupeEnabled !== bs.dedupeEnabled) return false;
     if (as.stayInVoiceEnabled !== bs.stayInVoiceEnabled) return false;
+    if (as.earrapeProtectionEnabled !== bs.earrapeProtectionEnabled) return false;
     if (as.minimalMode !== bs.minimalMode) return false;
     if (as.volumePercent !== bs.volumePercent) return false;
     if (as.voteSkipRatio !== bs.voteSkipRatio) return false;
     if (as.voteSkipMinVotes !== bs.voteSkipMinVotes) return false;
     if (as.musicLogChannelId !== bs.musicLogChannelId) return false;
+    if (as.language !== bs.language) return false;
 
     if (as.djRoleIds.length !== bs.djRoleIds.length) return false;
     for (let i = 0; i < as.djRoleIds.length; i += 1) {
@@ -391,12 +437,14 @@ import type { LoggerLike } from '../../types/core.ts';
 type GuildConfigSettings = {
   dedupeEnabled: boolean;
   stayInVoiceEnabled: boolean;
+  earrapeProtectionEnabled: boolean;
   minimalMode: boolean;
   volumePercent: number;
   voteSkipRatio: number;
   voteSkipMinVotes: number;
   djRoleIds: string[];
   musicLogChannelId?: string | null | undefined;
+  language?: string | null | undefined;
 };
 
 type GuildConfigDocument = {

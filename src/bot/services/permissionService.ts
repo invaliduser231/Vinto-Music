@@ -1,85 +1,23 @@
-const ADMINISTRATOR = 1n << 3n;
-const VIEW_CHANNEL = 1n << 10n;
-const SEND_MESSAGES = 1n << 11n;
-const EMBED_LINKS = 1n << 14n;
-const CONNECT = 1n << 20n;
-const SPEAK = 1n << 21n;
-
-function toBigInt(value: unknown): bigint | null {
-  if (value == null) return null;
-  if (typeof value === 'bigint') return value;
-  if (typeof value === 'number' && Number.isFinite(value)) return BigInt(Math.trunc(value));
-
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed) return null;
-    if (/^\d+$/.test(trimmed)) return BigInt(trimmed);
-  }
-
-  return null;
-}
-
-function roleIdsFromMember(member: GuildMemberPayload): string[] {
-  if (Array.isArray(member?.roles)) return member.roles.map((id: unknown) => String(id));
-  if (Array.isArray(member?.role_ids)) return member.role_ids.map((id: unknown) => String(id));
-  return [];
-}
-
-function getOverwrites(channel: ChannelPayload): ChannelOverwrite[] {
-  if (Array.isArray(channel?.permission_overwrites)) return channel.permission_overwrites;
-  if (Array.isArray(channel?.permissionOverwrites)) return channel.permissionOverwrites;
-  return [];
-}
-
-function findOverwrite(overwrites: ChannelOverwrite[], id: unknown): ChannelOverwrite | null {
-  const key = String(id);
-  return overwrites.find((entry: ChannelOverwrite) => String(entry?.id ?? '') === key) ?? null;
-}
+import {
+  ALL_PERMISSIONS,
+  PERMISSION_FLAGS,
+  hasPermission,
+  type PermissionFlag,
+} from '../permissions/flags.ts';
+import {
+  checkResolution,
+  resolveMemberPermissions,
+  unknownResolution,
+  type ChannelPayload,
+  type GuildPayload,
+  type MemberPayload,
+  type PermissionCheck,
+  type PermissionResolution,
+} from '../permissions/resolver.ts';
 
 type CachedEntry<T> = {
   value: T;
   expiresAt: number;
-};
-
-type PermissionBitsCarrier = {
-  permissions?: unknown;
-  permission?: unknown;
-};
-
-type GuildRole = PermissionBitsCarrier & {
-  id?: unknown;
-};
-
-type GuildPayload = {
-  id?: unknown;
-  guild_id?: unknown;
-  roles?: GuildRole[];
-};
-
-type GuildMemberPayload = {
-  roles?: unknown[];
-  role_ids?: unknown[];
-};
-
-type ChannelOverwrite = {
-  id?: unknown;
-  deny?: unknown;
-  allow?: unknown;
-};
-
-type ChannelPayload = {
-  permission_overwrites?: ChannelOverwrite[];
-  permissionOverwrites?: ChannelOverwrite[];
-};
-
-type PermissionResolution = {
-  known: boolean;
-  bits: bigint | null;
-  canViewChannel: boolean;
-  canSendMessages: boolean;
-  canEmbedLinks: boolean;
-  canConnect: boolean;
-  canSpeak: boolean;
 };
 
 type PermissionServiceOptions = {
@@ -87,6 +25,7 @@ type PermissionServiceOptions = {
     getChannel: (channelId: string) => Promise<unknown>;
     getGuildMember: (guildId: string, userId: string) => Promise<unknown>;
     getGuild: (guildId: string) => Promise<unknown>;
+    listGuildRoles?: (guildId: string) => Promise<unknown>;
   };
   botUserId?: string | null;
   logger?: {
@@ -135,185 +74,156 @@ export class PermissionService {
     this.botUserId = botUserId ? String(botUserId) : null;
   }
 
-  async canBotSendMessages(guildId: unknown, channelId: unknown): Promise<boolean | null> {
-    const perms = await this.getBotChannelPermissions(guildId, channelId);
-    if (!perms.known) return null;
-    return perms.canViewChannel && perms.canSendMessages;
+  async checkBotPermissions(
+    guildId: unknown,
+    channelId: unknown,
+    required: readonly PermissionFlag[]
+  ): Promise<PermissionCheck> {
+    const resolution = await this.resolveBotPermissions(guildId, channelId);
+    return checkResolution(resolution, required);
   }
 
-  async canBotJoinAndSpeak(guildId: unknown, channelId: unknown): Promise<boolean | null> {
-    const perms = await this.getBotChannelPermissions(guildId, channelId);
-    if (!perms.known) return null;
-    return perms.canViewChannel && perms.canConnect && perms.canSpeak;
+  async checkMemberPermissions(
+    guildId: unknown,
+    channelId: unknown,
+    userId: unknown,
+    required: readonly PermissionFlag[]
+  ): Promise<PermissionCheck> {
+    const resolution = await this.resolveMemberPermissions(guildId, channelId, userId);
+    return checkResolution(resolution, required);
   }
 
-  async getBotChannelPermissions(guildId: unknown, channelId: unknown): Promise<PermissionResolution> {
+  async resolveBotPermissions(guildId: unknown, channelId: unknown): Promise<PermissionResolution> {
+    if (!this.botUserId) return unknownResolution('no_user');
+    return this.resolveMemberPermissions(guildId, channelId, this.botUserId);
+  }
+
+  async resolveMemberPermissions(
+    guildId: unknown,
+    channelId: unknown,
+    userId: unknown
+  ): Promise<PermissionResolution> {
     const safeGuildId = String(guildId ?? '').trim();
     const safeChannelId = String(channelId ?? '').trim();
-    if (!safeGuildId || !safeChannelId || !this.botUserId) {
-      return this._unknown();
-    }
+    const safeUserId = String(userId ?? '').trim();
 
-    const cacheKey = `${safeGuildId}:${safeChannelId}`;
+    if (!safeGuildId || !safeChannelId || !safeUserId) return unknownResolution('missing_ids');
+    if (!this.rest) return unknownResolution('no_rest');
+
+    const cacheKey = `${safeGuildId}:${safeChannelId}:${safeUserId}`;
     const cached = this._getCached(this.channelPermCache, cacheKey);
     if (cached) return cached;
 
+    const resolution = await this._resolveUncached(safeGuildId, safeChannelId, safeUserId);
+    this._setCached(this.channelPermCache, cacheKey, resolution, this.maxChannelPermCacheSize);
+    return resolution;
+  }
+
+  async _resolveUncached(
+    guildId: string,
+    channelId: string,
+    userId: string
+  ): Promise<PermissionResolution> {
+    const [memberResult, guildResult, channelResult] = await Promise.all([
+      this._safeCall(() => this._getGuildMember(guildId, userId), 'getGuildMember', { guildId, userId }),
+      this._safeCall(() => this._getGuild(guildId), 'getGuild', { guildId }),
+      this._safeCall(() => this.rest!.getChannel(channelId), 'getChannel', { channelId }),
+    ]);
+
+    if (!guildResult.ok || !guildResult.value) return unknownResolution('guild_unavailable');
+
+    const guild = await this._withGuildRoles(guildId, guildResult.value as GuildPayload);
+    const ownerId = String(guild.owner_id ?? guild.ownerId ?? '').trim();
+    const isOwner = Boolean(ownerId) && ownerId === userId;
+
+    if (!isOwner) {
+      if (!memberResult.ok || !memberResult.value) return unknownResolution('member_unavailable');
+      if (!Array.isArray(guild.roles) || !guild.roles.length) return unknownResolution('roles_unavailable');
+      if (!channelResult.ok || !channelResult.value) return unknownResolution('channel_unavailable');
+    }
+
+    return resolveMemberPermissions({
+      member: (memberResult.value ?? null) as MemberPayload | null,
+      guild,
+      channel: (channelResult.value ?? null) as ChannelPayload | null,
+      userId,
+    });
+  }
+
+  async _safeCall<T>(
+    fn: () => Promise<T>,
+    label: string,
+    meta: Record<string, unknown>
+  ): Promise<{ ok: boolean; value: T | null }> {
     try {
-      if (!this.rest) return this._unknown();
-      const [member, guild, channel] = await Promise.all([
-        this._getGuildMember(safeGuildId, this.botUserId),
-        this._getGuild(safeGuildId),
-        this.rest.getChannel(safeChannelId),
-      ]);
-
-      const basePerms = this._computeBaseRolePerms(member as GuildMemberPayload, guild as GuildPayload);
-      if (basePerms == null) {
-        return this._cacheAndReturnUnknown(cacheKey);
-      }
-
-      const effectivePerms = this._applyChannelOverwrites(
-        basePerms,
-        member as GuildMemberPayload,
-        guild as GuildPayload,
-        channel as ChannelPayload
-      );
-      const result = this._fromBits(effectivePerms);
-      this._setCached(this.channelPermCache, cacheKey, result, this.maxChannelPermCacheSize);
-      return result;
+      return { ok: true, value: await fn() };
     } catch (err) {
-      this.logger?.debug?.('Permission resolution failed', {
-        guildId: safeGuildId,
-        channelId: safeChannelId,
+      this.logger?.debug?.('Permission lookup failed', {
+        ...meta,
+        call: label,
         error: err instanceof Error ? err.message : String(err),
       });
-      return this._cacheAndReturnUnknown(cacheKey);
+      return { ok: false, value: null };
     }
   }
 
-  _computeBaseRolePerms(member: GuildMemberPayload, guild: GuildPayload): bigint | null {
-    const roles = Array.isArray(guild?.roles) ? guild.roles : [];
-    if (!roles.length) return null;
+  async _withGuildRoles(guildId: string, guild: GuildPayload): Promise<GuildPayload> {
+    const resolved: GuildPayload = { ...guild, id: guild?.id ?? guildId };
+    if (Array.isArray(resolved.roles) && resolved.roles.length) return resolved;
+    if (!this.rest?.listGuildRoles) return resolved;
 
-    const map = new Map<string, GuildRole>();
-    for (const role of roles) {
-      const id = String(role?.id ?? '');
-      if (!id) continue;
-      map.set(id, role);
+    const listed = await this._safeCall(
+      () => this.rest!.listGuildRoles!(guildId),
+      'listGuildRoles',
+      { guildId }
+    );
+    if (Array.isArray(listed.value) && listed.value.length) {
+      resolved.roles = listed.value as NonNullable<GuildPayload['roles']>;
     }
 
-    const roleIds = roleIdsFromMember(member);
-    if (!roleIds.length) return null;
-
-    let perms = 0n;
-    let matched = false;
-    for (const roleId of roleIds) {
-      const role = map.get(String(roleId));
-      if (!role) continue;
-      const bits = toBigInt(role.permissions ?? role.permission);
-      if (bits == null) continue;
-      perms |= bits;
-      matched = true;
-    }
-
-    return matched ? perms : null;
+    return resolved;
   }
 
-  _applyChannelOverwrites(
-    basePerms: bigint,
-    member: GuildMemberPayload,
-    guild: GuildPayload,
-    channel: ChannelPayload
-  ): bigint {
-    if ((basePerms & ADMINISTRATOR) !== 0n) {
-      return basePerms;
-    }
-
-    let perms = basePerms;
-    const overwrites = getOverwrites(channel);
-
-    const everyone = findOverwrite(overwrites, guild?.id ?? guild?.guild_id);
-    if (everyone) {
-      perms = this._applyOverwrite(perms, everyone);
-    }
-
-    const roleIds = roleIdsFromMember(member);
-    let roleDeny = 0n;
-    let roleAllow = 0n;
-    for (const roleId of roleIds) {
-      const ow = findOverwrite(overwrites, roleId);
-      if (!ow) continue;
-      roleDeny |= toBigInt(ow.deny) ?? 0n;
-      roleAllow |= toBigInt(ow.allow) ?? 0n;
-    }
-    perms &= ~roleDeny;
-    perms |= roleAllow;
-
-    const memberOw = findOverwrite(overwrites, this.botUserId);
-    if (memberOw) {
-      perms = this._applyOverwrite(perms, memberOw);
-    }
-
-    return perms;
+  async canBotSendMessages(guildId: unknown, channelId: unknown): Promise<boolean | null> {
+    return this._legacyCheck(guildId, channelId, ['VIEW_CHANNEL', 'SEND_MESSAGES']);
   }
 
-  _applyOverwrite(perms: bigint, overwrite: ChannelOverwrite) {
-    const deny = toBigInt(overwrite?.deny) ?? 0n;
-    const allow = toBigInt(overwrite?.allow) ?? 0n;
-    let next = perms;
-    next &= ~deny;
-    next |= allow;
-    return next;
+  async canBotJoinAndSpeak(guildId: unknown, channelId: unknown): Promise<boolean | null> {
+    return this._legacyCheck(guildId, channelId, ['VIEW_CHANNEL', 'CONNECT', 'SPEAK']);
   }
 
-  _fromBits(bits: bigint): PermissionResolution {
-    const canViewChannel = (bits & VIEW_CHANNEL) !== 0n;
+  async canBotMoveMembers(guildId: unknown, channelId: unknown): Promise<boolean | null> {
+    return this._legacyCheck(guildId, channelId, ['VIEW_CHANNEL', 'MOVE_MEMBERS']);
+  }
+
+  async _legacyCheck(
+    guildId: unknown,
+    channelId: unknown,
+    required: readonly PermissionFlag[]
+  ): Promise<boolean | null> {
+    const check = await this.checkBotPermissions(guildId, channelId, required);
+    if (!check.known) return null;
+    return check.ok;
+  }
+
+  async getBotChannelPermissions(guildId: unknown, channelId: unknown) {
+    const resolution = await this.resolveBotPermissions(guildId, channelId);
+    const bits = resolution.bits ?? 0n;
+    const admin = resolution.isAdministrator;
+    const canViewChannel = resolution.known && (admin || hasPermission(bits, 'VIEW_CHANNEL'));
+    const has = (flag: PermissionFlag) => canViewChannel && (admin || hasPermission(bits, flag));
+
     return {
-      known: true,
-      bits,
+      known: resolution.known,
+      bits: resolution.bits,
+      reason: resolution.reason,
       canViewChannel,
-      canSendMessages: canViewChannel && (bits & SEND_MESSAGES) !== 0n,
-      canEmbedLinks: canViewChannel && (bits & EMBED_LINKS) !== 0n,
-      canConnect: canViewChannel && (bits & CONNECT) !== 0n,
-      canSpeak: canViewChannel && (bits & SPEAK) !== 0n,
+      canSendMessages: has('SEND_MESSAGES'),
+      canEmbedLinks: has('EMBED_LINKS'),
+      canConnect: has('CONNECT'),
+      canSpeak: has('SPEAK'),
+      canMoveMembers: has('MOVE_MEMBERS'),
     };
-  }
-
-  _unknown(): PermissionResolution {
-    return {
-      known: false,
-      bits: null,
-      canViewChannel: false,
-      canSendMessages: false,
-      canEmbedLinks: false,
-      canConnect: false,
-      canSpeak: false,
-    };
-  }
-
-  _cacheAndReturnUnknown(cacheKey: string): PermissionResolution {
-    const value = this._unknown();
-    this._setCached(this.channelPermCache, cacheKey, value, this.maxChannelPermCacheSize);
-    return value;
-  }
-
-  async _getGuildMember(guildId: string, userId: string): Promise<unknown> {
-    if (!this.rest) return null;
-    const key = `${guildId}:${userId}`;
-    const cached = this._getCached(this.guildMemberCache, key);
-    if (cached) return cached;
-    const value = await this.rest.getGuildMember(guildId, userId);
-    this._setCached(this.guildMemberCache, key, value, this.maxGuildMemberCacheSize);
-    return value;
-  }
-
-  async _getGuild(guildId: string): Promise<unknown> {
-    if (!this.rest) return null;
-    const key = String(guildId);
-    const cached = this._getCached(this.guildCache, key);
-    if (cached) return cached;
-    const value = await this.rest.getGuild(guildId);
-    this._setCached(this.guildCache, key, value, this.maxGuildCacheSize);
-    return value;
   }
 
   _getCached<T>(map: Map<string, CachedEntry<T>>, key: string): T | null {
@@ -353,8 +263,27 @@ export class PermissionService {
       map.delete(oldestKey);
     }
   }
+
+  async _getGuildMember(guildId: string, userId: string): Promise<unknown> {
+    if (!this.rest) return null;
+    const key = `${guildId}:${userId}`;
+    const cached = this._getCached(this.guildMemberCache, key);
+    if (cached) return cached;
+    const value = await this.rest.getGuildMember(guildId, userId);
+    this._setCached(this.guildMemberCache, key, value, this.maxGuildMemberCacheSize);
+    return value;
+  }
+
+  async _getGuild(guildId: string): Promise<unknown> {
+    if (!this.rest) return null;
+    const key = String(guildId);
+    const cached = this._getCached(this.guildCache, key);
+    if (cached) return cached;
+    const value = await this.rest.getGuild(guildId);
+    this._setCached(this.guildCache, key, value, this.maxGuildCacheSize);
+    return value;
+  }
 }
 
-
-
-
+export { ALL_PERMISSIONS, PERMISSION_FLAGS };
+export type { PermissionCheck, PermissionFlag, PermissionResolution };

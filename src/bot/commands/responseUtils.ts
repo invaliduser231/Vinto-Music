@@ -1,4 +1,4 @@
-import type { EmbedField, MessagePayload, MessageReference } from '../../types/core.ts';
+import type { EmbedAuthor, EmbedField, MessagePayload, MessageReference } from '../../types/core.ts';
 import { buildEmbed, COLORS, renderMinimalEmbedContent } from '../messageFormatter.ts';
 
 interface CommandContextLike {
@@ -35,6 +35,10 @@ interface StatusPayloadOptions {
   thumbnailUrl?: string | null;
   imageUrl?: string | null;
   footer?: string | null;
+  url?: string | null;
+  author?: EmbedAuthor | null;
+  footerIconUrl?: string | null;
+  color?: number | null;
 }
 
 interface ProgressReporterConfig {
@@ -114,6 +118,10 @@ export function buildInfoPayload(
         thumbnailUrl: safeOptions.thumbnailUrl ?? null,
         imageUrl: safeOptions.imageUrl ?? null,
         footer: safeOptions.footer ?? null,
+        url: safeOptions.url ?? null,
+        author: safeOptions.author ?? null,
+        footerIconUrl: safeOptions.footerIconUrl ?? null,
+        ...(typeof safeOptions.color === 'number' ? { color: safeOptions.color } : {}),
       }),
     ],
     allowed_mentions: {
