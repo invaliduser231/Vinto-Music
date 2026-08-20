@@ -167,13 +167,16 @@ export const resolverMethods: LooseMethodMap = {
     const shouldTryNodeLinkForUrl = !shouldBypassNodeLink && (nodeLinkRoutingMode === 'all' || isYouTubeUrl(url));
     if (this.nodeLinkEnabled && this.nodeLinkClient?.enabled && shouldTryNodeLinkForUrl) {
       const nodeLinkResolved = await this._resolveNodeLinkTracks(url, requestedBy, safeLimit, { urlQuery: true }).catch((err: unknown) => {
+        const reason = err instanceof Error ? err.message : String(err);
         if (nodeLinkRoutingMode === 'all') {
-          throw new ValidationError('NodeLink URL resolution failed and local fallback is disabled in NODELINK_ROUTING_MODE=all.');
+          throw new ValidationError(
+            `NodeLink URL resolution failed and local fallback is disabled in NODELINK_ROUTING_MODE=all. NodeLink reported: ${reason}`
+          );
         }
         this.logger?.debug?.('NodeLink URL resolution failed, falling back to local resolver path', {
           url,
           routingMode: nodeLinkRoutingMode,
-          error: err instanceof Error ? err.message : String(err),
+          error: reason,
         });
         return null;
       });
@@ -181,7 +184,13 @@ export const resolverMethods: LooseMethodMap = {
         return nodeLinkResolved;
       }
       if (nodeLinkRoutingMode === 'all') {
-        throw new ValidationError('NodeLink returned no playable tracks and local fallback is disabled in NODELINK_ROUTING_MODE=all.');
+        this.logger?.warn?.('NodeLink returned no playable tracks for URL', {
+          url,
+          routingMode: nodeLinkRoutingMode,
+        });
+        throw new ValidationError(
+          `NodeLink returned no playable tracks for ${url} and local fallback is disabled in NODELINK_ROUTING_MODE=all.`
+        );
       }
     }
     const isGenericStreamPlaylist = !isYouTubeUrl(url) && isLikelyPlaylistUrl(url);
