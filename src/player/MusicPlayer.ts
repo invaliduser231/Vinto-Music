@@ -250,6 +250,12 @@ export class MusicPlayer extends EventEmitter {
   declare stop: () => void;
   declare clearQueue: () => void;
   declare setVolumePercent: (value: number) => number;
+  declare setFilterPreset: (name: string) => string;
+  declare _getLiveAudioProcessorState: () => {
+    volumePercent: number;
+    filterPreset: string;
+    eqPreset: string;
+  };
   declare setLoopMode: (mode: string) => string;
   declare createTrackFromData: (track: TrackInput, requestedBy?: string | null) => Track;
   declare hydrateTrackMetadata: (
@@ -316,7 +322,6 @@ export class MusicPlayer extends EventEmitter {
   declare _resolveSpotifyCollection: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
   declare _resolveSpotifyArtist: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
   declare _resolveSpotifyByGuess: BivariantCallback<[string, (string | null | undefined)?, (number | null | undefined)?], Promise<Track[]>>;
-  declare _resolveSpotifyMirror: BivariantCallback<[Partial<Track> | null | undefined, (string | null | undefined)?], Promise<Track[]>>;
   declare _spotifyApiRequest: (pathname: string, query?: Record<string, unknown>) => Promise<unknown>;
   declare _resolveTidalTrack: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
   declare _resolveTidalCollection: BivariantCallback<[string, (string | null | undefined)?, (number | null | undefined)?], Promise<Track[]>>;
@@ -375,6 +380,7 @@ export class MusicPlayer extends EventEmitter {
   declare _createLiveAudioProcessor: () => LiveAudioProcessor;
   declare _createPlaybackOutputStream: () => PassThrough;
   declare _shouldUseLiveAudioProcessor: () => boolean;
+  declare _canDelegateVolumeToStream: () => boolean;
   declare _awaitInitialPlaybackChunk: BivariantCallback<[NonNullable<PipelineProcess['stdout']>, PipelineProcess, number], Promise<void>>;
   declare _getInitialPlaybackChunkTimeoutMs: (track: Track, options?: { hint?: string | null }) => number;
   declare _startPlayDlPipeline: (url: string, seekSec?: number) => Promise<void>;
@@ -434,6 +440,7 @@ export class MusicPlayer extends EventEmitter {
   tempoRatio: number;
   pitchSemitones: number;
   volumePercent: number;
+  streamAppliedVolumePercent: number;
   loopMode: string;
   ffmpeg: PipelineProcess | null;
   sourceProc: PipelineProcess | null;
@@ -557,6 +564,7 @@ export class MusicPlayer extends EventEmitter {
     this.tempoRatio = 1.0;
     this.pitchSemitones = 0;
     this.volumePercent = options.defaultVolumePercent ?? 100;
+    this.streamAppliedVolumePercent = 100;
     this.loopMode = LOOP_OFF;
 
     this.ffmpeg = null;
@@ -899,6 +907,7 @@ export class MusicPlayer extends EventEmitter {
 
     try {
       this._ensurePlaybackStartupActive(startupToken);
+      this.streamAppliedVolumePercent = 100;
       let trackUrl = String(track.url ?? '').trim();
       if (!trackUrl) {
         throw new ValidationError('Track is missing a playable URL.');
@@ -930,35 +939,6 @@ export class MusicPlayer extends EventEmitter {
             error: nodeLinkErr instanceof Error ? nodeLinkErr.message : String(nodeLinkErr),
           });
 
-          if (String(track.source ?? '').startsWith('spotify') || isSpotifyUrl(trackUrl)) {
-            const requestedBy = String(track.requestedBy ?? '').trim() || null;
-            const spotifyFallbackTracksResult = await this._resolveSpotifyMirror(track, requestedBy).catch((fallbackErr: unknown): Track[] => {
-              this.logger?.warn?.('Spotify fallback resolution failed after NodeLink startup failure', {
-                title: track.title,
-                url: trackUrl,
-                error: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr),
-              });
-              return [];
-            });
-            const spotifyFallbackTracks = Array.isArray(spotifyFallbackTracksResult)
-              ? spotifyFallbackTracksResult.filter((candidate): candidate is Track => Boolean(candidate && typeof candidate === 'object'))
-              : [];
-            const spotifyFallbackTrack = spotifyFallbackTracks[0] ?? null;
-            if (spotifyFallbackTrack) {
-              retryStartupTrack = this._cloneTrack(spotifyFallbackTrack, {
-                seekStartSec: track.seekStartSec ?? 0,
-              });
-              (retryStartupTrack as Track & { startupRetryCount?: number }).startupRetryCount = 1;
-              this.logger?.warn?.('Retrying Spotify playback after NodeLink startup failure', {
-                title: track.title,
-                url: trackUrl,
-                fallbackSource: retryStartupTrack.source ?? null,
-              });
-              track = retryStartupTrack;
-              trackUrl = String(track.url ?? '').trim() || trackUrl;
-              this._cleanupProcesses();
-            }
-          }
           this._cleanupProcesses();
         }
       }
@@ -1562,9 +1542,11 @@ export class MusicPlayer extends EventEmitter {
 
     const positionMs = Math.max(0, Number.parseInt(String(track.seekStartSec ?? 0), 10) || 0) * 1000;
     const guildId = String((this.voice as { guildId?: unknown } | null | undefined)?.guildId ?? '').trim() || null;
+    const delegatedVolume = this._canDelegateVolumeToStream() ? this.volumePercent : 100;
+    this.streamAppliedVolumePercent = delegatedVolume;
     const nodeLinkStream = await this.nodeLinkClient.streamTrack(track, {
       positionMs,
-      volume: 100,
+      volume: delegatedVolume,
       ...(guildId ? { guildId } : {}),
     });
     this.sourceStream = nodeLinkStream as PipelineStreamLike;

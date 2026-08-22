@@ -811,50 +811,6 @@ test('NodeLink stream failure falls back to local YouTube pipeline', async () =>
   player.stop();
 });
 
-test('NodeLink stream failure falls back to Spotify mirror playback', async () => {
-  const player = createPlayer();
-  const ffmpeg = {
-    stdout: { pipe() {} },
-    once() {},
-    stderr: null,
-  } as unknown as NonNullable<MusicPlayer['ffmpeg']>;
-
-  const fallbackCalls: Array<[string | undefined, string | undefined]> = [];
-  let mirrorCalls = 0;
-  player._startNodeLinkStream = async () => {
-    throw new Error('NodeLink stream failed (500): {"message":"Unknown error"}');
-  };
-  player._resolveSpotifyMirror = async () => {
-    mirrorCalls += 1;
-    return [player.createTrackFromData({
-      title: 'Mirror Track',
-      url: 'https://example.com/mirror',
-      duration: '3:10',
-      source: 'soundcloud',
-    })];
-  };
-  player.sources.soundcloud.startPipeline = async (track: Track) => {
-    fallbackCalls.push([track.title, track.source]);
-    player.ffmpeg = ffmpeg;
-  };
-  player._awaitInitialPlaybackChunk = async () => {};
-
-  player.enqueueResolvedTracks([player.createTrackFromData({
-    title: 'Rote Flaggen',
-    url: 'https://open.spotify.com/track/7bkUa9kDFGxgCC7d36dzFI?explicit=true',
-    duration: '3:00',
-    source: 'spotify',
-    nodelinkEncodedTrack: 'encoded-spotify',
-  })]);
-
-  await player.play();
-
-  assert.equal(mirrorCalls, 1);
-  assert.deepEqual(fallbackCalls, [['Mirror Track', 'soundcloud']]);
-
-  player.stop();
-});
-
 test('NodeLink diagnostics retain info probe details', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: Parameters<typeof fetch>[0]) => {
@@ -1233,4 +1189,58 @@ test('a provider link fails with a clear message when NodeLink is unavailable', 
     }),
     /resolved by NodeLink, which is not available/,
   );
+});
+
+test('volume is handed to NodeLink instead of being applied locally', async () => {
+  const player = createPlayer();
+  const calls: Array<{ volume: number }> = [];
+
+  player.nodeLinkClient = {
+    enabled: true,
+    streamTrack: async (_track: Track, options: { volume: number }) => {
+      calls.push({ volume: options.volume });
+      return Readable.from([Buffer.alloc(4)]);
+    },
+  } as unknown as MusicPlayer['nodeLinkClient'];
+  player.voice = { ...player.voice, sendAudio: async () => {} } as MusicPlayer['voice'];
+  player._awaitInitialPlaybackChunk = async () => {};
+
+  player.setVolumePercent(25);
+  await player._startNodeLinkStream(
+    player.createTrackFromData({
+      title: 'x',
+      url: 'https://www.youtube.com/watch?v=1NiSbpN-LaI',
+      duration: '3:00',
+      source: 'youtube',
+      nodelinkEncodedTrack: 'encoded',
+    }),
+    player.playbackStartupToken ?? 0,
+    0,
+  );
+
+  assert.deepEqual(calls, [{ volume: 25 }]);
+  assert.equal(player.streamAppliedVolumePercent, 25);
+  assert.equal(player._shouldUseLiveAudioProcessor(), false, 'no local processing needed any more');
+
+  player.stop();
+});
+
+test('a volume change during playback is applied relative to what the stream already does', () => {
+  const player = createPlayer();
+  player.setVolumePercent(50);
+  player.streamAppliedVolumePercent = 50;
+
+  assert.equal(player._shouldUseLiveAudioProcessor(), false);
+
+  player.setVolumePercent(100);
+  assert.equal(player._getLiveAudioProcessorState().volumePercent, 200);
+  assert.equal(player._shouldUseLiveAudioProcessor(), true);
+});
+
+test('a filter preset keeps volume local so both are applied together', () => {
+  const player = createPlayer();
+  player.setVolumePercent(40);
+  player.setFilterPreset('bassboost');
+
+  assert.equal(player._canDelegateVolumeToStream(), false);
 });

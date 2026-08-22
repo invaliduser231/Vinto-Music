@@ -393,8 +393,11 @@ export const pipelineMethods: LooseMethodMap = {
   },
 
   _getLiveAudioProcessorState() {
+    const target = clamp(this.volumePercent, this.minVolumePercent, this.maxVolumePercent);
+    const applied = Number.parseInt(String(this.streamAppliedVolumePercent ?? 100), 10) || 100;
+    const relative = applied === 100 ? target : Math.round((target / applied) * 100);
     return {
-      volumePercent: clamp(this.volumePercent, this.minVolumePercent, this.maxVolumePercent),
+      volumePercent: clamp(relative, this.minVolumePercent, this.maxVolumePercent),
       filterPreset: this.isLiveFilterPresetSupported(this.filterPreset) ? this.filterPreset : 'off',
       eqPreset: this.eqPreset,
     };
@@ -418,6 +421,11 @@ export const pipelineMethods: LooseMethodMap = {
       || state.filterPreset !== 'off'
       || state.eqPreset !== 'flat'
     );
+  },
+
+  _canDelegateVolumeToStream() {
+    const filterPreset = this.isLiveFilterPresetSupported(this.filterPreset) ? this.filterPreset : 'off';
+    return filterPreset === 'off' && this.eqPreset === 'flat';
   },
 
   _syncLiveAudioProcessor() {

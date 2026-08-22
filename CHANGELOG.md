@@ -4,6 +4,9 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+- Performance:
+  - handed playback volume to NodeLink instead of scaling every PCM sample in the bot process, which spawned a per-session audio processor as soon as volume differed from 100
+  - the local processor now only runs for filter and equaliser presets, and applies volume relative to what the stream already did
 - Removals:
   - deleted the local Spotify, Tidal, Apple Music, Amazon, Bandcamp, Audiomack, Mixcloud, and JioSaavn resolvers, roughly 2.900 lines that duplicated what NodeLink already does better
   - links from those services now always go to NodeLink, in every routing mode, and fail with a clear message when NodeLink is unavailable instead of silently taking a weaker path
