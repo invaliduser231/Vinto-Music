@@ -6,8 +6,6 @@ services:
     pull_policy: always
     restart: unless-stopped
     depends_on:
-      mongo:
-        condition: service_healthy
       nodelink:
         condition: service_started
       bgutil-pot:
@@ -100,7 +98,11 @@ services:
       retries: 5
       start_period: 45s
 
+  # Only started with "--profile bundled-db". Point MONGODB_URI at your own
+  # database and leave the profile off, then this container never runs. An
+  # idle bundled Mongo still costs CPU over time while doing nothing.
   mongo:
+    profiles: ["bundled-db"]
     image: mongo:7
     restart: unless-stopped
     command: ["--bind_ip", "127.0.0.1,mongo"]

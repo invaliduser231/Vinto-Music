@@ -53,8 +53,17 @@ a source without credentials stays inactive and the bot uses the others.
 
 ## Run
 
+With your own MongoDB behind `MONGODB_URI`:
+
 ```bash
 docker compose up -d
+docker compose logs -f app
+```
+
+Without one, start the bundled database as well:
+
+```bash
+docker compose --profile bundled-db up -d
 docker compose logs -f app
 ```
 
@@ -79,21 +88,26 @@ docker compose ps                 # all containers healthy
 docker compose images nodelink    # check which NodeLink build is running
 ```
 
-## Using an external database
+## Database
 
-The compose file ships a MongoDB container and uses it by default. To point at
-a hosted database instead, set `MONGODB_URI` in `.env`:
+The bot needs a MongoDB. Either bring your own or start the bundled container.
+
+For a hosted database such as Atlas, set `MONGODB_URI` in `.env` and start
+normally. The bundled container stays out of the way:
 
 ```
 MONGODB_URI=mongodb+srv://user:password@cluster.example.net/?appName=Vinto
 ```
 
-The bundled container then still starts but goes unused. To leave it out
-entirely, start only the services you need:
+To use the bundled container instead, start with its profile:
 
 ```bash
-docker compose up -d --no-deps app nodelink bgutil-pot
+docker compose --profile bundled-db up -d
 ```
+
+Do not run the bundled container alongside an external database. An idle Mongo
+still consumes CPU over time, and on a small host that is capacity you need for
+playback.
 
 Verify which database is actually in use:
 
