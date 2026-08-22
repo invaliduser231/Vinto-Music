@@ -35,6 +35,7 @@ type MirrorRuntime = {
   ) => Promise<Track[]>;
   _parseDurationSeconds?: (value: unknown) => number | null;
   _resolveFromUrlFallbackSearch: (url: string, requestedBy: string | null, source: string) => Promise<Track[]>;
+  _shouldUseDirectDeezerMirror: () => boolean;
   deezerArl?: string | null;
   enableDeezerImport?: boolean;
   maxPlaylistTracks: number;
@@ -117,7 +118,7 @@ async function resolveMirror(
   }
 
   const durationInSec = runtime._parseDurationSeconds?.(metadataTrack.duration) ?? null;
-  if (runtime.deezerArl && runtime.enableDeezerImport) {
+  if (runtime._shouldUseDirectDeezerMirror()) {
     const deezerMatches = await runtime._searchDeezerTracks(query, 3, requestedBy).catch(() => []);
     const deezerBest = runtime._pickBestSpotifyMirror(metadataTrack, deezerMatches);
     if (deezerBest) {

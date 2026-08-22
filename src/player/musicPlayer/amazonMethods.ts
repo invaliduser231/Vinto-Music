@@ -133,6 +133,7 @@ type AmazonPlayer = MusicPlayer & {
   _searchDeezerTracks: (query: string, limit: number, requestedBy: string | null) => Promise<Track[]>;
   _pickBestSpotifyMirror: (metadataTrack: Partial<Track>, candidates: unknown) => Track | null;
   _resolveCrossSourceToYouTube: (sourceTracks: Array<{ title?: string; artist?: string | null; durationInSec?: number | null }>, requestedBy: string | null, source: string) => Promise<Track[]>;
+  _shouldUseDirectDeezerMirror: () => boolean;
   nodeLinkEnabled?: boolean;
   nodeLinkClient?: { enabled?: boolean } | null;
   nodeLinkRoutingMode?: string | null;
@@ -642,7 +643,7 @@ export const amazonMethods: AmazonMethods & ThisType<AmazonPlayer> = {
       throw new ValidationError('Could not build Amazon Music mirror search query.');
     }
 
-    if (this.deezerArl && this.enableDeezerImport) {
+    if (this._shouldUseDirectDeezerMirror()) {
       const deezerMatches = await this._searchDeezerTracks(query, 3, requestedBy).catch(() => []);
       const deezerBest = this._pickBestSpotifyMirror(metadataTrack, deezerMatches);
       if (deezerBest) {

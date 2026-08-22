@@ -44,6 +44,7 @@ type TidalPlayer = MusicPlayer & {
     source: string,
   ) => Promise<Track[]>;
   _parseDurationSeconds?: (value: unknown) => number | null;
+  _shouldUseDirectDeezerMirror: () => boolean;
   logger?: { warn?: (message: string, payload?: Record<string, unknown>) => void };
   maxPlaylistTracks: number;
   deezerArl?: string | null;
@@ -226,7 +227,7 @@ export const tidalMethods: TidalMethods & ThisType<TidalPlayer> = {
     }
 
     const durationInSec = this._parseDurationSeconds?.(metadataTrack.duration) ?? null;
-    if (this.deezerArl && this.enableDeezerImport) {
+    if (this._shouldUseDirectDeezerMirror()) {
       const deezerMatches = await this._searchDeezerTracks(query, 3, requestedBy).catch(() => []);
       const deezerBest = this._pickBestSpotifyMirror(metadataTrack, deezerMatches);
       if (deezerBest) {

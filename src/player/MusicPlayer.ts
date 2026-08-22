@@ -283,11 +283,12 @@ export class MusicPlayer extends EventEmitter {
     query: string,
     requestedBy: string | null,
     limit?: number | null,
-    options?: { searchIdentifier?: string | null }
+    options?: { searchIdentifier?: string | null; urlQuery?: boolean }
   ) => Promise<Track[]>;
   declare _resolveYouTubeTrackViaNodeLink: (track: Partial<Track> | null | undefined) => Promise<Track | null>;
   declare _resolveStartupMirrorFallbackTrack: (track: Partial<Track> | null | undefined, requestedBy: string | null) => Promise<Track | null>;
   declare _isNodeLinkOnlyModeForSourceTrack: (track: Partial<Track> | null | undefined, trackUrl?: string | null) => boolean;
+  declare _shouldUseDirectDeezerMirror: () => boolean;
   declare isNodeLinkStreamingEnabled: () => boolean;
   declare _nodeLinkLoadResultToTracks: (result: unknown, requestedBy: string | null, limit?: number | null, options?: { urlQuery?: boolean }) => Track[];
   declare _nodeLinkTrackDataToTrack: (data: unknown, requestedBy: string | null) => Track | null;

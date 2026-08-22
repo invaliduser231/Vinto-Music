@@ -325,3 +325,48 @@ test('spotify collection resolver retries without market when the configured mar
 
 
 
+
+test('spotify playlist mirroring runs concurrently and keeps the original track order', async () => {
+  const player = createPlayer({ deezerArl: null });
+  const titles = ['One', 'Two', 'Three', 'Four', 'Five'];
+  let active = 0;
+  let peakActive = 0;
+
+  player._spotifyApiRequest = async () => ({
+    tracks: {
+      items: titles.map((title, index) => ({
+        track: {
+          id: `sp-${index}`,
+          name: title,
+          duration_ms: 180000,
+          external_urls: { spotify: `https://open.spotify.com/track/sp-${index}` },
+          artists: [{ name: 'Demo Artist' }],
+        },
+      })),
+    },
+  });
+
+  player._resolveCrossSourceToYouTube = async (items: MirrorInput[], requestedBy: string, source: string) => {
+    active += 1;
+    peakActive = Math.max(peakActive, active);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    active -= 1;
+
+    const first = items[0]!;
+    return [
+      player._buildTrack({
+        title: first.title ?? 'Unknown',
+        url: `https://www.youtube.com/watch?v=${first.title ?? 'unknown'}`,
+        duration: 180,
+        requestedBy,
+        source,
+        artist: 'Demo Artist',
+      }),
+    ];
+  };
+
+  const tracks = await player._resolveSpotifyCollection('https://open.spotify.com/playlist/demo', 'user-1');
+
+  assert.deepEqual(tracks.map((track) => track.title), titles);
+  assert.ok(peakActive > 1, 'playlist tracks must not be mirrored one after another');
+});

@@ -1,9 +1,11 @@
 import { ValidationError } from '../../core/errors.ts';
+import { pickBestMirrorCandidate } from './mirrorMatch.ts';
 import {
   extractAppleMusicEntity,
   normalizeThumbnailUrl,
   sanitizeUrlToSearchQuery,
 } from './trackUtils.ts';
+import type { MirrorReference } from './mirrorMatch.ts';
 import type { MusicPlayer } from '../MusicPlayer.ts';
 import type { Track } from '../../types/domain.ts';
 
@@ -14,6 +16,7 @@ const APPLE_PAGE_TIMEOUT_MS = 10_000;
 const APPLE_CATALOG_PAGE_SIZE = 300;
 const APPLE_TOKEN_REFRESH_SKEW_MS = 5 * 60_000;
 const APPLE_COLLECTION_MIRROR_CONCURRENCY = 6;
+const APPLE_MIRROR_CANDIDATE_LIMIT = 5;
 
 type AppleLookupResult = Record<string, unknown> & {
   wrapperType?: unknown;
@@ -95,6 +98,7 @@ type ApplePlayer = MusicPlayer & {
   _searchDeezerTracks: (query: string, limit: number, requestedBy: string | null) => Promise<Track[]>;
   _pickBestSpotifyMirror: (metadataTrack: AppleMetadataTrack, candidates: unknown) => Track | null;
   _resolveCrossSourceToYouTube: (sourceTracks: CrossSourceSeed[], requestedBy: string | null, source: string) => Promise<Track[]>;
+  _shouldUseDirectDeezerMirror: () => boolean;
   nodeLinkEnabled?: boolean;
   nodeLinkClient?: { enabled?: boolean } | null;
   nodeLinkRoutingMode?: string | null;
@@ -566,8 +570,8 @@ export const appleMethods: AppleMethods & ThisType<MusicPlayer> = {
 
     let results = await (
       this.nodeLinkEnabled && this.nodeLinkClient?.enabled && getNodeLinkRoutingMode(this.nodeLinkRoutingMode) !== 'youtube-only'
-        ? this._resolveNodeLinkTracks(query, requestedBy, 1)
-        : methods._searchYouTubeTracks(query, 1, requestedBy)
+        ? this._resolveNodeLinkTracks(query, requestedBy, APPLE_MIRROR_CANDIDATE_LIMIT)
+        : methods._searchYouTubeTracks(query, APPLE_MIRROR_CANDIDATE_LIMIT, requestedBy)
     ).catch(() => []);
     if (
       !results.length
@@ -575,13 +579,20 @@ export const appleMethods: AppleMethods & ThisType<MusicPlayer> = {
       && this.nodeLinkClient?.enabled
       && getNodeLinkRoutingMode(this.nodeLinkRoutingMode) !== 'all'
     ) {
-      results = await methods._searchYouTubeTracks(query, 1, requestedBy).catch(() => []);
+      results = await methods._searchYouTubeTracks(query, APPLE_MIRROR_CANDIDATE_LIMIT, requestedBy).catch(() => []);
     }
     if (!results.length) {
       throw new ValidationError('Could not resolve Apple Music URL to a playable track.');
     }
 
-    return [methods._cloneTrack(results[0]!, {
+    const match = fallbackTrack.title || fallbackTrack.artist
+      ? pickBestMirrorCandidate<Track>(fallbackTrack as MirrorReference, results, { allowWeak: true })?.track ?? null
+      : results[0] ?? null;
+    if (!match) {
+      throw new ValidationError('Could not resolve Apple Music URL to a matching playable track.');
+    }
+
+    return [methods._cloneTrack(match, {
       source: 'applemusic-fallback',
       requestedBy,
     })];
@@ -594,7 +605,7 @@ export const appleMethods: AppleMethods & ThisType<MusicPlayer> = {
       throw new ValidationError('Could not build Apple Music mirror search query.');
     }
 
-    if (this.deezerArl && this.enableDeezerImport) {
+    if (methods._shouldUseDirectDeezerMirror()) {
       const deezerMatches = await methods._searchDeezerTracks(query, 3, requestedBy).catch(() => []);
       const deezerBest = methods._pickBestSpotifyMirror(metadataTrack, deezerMatches);
       if (deezerBest) {

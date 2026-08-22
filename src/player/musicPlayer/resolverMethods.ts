@@ -3,6 +3,7 @@ import { ValidationError } from '../../core/errors.ts';
 import { isPlayDlBrowseFailure } from './errorUtils.ts';
 import type { Track } from '../../types/domain.ts';
 import {
+  extractSpotifyEntity,
   inferYouTubeWatchUrlFromPlaylist,
   isAudiomackUrl,
   isAmazonMusicUrl,
@@ -53,9 +54,31 @@ function getNodeLinkRoutingMode(value: unknown): 'smart' | 'all' | 'youtube-only
   return 'smart';
 }
 
-function shouldBypassNodeLinkForDirectStreamUrl(url: string, routingMode: 'smart' | 'all' | 'youtube-only') {
+type SpotifyCapableRuntime = {
+  enableSpotifyImport?: boolean;
+  spotifyClientId?: string | null;
+  spotifyClientSecret?: string | null;
+};
+
+function canResolveSpotifyLocally(runtime: SpotifyCapableRuntime, url: string) {
+  if (runtime.enableSpotifyImport === false) return false;
+  if (runtime.spotifyClientId && runtime.spotifyClientSecret) return true;
+  return extractSpotifyEntity(url)?.type === 'track';
+}
+
+function isSilentNodeLinkMirrorUrl(runtime: SpotifyCapableRuntime, url: string) {
+  if (isTidalUrl(url) || isAppleMusicUrl(url)) return true;
+  return isSpotifyUrl(url) && canResolveSpotifyLocally(runtime, url);
+}
+
+function shouldBypassNodeLinkForDirectStreamUrl(
+  runtime: SpotifyCapableRuntime,
+  url: string,
+  routingMode: 'smart' | 'all' | 'youtube-only',
+) {
   if (routingMode !== 'all') return false;
   if (isYouTubeUrl(url)) return false;
+  if (isSilentNodeLinkMirrorUrl(runtime, url)) return true;
   if (
     !isSoundCloudUrl(url)
     && !isSpotifyUrl(url)
@@ -81,7 +104,7 @@ export const resolverMethods: LooseMethodMap = {
     if (!this.nodeLinkEnabled || !this.nodeLinkClient?.enabled) return null;
 
     const nodeLinkRoutingMode = getNodeLinkRoutingMode(this.nodeLinkRoutingMode);
-    const shouldBypassNodeLink = shouldBypassNodeLinkForDirectStreamUrl(url, nodeLinkRoutingMode);
+    const shouldBypassNodeLink = shouldBypassNodeLinkForDirectStreamUrl(this, url, nodeLinkRoutingMode);
     const shouldTryNodeLinkForUrl = !shouldBypassNodeLink && (nodeLinkRoutingMode === 'all' || isYouTubeUrl(url));
     if (!shouldTryNodeLinkForUrl) return null;
 
@@ -135,6 +158,12 @@ export const resolverMethods: LooseMethodMap = {
     return Array.isArray(localMatches) ? (localMatches[0] ?? null) : null;
   },
 
+  _shouldUseDirectDeezerMirror() {
+    if (!this.deezerArl || !this.enableDeezerImport) return false;
+    if (!this.nodeLinkEnabled || !this.nodeLinkClient?.enabled) return true;
+    return getNodeLinkRoutingMode(this.nodeLinkRoutingMode) !== 'all';
+  },
+
   _isNodeLinkOnlyModeForSourceTrack(track: Partial<Track> | null | undefined, trackUrl?: string | null) {
     if (!this.nodeLinkEnabled || !this.nodeLinkClient?.enabled) return false;
     if (getNodeLinkRoutingMode(this.nodeLinkRoutingMode) !== 'all') return false;
@@ -163,7 +192,7 @@ export const resolverMethods: LooseMethodMap = {
     }
 
     const url = await this.sources.resolver.normalizeInputUrl(raw);
-    const shouldBypassNodeLink = shouldBypassNodeLinkForDirectStreamUrl(url, nodeLinkRoutingMode);
+    const shouldBypassNodeLink = shouldBypassNodeLinkForDirectStreamUrl(this, url, nodeLinkRoutingMode);
     const shouldTryNodeLinkForUrl = !shouldBypassNodeLink && (nodeLinkRoutingMode === 'all' || isYouTubeUrl(url));
     if (this.nodeLinkEnabled && this.nodeLinkClient?.enabled && shouldTryNodeLinkForUrl) {
       const nodeLinkResolved = await this._resolveNodeLinkTracks(url, requestedBy, safeLimit, { urlQuery: true }).catch((err: unknown) => {

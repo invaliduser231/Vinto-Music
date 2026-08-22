@@ -1,5 +1,7 @@
 import playdl from 'play-dl';
 import { ValidationError } from '../../core/errors.ts';
+import { pickBestMirrorCandidate } from './mirrorMatch.ts';
+import type { MirrorReference } from './mirrorMatch.ts';
 import type { MusicPlayer } from '../MusicPlayer.ts';
 import type { Track } from '../../types/domain.ts';
 import {
@@ -58,10 +60,14 @@ type UrlResolverRuntime = MusicPlayer & UrlResolverMethods & {
   _resolveDeezerTrack(url: string, requestedBy: string | null): Promise<Track[]>;
   _searchYouTubeTracks(query: string, limit: number, requestedBy: string | null): Promise<Track[]>;
   _cloneTrack(track: Track, overrides?: Partial<Track>): Track;
-  logger?: { debug?: (message: string, payload?: Record<string, unknown>) => void };
+  logger?: {
+    debug?: (message: string, payload?: Record<string, unknown>) => void;
+    warn?: (message: string, payload?: Record<string, unknown>) => void;
+  };
 };
 type NormalizedInputUrlCacheEntry = { url: string; expiresAtMs: number };
 
+const MIRROR_CANDIDATE_LIMIT = 5;
 const SHORT_URL_CACHE_TTL_MS = 10 * 60 * 1000;
 const SHORT_URL_HEAD_TIMEOUT_MS = 2_500;
 const SHORT_URL_GET_TIMEOUT_MS = 4_000;
@@ -267,11 +273,12 @@ async function searchMirrorCandidatesWithRouting(
   runtime: UrlResolverRuntime,
   query: string,
   requestedBy: string | null,
+  limit = MIRROR_CANDIDATE_LIMIT,
 ) {
   const nodeLinkRoutingMode = getNodeLinkRoutingMode(runtime.nodeLinkRoutingMode);
   const strictNodeLinkAllRouting = shouldUseStrictNodeLinkAllRouting(runtime);
   if (runtime.nodeLinkEnabled && runtime.nodeLinkClient?.enabled && nodeLinkRoutingMode !== 'youtube-only') {
-    const nodeLinkMatches = await runtime._resolveNodeLinkTracks(query, requestedBy, 1).catch((err: unknown) => {
+    const nodeLinkMatches = await runtime._resolveNodeLinkTracks(query, requestedBy, limit).catch((err: unknown) => {
       runtime.logger?.debug?.('NodeLink mirror search failed, falling back to local YouTube search', {
         query,
         routingMode: nodeLinkRoutingMode,
@@ -287,7 +294,40 @@ async function searchMirrorCandidatesWithRouting(
     }
   }
 
-  return runtime._searchYouTubeTracks(query, 1, requestedBy).catch(() => []);
+  return runtime._searchYouTubeTracks(query, limit, requestedBy).catch(() => []);
+}
+
+function pickMirrorMatch(
+  runtime: UrlResolverRuntime,
+  reference: MirrorReference,
+  candidates: unknown,
+  context: { source: string; query: string },
+) {
+  const match = pickBestMirrorCandidate<Track>(reference, candidates, { allowWeak: true });
+  if (!match) {
+    runtime.logger?.warn?.('Discarded mirror candidates that do not match the requested track', {
+      source: context.source,
+      query: context.query,
+      title: String(reference.title ?? ''),
+      artist: String(reference.artist ?? '') || null,
+      candidates: Array.isArray(candidates) ? candidates.length : 0,
+    });
+    return null;
+  }
+
+  if (match.evaluation.confidence === 'weak') {
+    runtime.logger?.warn?.('Accepted a weak mirror match', {
+      source: context.source,
+      query: context.query,
+      title: String(reference.title ?? ''),
+      matchedTitle: match.track.title ?? null,
+      matchedArtist: match.track.artist ?? null,
+      titleRatio: Number(match.evaluation.titleRatio.toFixed(2)),
+      durationDeltaSec: match.evaluation.durationDeltaSec,
+    });
+  }
+
+  return match.track;
 }
 
 export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntime> = {
@@ -319,16 +359,22 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
       const artist = resolveSourceArtist(sourceTrack);
       const query = artist ? `${artist} - ${title}` : title;
       const isrc = normalizeIsrc(sourceTrack?.isrc);
+      const reference: MirrorReference = {
+        title,
+        artist,
+        isrc,
+        durationInSec: sourceTrack?.durationInSec ?? null,
+      };
       let matchedTrack = null;
 
       if (isrc) {
         const isrcResults = await searchMirrorCandidatesWithRouting(this, `"${isrc}"`, requestedBy);
-        matchedTrack = isrcResults[0] ?? null;
+        matchedTrack = pickMirrorMatch(this, reference, isrcResults, { source, query: `"${isrc}"` });
       }
 
       if (!matchedTrack) {
         const queryResults = await searchMirrorCandidatesWithRouting(this, query, requestedBy);
-        matchedTrack = queryResults[0] ?? null;
+        matchedTrack = pickMirrorMatch(this, reference, queryResults, { source, query });
       }
 
       if (matchedTrack) {
@@ -343,18 +389,24 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
         continue;
       }
 
-      const fallbackResults = await playdl.search(query, { source: { youtube: 'video' }, limit: 1 }).catch(() => []);
+      const fallbackResults = await playdl.search(query, {
+        source: { youtube: 'video' },
+        limit: MIRROR_CANDIDATE_LIMIT,
+      }).catch(() => []);
       if (!fallbackResults.length) continue;
-      const firstResult = fallbackResults[0]!;
 
-      resolved.push(this._buildTrack({
-        title: firstResult.title || title,
-        url: firstResult.url,
-        duration: firstResult.durationRaw || toDurationLabel(sourceTrack.durationInSec),
-        thumbnailUrl: pickThumbnailUrlFromItem(firstResult),
+      const fallbackCandidates = fallbackResults.map((entry) => this._buildTrack({
+        title: entry.title || title,
+        url: entry.url,
+        duration: entry.durationRaw || toDurationLabel(sourceTrack.durationInSec),
+        thumbnailUrl: pickThumbnailUrlFromItem(entry),
         requestedBy,
         source,
       }));
+      const fallbackMatch = pickMirrorMatch(this, reference, fallbackCandidates, { source, query });
+      if (!fallbackMatch) continue;
+
+      resolved.push(fallbackMatch);
     }
 
     if (!resolved.length) {
@@ -600,7 +652,7 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
       throw new ValidationError(`Could not resolve ${source} URL to a playable track.`);
     }
 
-    const mirrored = await searchMirrorCandidatesWithRouting(this, query, requestedBy);
+    const mirrored = await searchMirrorCandidatesWithRouting(this, query, requestedBy, 1);
     if (mirrored.length) {
       return [this._cloneTrack(mirrored[0]!, {
         requestedBy,

@@ -208,7 +208,7 @@ test('a track link never expands into a queue full of search hits', async () => 
   try {
     const player = createPlayer({ nodeLinkRoutingMode: 'all' });
     const tracks = await player.previewTracks(
-      'https://open.spotify.com/track/7AyE8MRf4dIK75mqqpks9S',
+      'https://www.deezer.com/track/3380594201',
       { requestedBy: 'user-1', limit: 100 }
     );
 
@@ -590,7 +590,8 @@ test('cross-source mirror search uses NodeLink before local yt-dlp when enabled'
     mirroredQueries.push(query);
     return [
       player.createTrackFromData({
-        title: 'NodeLink Mirror Hit',
+        title: 'Personality Crisis',
+        artist: 'New York Dolls',
         url: 'https://www.youtube.com/watch?v=QZpMj2epGNQ',
         duration: '3:41',
         source: 'youtube',
@@ -611,8 +612,41 @@ test('cross-source mirror search uses NodeLink before local yt-dlp when enabled'
 
   assert.deepEqual(mirroredQueries, ['"GBXPL8230103"']);
   assert.equal(tracks.length, 1);
-  assert.equal(tracks[0]!.title, 'NodeLink Mirror Hit');
+  assert.equal(tracks[0]!.title, 'Personality Crisis');
   assert.equal(tracks[0]!.source, 'applemusic');
+});
+
+test('cross-source mirror search rejects candidates that do not match the requested track', async () => {
+  const player = createPlayer({ nodeLinkRoutingMode: 'all' });
+  const mirroredQueries: string[] = [];
+
+  player._resolveNodeLinkTracks = async (query: string, requestedBy: string | null) => {
+    mirroredQueries.push(query);
+    return [
+      player.createTrackFromData({
+        title: 'Aproveita Que Eu To Brigado (Ao Vivo)',
+        artist: 'NATTAN',
+        url: 'https://www.youtube.com/watch?v=QZpMj2epGNQ',
+        duration: '2:33',
+        source: 'youtube',
+        requestedBy,
+      }, requestedBy),
+    ];
+  };
+  player._searchYouTubeTracks = async () => {
+    throw new Error('local yt-dlp path should not run');
+  };
+
+  await assert.rejects(
+    player._resolveCrossSourceToYouTube([{
+      title: 'Panama',
+      artist: 'GReeeN',
+      isrc: 'DEZC62340830',
+      durationInSec: 152,
+    }], 'user-1', 'tidal'),
+    /No playable YouTube matches found for tidal source/,
+  );
+  assert.deepEqual(mirroredQueries, ['"DEZC62340830"', 'GReeeN - Panama']);
 });
 
 test('cross-source mirror search in all mode does not fallback to local yt-dlp when NodeLink has no results', async () => {
@@ -972,4 +1006,126 @@ test('NodeLink-only mode (all) skips the local Deezer pipeline and mirrors to Yo
   assert.equal(youtubePipelineCalls, 1);
 
   player.stop();
+});
+
+test('NodeLink all routing mode resolves Tidal links locally instead of trusting its silent mirror', async () => {
+  const player = createPlayer({ nodeLinkRoutingMode: 'all', enableTidalImport: true });
+  const nodeLinkQueries: string[] = [];
+  let guessCalls = 0;
+
+  player._resolveNodeLinkTracks = async (query: string) => {
+    nodeLinkQueries.push(query);
+    return [];
+  };
+  player._resolveTidalByGuess = async (_url: string, requestedBy: string | null) => {
+    guessCalls += 1;
+    return [player.createTrackFromData({
+      title: 'Panama',
+      artist: 'GReeeN',
+      url: 'https://www.youtube.com/watch?v=QZpMj2epGNQ',
+      duration: '2:32',
+      source: 'tidal',
+      nodelinkEncodedTrack: 'encoded-mirror',
+      requestedBy,
+    }, requestedBy)];
+  };
+
+  const tracks = await player.previewTracks('https://tidal.com/browse/track/290255059', {
+    requestedBy: 'user-1',
+    limit: 1,
+  });
+
+  assert.equal(guessCalls, 1);
+  assert.deepEqual(nodeLinkQueries, []);
+  assert.equal(tracks.length, 1);
+  assert.equal(tracks[0]!.title, 'Panama');
+});
+
+test('direct Deezer mirroring is skipped in all mode so mirrors keep a NodeLink encoded track', () => {
+  const allModePlayer = createPlayer({ nodeLinkRoutingMode: 'all', deezerArl: 'arl', enableDeezerImport: true });
+  const smartModePlayer = createPlayer({ nodeLinkRoutingMode: 'smart', deezerArl: 'arl', enableDeezerImport: true });
+
+  assert.equal(allModePlayer._shouldUseDirectDeezerMirror(), false);
+  assert.equal(smartModePlayer._shouldUseDirectDeezerMirror(), true);
+});
+
+test('NodeLink all routing mode resolves Spotify track links locally and still streams through NodeLink', async () => {
+  const player = createPlayer({
+    nodeLinkRoutingMode: 'all',
+    spotifyClientId: 'client-id',
+    spotifyClientSecret: 'client-secret',
+  });
+  const nodeLinkQueries: string[] = [];
+  let urlQueries = 0;
+
+  player._spotifyApiRequestWithMarketFallback = async () => ({
+    id: 'sp-1',
+    name: 'Personality Crisis',
+    artists: [{ name: 'New York Dolls' }],
+    duration_ms: 221000,
+    external_ids: { isrc: 'GBXPL8230103' },
+    external_urls: { spotify: 'https://open.spotify.com/track/7AyE8MRf4dIK75mqqpks9S' },
+  });
+  player._resolveNodeLinkTracks = async (
+    query: string,
+    requestedBy: string | null,
+    _limit?: number | null,
+    options?: { urlQuery?: boolean },
+  ) => {
+    if (options?.urlQuery) urlQueries += 1;
+    nodeLinkQueries.push(query);
+    return [player.createTrackFromData({
+      title: 'Personality Crisis',
+      artist: 'New York Dolls',
+      url: 'https://www.youtube.com/watch?v=QZpMj2epGNQ',
+      duration: '3:41',
+      source: 'youtube',
+      nodelinkEncodedTrack: 'encoded-mirror',
+      requestedBy,
+    }, requestedBy)];
+  };
+  player._searchYouTubeTracks = async () => {
+    throw new Error('local yt-dlp path should not run');
+  };
+
+  const tracks = await player.previewTracks('https://open.spotify.com/track/7AyE8MRf4dIK75mqqpks9S', {
+    requestedBy: 'user-1',
+    limit: 1,
+  });
+
+  assert.equal(urlQueries, 0);
+  assert.deepEqual(nodeLinkQueries, ['"GBXPL8230103"']);
+  assert.equal(tracks.length, 1);
+  assert.equal(tracks[0]!.title, 'Personality Crisis');
+  assert.equal(tracks[0]!.nodelinkEncodedTrack, 'encoded-mirror');
+});
+
+test('Spotify album links keep using NodeLink when the bot has no Spotify credentials', async () => {
+  const player = createPlayer({ nodeLinkRoutingMode: 'all' });
+  const urlQueries: string[] = [];
+
+  player._resolveNodeLinkTracks = async (
+    query: string,
+    requestedBy: string | null,
+    _limit?: number | null,
+    options?: { urlQuery?: boolean },
+  ) => {
+    if (options?.urlQuery) urlQueries.push(query);
+    return [player.createTrackFromData({
+      title: 'Album Track',
+      url: 'https://www.deezer.com/track/1',
+      duration: '3:00',
+      source: 'deezer',
+      nodelinkEncodedTrack: 'encoded-album',
+      requestedBy,
+    }, requestedBy)];
+  };
+
+  const tracks = await player.previewTracks('https://open.spotify.com/album/1DFixLWuPkv3KT3TnV35m3', {
+    requestedBy: 'user-1',
+    limit: 5,
+  });
+
+  assert.deepEqual(urlQueries, ['https://open.spotify.com/album/1DFixLWuPkv3KT3TnV35m3']);
+  assert.equal(tracks.length, 1);
 });

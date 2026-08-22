@@ -137,7 +137,7 @@ The NodeLink server must run with `NODELINK_ENABLELOADSTREAMENDPOINT=true`; othe
 | `NODELINK_BASE_URL` | empty | HTTP base URL of NodeLink, for example `http://nodelink:3000` in Docker Compose. Required when `NODELINK_ENABLED=1`. |
 | `NODELINK_PASSWORD` | empty | Authorization password sent to NodeLink. Must match `NODELINK_SERVER_PASSWORD` on the NodeLink service. |
 | `NODELINK_DEFAULT_SEARCH` | `search` | Prefix for plain text queries sent to NodeLink, for example `search` or another NodeLink-supported search identifier. |
-| `NODELINK_ROUTING_MODE` | `smart` | NodeLink routing policy: `smart` uses NodeLink for text search + YouTube URLs, `all` tries NodeLink first for all URLs/queries, `youtube-only` limits NodeLink to direct YouTube URLs. |
+| `NODELINK_ROUTING_MODE` | `smart` | NodeLink routing policy: `smart` uses NodeLink for text search + YouTube URLs, `all` tries NodeLink first for all URLs/queries, `youtube-only` limits NodeLink to direct YouTube URLs. Tidal, Apple Music, and Spotify links are resolved by the bot itself, because NodeLink silently swaps in a mirror for them while keeping the original track metadata. Playback of those mirrors still goes through NodeLink. Spotify albums, playlists, and artists only take this path when `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` are set. |
 | `NODELINK_REQUEST_TIMEOUT_MS` | `15000` | Timeout for NodeLink `loadtracks` requests. |
 | `NODELINK_STREAM_START_TIMEOUT_MS` | `10000` | Timeout for the initial NodeLink `loadStream` response. |
 | `NODELINK_SOURCES_YOUTUBE_PROXIES` | empty | Optional NodeLink sidecar YouTube proxy pool. Set in Docker/NodeLink env as JSON array or comma-separated URLs. |

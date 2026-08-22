@@ -1,9 +1,13 @@
 import { ValidationError } from '../../core/errors.ts';
+import { pickBestMirrorCandidate } from './mirrorMatch.ts';
 import { extractSpotifyEntity, isHttpUrl, pickThumbnailUrlFromItem } from './trackUtils.ts';
+import type { MirrorReference } from './mirrorMatch.ts';
 import type { Track } from '../../types/domain.ts';
 
 const SPOTIFY_API_BASE = 'https://api.spotify.com/v1/';
 const SPOTIFY_PREVIEW_LENGTH_MS = 30_000;
+const SPOTIFY_PAGE_TIMEOUT_MS = 10_000;
+const SPOTIFY_COLLECTION_MIRROR_CONCURRENCY = 6;
 
 type LooseMethodMap = Record<string, (this: any, ...args: any[]) => any>;
 type SpotifyArtistLike = { name?: unknown };
@@ -50,6 +54,60 @@ function normalizeCollectionLimit(limit: number | null | undefined, fallback: nu
   const parsed = Number.parseInt(String(limit ?? ''), 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return Math.max(1, Math.min(fallback, parsed));
+}
+
+async function mapWithConcurrency<TInput, TOutput>(
+  items: TInput[],
+  concurrency: number,
+  mapper: (item: TInput, index: number) => Promise<TOutput>
+) {
+  const results: TOutput[] = [];
+  const safeConcurrency = Math.max(1, Math.min(items.length || 1, concurrency));
+  let cursor = 0;
+
+  await Promise.all(Array.from({ length: safeConcurrency }, async () => {
+    while (cursor < items.length) {
+      const index = cursor++;
+      results[index] = await mapper(items[index]!, index);
+    }
+  }));
+
+  return results;
+}
+
+function decodeHtmlEntities(value: unknown) {
+  return String(value ?? '')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&amp;/gi, '&')
+    .trim();
+}
+
+function matchMetaTag(html: string, attribute: string, name: string) {
+  const pattern = new RegExp(
+    `<meta[^>]+${attribute}=["']${name}["'][^>]+content=["']([^"']+)["'][^>]*>`,
+    'i'
+  );
+  return html.match(pattern)?.[1] ?? null;
+}
+
+function pickSpotifyArtistFromDescription(description: string, title: string) {
+  const normalizedTitle = title.trim().toLowerCase();
+  const parts = description
+    .replace(/^listen to .* on spotify\.?/i, '')
+    .split('·')
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  for (const part of parts) {
+    if (!part || /^\d{4}$/.test(part)) continue;
+    if (part.toLowerCase() === normalizedTitle) continue;
+    if (/^(song|single|album|ep|playlist)$/i.test(part)) continue;
+    return part;
+  }
+  return null;
 }
 
 export const spotifyMethods: LooseMethodMap = {
@@ -221,7 +279,7 @@ export const spotifyMethods: LooseMethodMap = {
       }
     }
 
-    return list[0] ?? null;
+    return pickBestMirrorCandidate<Track>(metadataTrack as MirrorReference | null | undefined, list)?.track ?? null;
   },
 
   async _resolveSpotifyMirror(metadataTrack: Track, requestedBy: string | null) {
@@ -233,7 +291,7 @@ export const spotifyMethods: LooseMethodMap = {
     const durationInSec = this._parseDurationSeconds?.(metadataTrack.duration)
       ?? Math.floor(normalizeSpotifyDurationMs(metadataTrack.duration) / 1000);
 
-    if (this.deezerArl && this.enableDeezerImport) {
+    if (this._shouldUseDirectDeezerMirror()) {
       const deezerMatches = await this._searchDeezerTracks(query, 3, requestedBy).catch(() => []);
       const deezerBest = this._pickBestSpotifyMirror(metadataTrack, deezerMatches);
       if (deezerBest) {
@@ -267,7 +325,17 @@ export const spotifyMethods: LooseMethodMap = {
     const payload = await this._spotifyApiRequestWithMarketFallback(
       `/tracks/${encodeURIComponent(entity.id)}`,
       this.spotifyMarket || 'US'
-    );
+    ).catch((err: unknown) => {
+      this.logger?.warn?.('Spotify track lookup failed, falling back to public page metadata', {
+        url,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    });
+    if (!payload) {
+      return this._resolveSpotifyFallbackSearch(url, requestedBy);
+    }
+
     const metadataTrack = this._buildSpotifyMetadataTrack(payload, requestedBy, 'spotify');
     return this._resolveSpotifyMirror(metadataTrack, requestedBy);
   },
@@ -294,23 +362,79 @@ export const spotifyMethods: LooseMethodMap = {
       : playlistItems;
 
     const safeLimit = normalizeCollectionLimit(limit, this.maxPlaylistTracks);
-    const resolved = [];
-    for (const item of rawItems.slice(0, safeLimit)) {
-      if (!item?.id || item?.is_local) continue;
+    const playableItems = rawItems
+      .filter((item) => Boolean(item?.id) && !item?.is_local)
+      .slice(0, safeLimit);
+
+    const mirrored = await mapWithConcurrency(playableItems, SPOTIFY_COLLECTION_MIRROR_CONCURRENCY, async (item) => {
       const metadataTrack = this._buildSpotifyMetadataTrack(item, requestedBy, `spotify-${entity.type}`);
       try {
-        const mirrored = await this._resolveSpotifyMirror(metadataTrack, requestedBy);
-        resolved.push(...mirrored.slice(0, 1));
+        const tracks = await this._resolveSpotifyMirror(metadataTrack, requestedBy);
+        return tracks[0] ?? null;
       } catch (err) {
         this.logger?.warn?.('Failed to mirror Spotify track', {
           spotifyTrackId: item.id,
           error: err instanceof Error ? err.message : String(err),
         });
+        return null;
       }
-      if (resolved.length >= safeLimit) break;
+    });
+
+    return mirrored.filter(Boolean) as Track[];
+  },
+
+  async _fetchSpotifyPageMetadata(url: string) {
+    const oembed = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(url)}`, {
+      method: 'GET',
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(SPOTIFY_PAGE_TIMEOUT_MS),
+    }).catch(() => null);
+    const oembedPayload = oembed?.ok
+      ? await oembed.json().catch(() => null) as { title?: unknown; thumbnail_url?: unknown } | null
+      : null;
+
+    const response = await fetch(url, {
+      method: 'GET',
+      redirect: 'follow',
+      headers: { accept: 'text/html,application/xhtml+xml' },
+      signal: AbortSignal.timeout(SPOTIFY_PAGE_TIMEOUT_MS),
+    }).catch(() => null);
+    const html = response?.ok ? await response.text().catch(() => '') : '';
+
+    const title = decodeHtmlEntities(
+      String(oembedPayload?.title ?? '').trim()
+      || matchMetaTag(html, 'property', 'og:title')
+      || ''
+    );
+    const description = decodeHtmlEntities(matchMetaTag(html, 'property', 'og:description') ?? '');
+    const thumbnailUrl = String(oembedPayload?.thumbnail_url ?? '').trim()
+      || matchMetaTag(html, 'property', 'og:image')
+      || null;
+    if (!title) return null;
+
+    return {
+      title,
+      artist: pickSpotifyArtistFromDescription(description, title),
+      thumbnailUrl,
+    };
+  },
+
+  async _resolveSpotifyFallbackSearch(url: string, requestedBy: string | null) {
+    const metadata = await this._fetchSpotifyPageMetadata(url).catch(() => null);
+    if (!metadata?.title) {
+      throw new ValidationError('Could not resolve Spotify URL to a playable track.');
     }
 
-    return resolved;
+    const metadataTrack = this._buildTrack({
+      title: metadata.title,
+      url,
+      duration: 'Unknown',
+      thumbnailUrl: metadata.thumbnailUrl,
+      requestedBy,
+      source: 'spotify',
+      artist: metadata.artist,
+    });
+    return this._resolveSpotifyMirror(metadataTrack, requestedBy);
   },
 
   async _resolveSpotifyArtist(url: string, requestedBy: string | null, limit?: number | null) {
@@ -328,21 +452,22 @@ export const spotifyMethods: LooseMethodMap = {
     });
 
     const safeLimit = normalizeCollectionLimit(limit, this.maxPlaylistTracks);
-    const tracks = [];
-    for (const item of toArray<SpotifyTrackLike>(payload?.tracks).slice(0, safeLimit)) {
+    const items = toArray<SpotifyTrackLike>(payload?.tracks).slice(0, safeLimit);
+    const mirrored = await mapWithConcurrency(items, SPOTIFY_COLLECTION_MIRROR_CONCURRENCY, async (item) => {
       const metadataTrack = this._buildSpotifyMetadataTrack(item, requestedBy, 'spotify-artist');
       try {
-        const mirrored = await this._resolveSpotifyMirror(metadataTrack, requestedBy);
-        tracks.push(...mirrored.slice(0, 1));
+        const tracks = await this._resolveSpotifyMirror(metadataTrack, requestedBy);
+        return tracks[0] ?? null;
       } catch (err) {
         this.logger?.warn?.('Failed to mirror Spotify artist top track', {
           spotifyTrackId: item?.id ?? null,
           error: err instanceof Error ? err.message : String(err),
         });
+        return null;
       }
-      if (tracks.length >= safeLimit) break;
-    }
-    return tracks;
+    });
+
+    return mirrored.filter(Boolean) as Track[];
   },
 };
 
