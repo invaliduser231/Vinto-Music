@@ -1008,37 +1008,40 @@ test('NodeLink-only mode (all) skips the local Deezer pipeline and mirrors to Yo
   player.stop();
 });
 
-test('NodeLink all routing mode resolves Tidal links locally instead of trusting its silent mirror', async () => {
+test('NodeLink all routing mode hands Tidal links to NodeLink, which verifies the mirror itself', async () => {
   const player = createPlayer({ nodeLinkRoutingMode: 'all', enableTidalImport: true });
-  const nodeLinkQueries: string[] = [];
+  const urlQueries: string[] = [];
   let guessCalls = 0;
 
-  player._resolveNodeLinkTracks = async (query: string) => {
-    nodeLinkQueries.push(query);
-    return [];
-  };
-  player._resolveTidalByGuess = async (_url: string, requestedBy: string | null) => {
-    guessCalls += 1;
+  player._resolveNodeLinkTracks = async (
+    query: string,
+    requestedBy: string | null,
+    _limit?: number | null,
+    options?: { urlQuery?: boolean },
+  ) => {
+    if (options?.urlQuery) urlQueries.push(query);
     return [player.createTrackFromData({
       title: 'Panama',
       artist: 'GReeeN',
-      url: 'https://www.youtube.com/watch?v=QZpMj2epGNQ',
+      url: 'https://www.deezer.com/track/2246259587',
       duration: '2:32',
-      source: 'tidal',
+      source: 'deezer',
       nodelinkEncodedTrack: 'encoded-mirror',
       requestedBy,
     }, requestedBy)];
   };
+  player._resolveTidalByGuess = async () => {
+    guessCalls += 1;
+    return [];
+  };
 
-  const tracks = await player.previewTracks('https://tidal.com/browse/track/290255059', {
-    requestedBy: 'user-1',
-    limit: 1,
-  });
+  const url = 'https://tidal.com/browse/track/290255059';
+  const tracks = await player.previewTracks(url, { requestedBy: 'user-1', limit: 1 });
 
-  assert.equal(guessCalls, 1);
-  assert.deepEqual(nodeLinkQueries, []);
+  assert.equal(guessCalls, 0, 'the local Tidal resolver must not run any more');
+  assert.deepEqual(urlQueries, [url]);
   assert.equal(tracks.length, 1);
-  assert.equal(tracks[0]!.title, 'Panama');
+  assert.equal(tracks[0]!.nodelinkEncodedTrack, 'encoded-mirror');
 });
 
 test('direct Deezer mirroring is skipped in all mode so mirrors keep a NodeLink encoded track', () => {
@@ -1049,37 +1052,30 @@ test('direct Deezer mirroring is skipped in all mode so mirrors keep a NodeLink 
   assert.equal(smartModePlayer._shouldUseDirectDeezerMirror(), true);
 });
 
-test('NodeLink all routing mode resolves Spotify track links locally and still streams through NodeLink', async () => {
+test('NodeLink all routing mode hands Spotify track links to NodeLink instead of the local resolver', async () => {
   const player = createPlayer({
     nodeLinkRoutingMode: 'all',
     spotifyClientId: 'client-id',
     spotifyClientSecret: 'client-secret',
   });
-  const nodeLinkQueries: string[] = [];
-  let urlQueries = 0;
+  const urlQueries: string[] = [];
 
-  player._spotifyApiRequestWithMarketFallback = async () => ({
-    id: 'sp-1',
-    name: 'Personality Crisis',
-    artists: [{ name: 'New York Dolls' }],
-    duration_ms: 221000,
-    external_ids: { isrc: 'GBXPL8230103' },
-    external_urls: { spotify: 'https://open.spotify.com/track/7AyE8MRf4dIK75mqqpks9S' },
-  });
+  player._spotifyApiRequestWithMarketFallback = async () => {
+    throw new Error('the local Spotify resolver should not run any more');
+  };
   player._resolveNodeLinkTracks = async (
     query: string,
     requestedBy: string | null,
     _limit?: number | null,
     options?: { urlQuery?: boolean },
   ) => {
-    if (options?.urlQuery) urlQueries += 1;
-    nodeLinkQueries.push(query);
+    if (options?.urlQuery) urlQueries.push(query);
     return [player.createTrackFromData({
       title: 'Personality Crisis',
       artist: 'New York Dolls',
-      url: 'https://www.youtube.com/watch?v=QZpMj2epGNQ',
+      url: 'https://www.deezer.com/track/12345',
       duration: '3:41',
-      source: 'youtube',
+      source: 'deezer',
       nodelinkEncodedTrack: 'encoded-mirror',
       requestedBy,
     }, requestedBy)];
@@ -1088,13 +1084,10 @@ test('NodeLink all routing mode resolves Spotify track links locally and still s
     throw new Error('local yt-dlp path should not run');
   };
 
-  const tracks = await player.previewTracks('https://open.spotify.com/track/7AyE8MRf4dIK75mqqpks9S', {
-    requestedBy: 'user-1',
-    limit: 1,
-  });
+  const url = 'https://open.spotify.com/track/7AyE8MRf4dIK75mqqpks9S';
+  const tracks = await player.previewTracks(url, { requestedBy: 'user-1', limit: 1 });
 
-  assert.equal(urlQueries, 0);
-  assert.deepEqual(nodeLinkQueries, ['"GBXPL8230103"']);
+  assert.deepEqual(urlQueries, [url]);
   assert.equal(tracks.length, 1);
   assert.equal(tracks[0]!.title, 'Personality Crisis');
   assert.equal(tracks[0]!.nodelinkEncodedTrack, 'encoded-mirror');

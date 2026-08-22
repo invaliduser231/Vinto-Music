@@ -3,7 +3,6 @@ import { ValidationError } from '../../core/errors.ts';
 import { isPlayDlBrowseFailure } from './errorUtils.ts';
 import type { Track } from '../../types/domain.ts';
 import {
-  extractSpotifyEntity,
   inferYouTubeWatchUrlFromPlaylist,
   isAudiomackUrl,
   isAmazonMusicUrl,
@@ -54,31 +53,12 @@ function getNodeLinkRoutingMode(value: unknown): 'smart' | 'all' | 'youtube-only
   return 'smart';
 }
 
-type SpotifyCapableRuntime = {
-  enableSpotifyImport?: boolean;
-  spotifyClientId?: string | null;
-  spotifyClientSecret?: string | null;
-};
-
-function canResolveSpotifyLocally(runtime: SpotifyCapableRuntime, url: string) {
-  if (runtime.enableSpotifyImport === false) return false;
-  if (runtime.spotifyClientId && runtime.spotifyClientSecret) return true;
-  return extractSpotifyEntity(url)?.type === 'track';
-}
-
-function isSilentNodeLinkMirrorUrl(runtime: SpotifyCapableRuntime, url: string) {
-  if (isTidalUrl(url) || isAppleMusicUrl(url)) return true;
-  return isSpotifyUrl(url) && canResolveSpotifyLocally(runtime, url);
-}
-
 function shouldBypassNodeLinkForDirectStreamUrl(
-  runtime: SpotifyCapableRuntime,
   url: string,
   routingMode: 'smart' | 'all' | 'youtube-only',
 ) {
   if (routingMode !== 'all') return false;
   if (isYouTubeUrl(url)) return false;
-  if (isSilentNodeLinkMirrorUrl(runtime, url)) return true;
   if (
     !isSoundCloudUrl(url)
     && !isSpotifyUrl(url)
@@ -104,7 +84,7 @@ export const resolverMethods: LooseMethodMap = {
     if (!this.nodeLinkEnabled || !this.nodeLinkClient?.enabled) return null;
 
     const nodeLinkRoutingMode = getNodeLinkRoutingMode(this.nodeLinkRoutingMode);
-    const shouldBypassNodeLink = shouldBypassNodeLinkForDirectStreamUrl(this, url, nodeLinkRoutingMode);
+    const shouldBypassNodeLink = shouldBypassNodeLinkForDirectStreamUrl(url, nodeLinkRoutingMode);
     const shouldTryNodeLinkForUrl = !shouldBypassNodeLink && (nodeLinkRoutingMode === 'all' || isYouTubeUrl(url));
     if (!shouldTryNodeLinkForUrl) return null;
 
@@ -192,26 +172,7 @@ export const resolverMethods: LooseMethodMap = {
     }
 
     const url = await this.sources.resolver.normalizeInputUrl(raw);
-    const shouldBypassNodeLink = shouldBypassNodeLinkForDirectStreamUrl(this, url, nodeLinkRoutingMode);
-    const bypassedForSilentMirror = (
-      shouldBypassNodeLink
-      && nodeLinkRoutingMode === 'all'
-      && isSilentNodeLinkMirrorUrl(this, url)
-      && Boolean(this.nodeLinkEnabled && this.nodeLinkClient?.enabled)
-    );
-    if (bypassedForSilentMirror) {
-      try {
-        return await this._resolveTracksFromSource(url, requestedBy, safeLimit);
-      } catch (err) {
-        const reason = err instanceof Error ? err.message : String(err);
-        this.logger?.warn?.('Local resolution failed for a NodeLink mirror source, retrying through NodeLink', {
-          url,
-          error: reason,
-        });
-        return this._resolveNodeLinkTracks(url, requestedBy, safeLimit, { urlQuery: true });
-      }
-    }
-
+    const shouldBypassNodeLink = shouldBypassNodeLinkForDirectStreamUrl(url, nodeLinkRoutingMode);
     const shouldTryNodeLinkForUrl = !shouldBypassNodeLink && (nodeLinkRoutingMode === 'all' || isYouTubeUrl(url));
     if (this.nodeLinkEnabled && this.nodeLinkClient?.enabled && shouldTryNodeLinkForUrl) {
       const nodeLinkResolved = await this._resolveNodeLinkTracks(url, requestedBy, safeLimit, { urlQuery: true }).catch((err: unknown) => {

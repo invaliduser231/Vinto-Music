@@ -10,7 +10,7 @@ All notable changes to this project are documented in this file.
 - Fixes:
   - verified every mirror candidate against the requested title, artist, duration, and ISRC instead of taking the first search hit, so Tidal and Apple Music links no longer play unrelated songs
   - stopped trusting ISRC search hits blindly, because search backends treat an ISRC as plain text and return arbitrary results for it
-  - resolved Tidal, Apple Music, and Spotify links locally even in `NODELINK_ROUTING_MODE=all`, because NodeLink silently mirrors them while keeping the original encoded track and metadata; playback still runs through NodeLink
+  - handed Tidal, Apple Music, and Spotify links back to NodeLink now that it verifies its own mirrors, removing the temporary local detour and one resolution round trip per track
   - added a credential-free Spotify metadata fallback via oEmbed and page tags so Spotify track links resolve even when the API is unavailable or rate limited
   - skipped the direct Deezer mirror path in `NODELINK_ROUTING_MODE=all` so mirrored tracks keep a NodeLink encoded track and stay playable
   - mirrored Spotify playlist, album, and artist tracks concurrently instead of one after another, matching the Tidal and Apple Music resolvers
