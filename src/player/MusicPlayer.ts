@@ -279,6 +279,7 @@ export class MusicPlayer extends EventEmitter {
   declare _buildTrack: (input: BuiltTrackInput) => Track;
   declare _handleTrackClose: (track: Track, code: unknown, signal: unknown, playbackToken?: number | null) => Promise<void>;
   declare _resolveTracks: (query: string, requestedBy: string | null, limit?: number | null) => Promise<Track[]>;
+  declare _resolveTracksFromSource: (url: string, requestedBy: string | null, limit?: number | null) => Promise<Track[]>;
   declare _resolveNodeLinkTracks: (
     query: string,
     requestedBy: string | null,
@@ -406,6 +407,7 @@ export class MusicPlayer extends EventEmitter {
   nodeLinkRoutingMode: NodeLinkRoutingMode;
   nodeLinkClient: NodeLinkClient | null;
   _nodeLinkResolveCache: Map<string, { result: NodeLinkLoadResult; expiresAtMs: number }>;
+  _isrcMirrorLookupMisses: number;
   spotifyClientId: string | null;
   spotifyClientSecret: string | null;
   spotifyRefreshToken: string | null;
@@ -521,6 +523,7 @@ export class MusicPlayer extends EventEmitter {
         })
       : null;
     this._nodeLinkResolveCache = new Map();
+    this._isrcMirrorLookupMisses = 0;
     this.spotifyClientId = String(options.spotifyClientId ?? process.env.SPOTIFY_CLIENT_ID ?? '').trim() || null;
     this.spotifyClientSecret = String(options.spotifyClientSecret ?? process.env.SPOTIFY_CLIENT_SECRET ?? '').trim() || null;
     this.spotifyRefreshToken = String(options.spotifyRefreshToken ?? process.env.SPOTIFY_REFRESH_TOKEN ?? '').trim() || null;

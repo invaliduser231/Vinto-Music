@@ -60,14 +60,17 @@ type UrlResolverRuntime = MusicPlayer & UrlResolverMethods & {
   _resolveDeezerTrack(url: string, requestedBy: string | null): Promise<Track[]>;
   _searchYouTubeTracks(query: string, limit: number, requestedBy: string | null): Promise<Track[]>;
   _cloneTrack(track: Track, overrides?: Partial<Track>): Track;
+  _isrcMirrorLookupMisses?: number;
   logger?: {
     debug?: (message: string, payload?: Record<string, unknown>) => void;
+    info?: (message: string, payload?: Record<string, unknown>) => void;
     warn?: (message: string, payload?: Record<string, unknown>) => void;
   };
 };
 type NormalizedInputUrlCacheEntry = { url: string; expiresAtMs: number };
 
 const MIRROR_CANDIDATE_LIMIT = 5;
+const ISRC_LOOKUP_MISS_LIMIT = 5;
 const SHORT_URL_CACHE_TTL_MS = 10 * 60 * 1000;
 const SHORT_URL_HEAD_TIMEOUT_MS = 2_500;
 const SHORT_URL_GET_TIMEOUT_MS = 4_000;
@@ -303,15 +306,21 @@ function pickMirrorMatch(
   candidates: unknown,
   context: { source: string; query: string },
 ) {
+  const candidateCount = Array.isArray(candidates) ? candidates.length : 0;
   const match = pickBestMirrorCandidate<Track>(reference, candidates, { allowWeak: true });
   if (!match) {
-    runtime.logger?.warn?.('Discarded mirror candidates that do not match the requested track', {
+    const payload = {
       source: context.source,
       query: context.query,
       title: String(reference.title ?? ''),
       artist: String(reference.artist ?? '') || null,
-      candidates: Array.isArray(candidates) ? candidates.length : 0,
-    });
+      candidates: candidateCount,
+    };
+    if (candidateCount) {
+      runtime.logger?.warn?.('Discarded mirror candidates that do not match the requested track', payload);
+    } else {
+      runtime.logger?.debug?.('Mirror search returned no candidates', payload);
+    }
     return null;
   }
 
@@ -367,9 +376,19 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
       };
       let matchedTrack = null;
 
-      if (isrc) {
+      if (isrc && (this._isrcMirrorLookupMisses ?? 0) < ISRC_LOOKUP_MISS_LIMIT) {
         const isrcResults = await searchMirrorCandidatesWithRouting(this, `"${isrc}"`, requestedBy);
-        matchedTrack = pickMirrorMatch(this, reference, isrcResults, { source, query: `"${isrc}"` });
+        if (Array.isArray(isrcResults) && isrcResults.length) {
+          this._isrcMirrorLookupMisses = 0;
+          matchedTrack = pickMirrorMatch(this, reference, isrcResults, { source, query: `"${isrc}"` });
+        } else {
+          this._isrcMirrorLookupMisses = (this._isrcMirrorLookupMisses ?? 0) + 1;
+          if (this._isrcMirrorLookupMisses >= ISRC_LOOKUP_MISS_LIMIT) {
+            this.logger?.info?.('Skipping ISRC mirror lookups, the configured search backend does not resolve ISRCs', {
+              misses: this._isrcMirrorLookupMisses,
+            });
+          }
+        }
       }
 
       if (!matchedTrack) {

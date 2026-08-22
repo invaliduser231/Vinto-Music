@@ -193,6 +193,25 @@ export const resolverMethods: LooseMethodMap = {
 
     const url = await this.sources.resolver.normalizeInputUrl(raw);
     const shouldBypassNodeLink = shouldBypassNodeLinkForDirectStreamUrl(this, url, nodeLinkRoutingMode);
+    const bypassedForSilentMirror = (
+      shouldBypassNodeLink
+      && nodeLinkRoutingMode === 'all'
+      && isSilentNodeLinkMirrorUrl(this, url)
+      && Boolean(this.nodeLinkEnabled && this.nodeLinkClient?.enabled)
+    );
+    if (bypassedForSilentMirror) {
+      try {
+        return await this._resolveTracksFromSource(url, requestedBy, safeLimit);
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        this.logger?.warn?.('Local resolution failed for a NodeLink mirror source, retrying through NodeLink', {
+          url,
+          error: reason,
+        });
+        return this._resolveNodeLinkTracks(url, requestedBy, safeLimit, { urlQuery: true });
+      }
+    }
+
     const shouldTryNodeLinkForUrl = !shouldBypassNodeLink && (nodeLinkRoutingMode === 'all' || isYouTubeUrl(url));
     if (this.nodeLinkEnabled && this.nodeLinkClient?.enabled && shouldTryNodeLinkForUrl) {
       const nodeLinkResolved = await this._resolveNodeLinkTracks(url, requestedBy, safeLimit, { urlQuery: true }).catch((err: unknown) => {
@@ -222,6 +241,11 @@ export const resolverMethods: LooseMethodMap = {
         );
       }
     }
+    return this._resolveTracksFromSource(url, requestedBy, safeLimit);
+  },
+
+  async _resolveTracksFromSource(url: string, requestedBy: string | null, limit?: number | null) {
+    const safeLimit = normalizeResolveLimit(limit, this.maxPlaylistTracks);
     const isGenericStreamPlaylist = !isYouTubeUrl(url) && isLikelyPlaylistUrl(url);
     if (isGenericStreamPlaylist) {
       return this.sources.resolver.resolveSingleUrlTrack(url, requestedBy);

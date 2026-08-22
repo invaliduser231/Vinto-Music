@@ -11,6 +11,9 @@ All notable changes to this project are documented in this file.
   - added a credential-free Spotify metadata fallback via oEmbed and page tags so Spotify track links resolve even when the API is unavailable or rate limited
   - skipped the direct Deezer mirror path in `NODELINK_ROUTING_MODE=all` so mirrored tracks keep a NodeLink encoded track and stay playable
   - mirrored Spotify playlist, album, and artist tracks concurrently instead of one after another, matching the Tidal and Apple Music resolvers
+  - fell back to NodeLink when local resolution of a Tidal, Apple Music, or Spotify link fails, so algorithmic Spotify playlists that the public API returns 404 for keep working
+  - stopped issuing ISRC mirror lookups after the configured search backend returned nothing five times in a row, since not every backend indexes ISRCs
+  - logged an empty mirror search result at debug level instead of warning about discarded candidates that never existed
 - Tests:
   - added coverage that unrelated mirror candidates are rejected instead of queued
   - added coverage that Tidal and Spotify track links bypass NodeLink URL resolution in `all` mode while still streaming through NodeLink

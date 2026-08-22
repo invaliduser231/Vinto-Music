@@ -1129,3 +1129,69 @@ test('Spotify album links keep using NodeLink when the bot has no Spotify creden
   assert.deepEqual(urlQueries, ['https://open.spotify.com/album/1DFixLWuPkv3KT3TnV35m3']);
   assert.equal(tracks.length, 1);
 });
+
+test('a Spotify link that the bot cannot resolve locally falls back to NodeLink', async () => {
+  const player = createPlayer({
+    nodeLinkRoutingMode: 'all',
+    spotifyClientId: 'client-id',
+    spotifyClientSecret: 'client-secret',
+  });
+  const urlQueries: string[] = [];
+
+  player._spotifyApiRequest = async () => {
+    throw Object.assign(new Error('Spotify API request failed (404): /v1/playlists/37i9dQZF1E4DcffsQOUbbg'), { status: 404 });
+  };
+  player._resolveNodeLinkTracks = async (
+    query: string,
+    requestedBy: string | null,
+    _limit?: number | null,
+    options?: { urlQuery?: boolean },
+  ) => {
+    if (options?.urlQuery) urlQueries.push(query);
+    return [player.createTrackFromData({
+      title: 'Radio Track',
+      url: 'https://www.deezer.com/track/42',
+      duration: '3:00',
+      source: 'deezer',
+      nodelinkEncodedTrack: 'encoded-radio',
+      requestedBy,
+    }, requestedBy)];
+  };
+
+  const url = 'https://open.spotify.com/playlist/37i9dQZF1E4DcffsQOUbbg';
+  const tracks = await player.previewTracks(url, { requestedBy: 'user-1', limit: 5 });
+
+  assert.deepEqual(urlQueries, [url]);
+  assert.equal(tracks.length, 1);
+  assert.equal(tracks[0]!.nodelinkEncodedTrack, 'encoded-radio');
+});
+
+test('ISRC mirror lookups stop after the search backend keeps returning nothing', async () => {
+  const player = createPlayer({ nodeLinkRoutingMode: 'all' });
+  const queries: string[] = [];
+
+  player._resolveNodeLinkTracks = async (query: string, requestedBy: string | null) => {
+    queries.push(query);
+    if (query.startsWith('"')) return [];
+    return [player.createTrackFromData({
+      title: 'Panama',
+      artist: 'GReeeN',
+      url: 'https://www.youtube.com/watch?v=QZpMj2epGNQ',
+      duration: '2:32',
+      source: 'youtube',
+      nodelinkEncodedTrack: 'encoded-mirror',
+      requestedBy,
+    }, requestedBy)];
+  };
+
+  const seeds = Array.from({ length: 7 }, (_, index) => ({
+    title: 'Panama',
+    artist: 'GReeeN',
+    isrc: `DEZC6234083${index}`,
+    durationInSec: 152,
+  }));
+  const tracks = await player._resolveCrossSourceToYouTube(seeds, 'user-1', 'tidal');
+
+  assert.equal(tracks.length, 7);
+  assert.equal(queries.filter((query) => query.startsWith('"')).length, 5);
+});
