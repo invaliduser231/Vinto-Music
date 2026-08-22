@@ -4,6 +4,9 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+- Configuration:
+  - dropped regional catalogues from the NodeLink mirror source list, since they answer almost any query with something and turned a missing track into an unrelated song in another language
+  - documented `NODELINK_SOURCES_TIDAL_HIFIAPIS`, without which every Tidal track is mirrored instead of streamed directly
 - Fixes:
   - verified every mirror candidate against the requested title, artist, duration, and ISRC instead of taking the first search hit, so Tidal and Apple Music links no longer play unrelated songs
   - stopped trusting ISRC search hits blindly, because search backends treat an ISRC as plain text and return arbitrary results for it
