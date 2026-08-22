@@ -9,7 +9,6 @@ import { AudiusClient } from './musicPlayer/AudiusClient.ts';
 import { DeezerClient } from './musicPlayer/DeezerClient.ts';
 import { ResolverClient } from './musicPlayer/ResolverClient.ts';
 import { SoundCloudClient } from './musicPlayer/SoundCloudClient.ts';
-import { SpotifyClient } from './musicPlayer/SpotifyClient.ts';
 import { NodeLinkClient } from './musicPlayer/NodeLinkClient.ts';
 import type { NodeLinkLoadResult } from './musicPlayer/NodeLinkClient.ts';
 import { playbackStateMethods } from './musicPlayer/playbackStateMethods.ts';
@@ -447,7 +446,6 @@ export class MusicPlayer extends EventEmitter {
   sources: Readonly<{
     audius: AudiusClient;
     deezer: DeezerClient;
-    spotify: SpotifyClient;
     resolver: ResolverClient;
     soundcloud: SoundCloudClient;
   }>;
@@ -572,7 +570,6 @@ export class MusicPlayer extends EventEmitter {
     this.sources = Object.freeze({
       audius: new AudiusClient(this),
       deezer: new DeezerClient(this),
-      spotify: new SpotifyClient(this),
       resolver: new ResolverClient(this),
       soundcloud: new SoundCloudClient(this),
     });

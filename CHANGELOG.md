@@ -4,6 +4,9 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+- Removals:
+  - deleted the local Spotify, Tidal, Apple Music, Amazon, Bandcamp, Audiomack, Mixcloud, and JioSaavn resolvers, roughly 2.900 lines that duplicated what NodeLink already does better
+  - links from those services now always go to NodeLink, in every routing mode, and fail with a clear message when NodeLink is unavailable instead of silently taking a weaker path
 - Configuration:
   - dropped regional catalogues from the NodeLink mirror source list, since they answer almost any query with something and turned a missing track into an unrelated song in another language
   - documented `NODELINK_SOURCES_TIDAL_HIFIAPIS`, without which every Tidal track is mirrored instead of streamed directly

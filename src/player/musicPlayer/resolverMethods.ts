@@ -53,6 +53,19 @@ function getNodeLinkRoutingMode(value: unknown): 'smart' | 'all' | 'youtube-only
   return 'smart';
 }
 
+function requiresNodeLinkResolution(url: string) {
+  return (
+    isSpotifyUrl(url)
+    || isTidalUrl(url)
+    || isAppleMusicUrl(url)
+    || isAmazonMusicUrl(url)
+    || isBandcampUrl(url)
+    || isAudiomackUrl(url)
+    || isMixcloudUrl(url)
+    || isJioSaavnUrl(url)
+  );
+}
+
 function shouldBypassNodeLinkForDirectStreamUrl(
   url: string,
   routingMode: 'smart' | 'all' | 'youtube-only',
@@ -172,15 +185,24 @@ export const resolverMethods: LooseMethodMap = {
     }
 
     const url = await this.sources.resolver.normalizeInputUrl(raw);
-    const shouldBypassNodeLink = shouldBypassNodeLinkForDirectStreamUrl(url, nodeLinkRoutingMode);
-    const shouldTryNodeLinkForUrl = !shouldBypassNodeLink && (nodeLinkRoutingMode === 'all' || isYouTubeUrl(url));
-    if (this.nodeLinkEnabled && this.nodeLinkClient?.enabled && shouldTryNodeLinkForUrl) {
+    const nodeLinkAvailable = Boolean(this.nodeLinkEnabled && this.nodeLinkClient?.enabled);
+    const nodeLinkOnly = requiresNodeLinkResolution(url);
+    const shouldBypassNodeLink = !nodeLinkOnly && shouldBypassNodeLinkForDirectStreamUrl(url, nodeLinkRoutingMode);
+    const shouldTryNodeLinkForUrl = !shouldBypassNodeLink
+      && (nodeLinkOnly || nodeLinkRoutingMode === 'all' || isYouTubeUrl(url));
+
+    if (nodeLinkOnly && !nodeLinkAvailable) {
+      throw new ValidationError(
+        `Links from this service are resolved by NodeLink, which is not available. Enable NodeLink to play ${url}.`
+      );
+    }
+
+    if (nodeLinkAvailable && shouldTryNodeLinkForUrl) {
+      const strictNodeLink = nodeLinkOnly || nodeLinkRoutingMode === 'all';
       const nodeLinkResolved = await this._resolveNodeLinkTracks(url, requestedBy, safeLimit, { urlQuery: true }).catch((err: unknown) => {
         const reason = err instanceof Error ? err.message : String(err);
-        if (nodeLinkRoutingMode === 'all') {
-          throw new ValidationError(
-            `NodeLink URL resolution failed and local fallback is disabled in NODELINK_ROUTING_MODE=all. NodeLink reported: ${reason}`
-          );
+        if (strictNodeLink) {
+          throw new ValidationError(`NodeLink could not resolve ${url}. It reported: ${reason}`);
         }
         this.logger?.debug?.('NodeLink URL resolution failed, falling back to local resolver path', {
           url,
@@ -192,14 +214,12 @@ export const resolverMethods: LooseMethodMap = {
       if (Array.isArray(nodeLinkResolved) && nodeLinkResolved.length > 0) {
         return nodeLinkResolved;
       }
-      if (nodeLinkRoutingMode === 'all') {
+      if (strictNodeLink) {
         this.logger?.warn?.('NodeLink returned no playable tracks for URL', {
           url,
           routingMode: nodeLinkRoutingMode,
         });
-        throw new ValidationError(
-          `NodeLink returned no playable tracks for ${url} and local fallback is disabled in NODELINK_ROUTING_MODE=all.`
-        );
+        throw new ValidationError(`NodeLink returned no playable tracks for ${url}.`);
       }
     }
     return this._resolveTracksFromSource(url, requestedBy, safeLimit);
@@ -228,11 +248,6 @@ export const resolverMethods: LooseMethodMap = {
         return this.sources.soundcloud.resolveTrack(url, requestedBy);
       case 'so_playlist':
         return this.sources.soundcloud.resolvePlaylist(url, requestedBy, safeLimit);
-      case 'sp_track':
-        return this.sources.resolver.resolveSpotifyTrack(url, requestedBy);
-      case 'sp_playlist':
-      case 'sp_album':
-        return this.sources.resolver.resolveSpotifyCollection(url, requestedBy, safeLimit);
       case 'dz_track':
         return this.sources.deezer.resolveTrack(url, requestedBy);
       case 'dz_playlist':
@@ -242,14 +257,6 @@ export const resolverMethods: LooseMethodMap = {
         if (isAudiusUrl(url)) return this.sources.audius.resolveByUrl(url, requestedBy);
         if (isSoundCloudUrl(url)) return this.sources.soundcloud.resolveByGuess(url, requestedBy, safeLimit);
         if (isDeezerUrl(url)) return this.sources.deezer.resolveByGuess(url, requestedBy, safeLimit);
-        if (isSpotifyUrl(url)) return this.sources.resolver.resolveSpotifyByGuess(url, requestedBy, safeLimit);
-        if (isTidalUrl(url)) return this.sources.resolver.resolveTidalByGuess(url, requestedBy, safeLimit);
-        if (isBandcampUrl(url)) return this._resolveBandcampByGuess(url, requestedBy, safeLimit);
-        if (isAudiomackUrl(url)) return this._resolveAudiomackByGuess(url, requestedBy, safeLimit);
-        if (isMixcloudUrl(url)) return this._resolveMixcloudByGuess(url, requestedBy, safeLimit);
-        if (isJioSaavnUrl(url)) return this._resolveJioSaavnByGuess(url, requestedBy, safeLimit);
-        if (isAmazonMusicUrl(url)) return this.sources.resolver.resolveAmazonByGuess(url, requestedBy, safeLimit);
-        if (isAppleMusicUrl(url)) return this.sources.resolver.resolveAppleByGuess(url, requestedBy, safeLimit);
         return this.sources.resolver.resolveSingleUrlTrack(url, requestedBy);
     }
   },

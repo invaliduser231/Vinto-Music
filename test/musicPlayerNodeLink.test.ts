@@ -692,7 +692,7 @@ test('NodeLink all routing mode disables local youtube url fallback when NodeLin
 
   await assert.rejects(
     player.previewTracks('https://www.youtube.com/watch?v=1NiSbpN-LaI', { requestedBy: 'user-1', limit: 1 }),
-    /NodeLink URL resolution failed and local fallback is disabled in NODELINK_ROUTING_MODE=all/,
+    /NodeLink could not resolve/,
   );
   assert.equal(localResolverCalled, false);
 });
@@ -1187,4 +1187,50 @@ test('ISRC mirror lookups stop after the search backend keeps returning nothing'
 
   assert.equal(tracks.length, 7);
   assert.equal(queries.filter((query) => query.startsWith('"')).length, 5);
+});
+
+test('provider links always go to NodeLink, even outside all routing mode', async () => {
+  const player = createPlayer({ nodeLinkRoutingMode: 'smart' });
+  const urlQueries: string[] = [];
+
+  player._resolveNodeLinkTracks = async (
+    query: string,
+    requestedBy: string | null,
+    _limit?: number | null,
+    options?: { urlQuery?: boolean },
+  ) => {
+    if (options?.urlQuery) urlQueries.push(query);
+    return [player.createTrackFromData({
+      title: 'Mirrored',
+      url: 'https://www.deezer.com/track/1',
+      duration: '3:00',
+      source: 'deezer',
+      nodelinkEncodedTrack: 'encoded',
+      requestedBy,
+    }, requestedBy)];
+  };
+
+  const links = [
+    'https://open.spotify.com/track/7AyE8MRf4dIK75mqqpks9S',
+    'https://tidal.com/browse/track/290255059',
+    'https://music.apple.com/us/album/x/1?i=2',
+    'https://antinarcose.bandcamp.com/track/ssssssssss',
+  ];
+  for (const link of links) {
+    await player.previewTracks(link, { requestedBy: 'user-1', limit: 1 });
+  }
+
+  assert.deepEqual(urlQueries, links);
+});
+
+test('a provider link fails with a clear message when NodeLink is unavailable', async () => {
+  const player = createPlayer({ nodeLinkEnabled: false });
+
+  await assert.rejects(
+    player.previewTracks('https://open.spotify.com/track/7AyE8MRf4dIK75mqqpks9S', {
+      requestedBy: 'user-1',
+      limit: 1,
+    }),
+    /resolved by NodeLink, which is not available/,
+  );
 });
