@@ -296,31 +296,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     throw new ConfigurationError('FLUXERLIST_API_KEY is required when FLUXERLIST_STATS_ENABLED=1');
   }
 
-  const spotifyFields = [
-    ['SPOTIFY_CLIENT_ID', config.spotifyClientId],
-    ['SPOTIFY_CLIENT_SECRET', config.spotifyClientSecret],
-    ['SPOTIFY_REFRESH_TOKEN', config.spotifyRefreshToken],
-  ];
-  const spotifySetCount = spotifyFields.filter(([, value]) => Boolean(value)).length;
-  if (spotifySetCount > 0 && spotifySetCount < spotifyFields.length) {
-    const missing = spotifyFields
-      .filter(([, value]) => !value)
-      .map(([name]) => name);
-    throw new ConfigurationError(`Incomplete Spotify config. Missing: ${missing.join(', ')}`);
-  }
-
-  if (!/^[A-Z]{2}$/.test(config.spotifyMarket)) {
-    throw new ConfigurationError('SPOTIFY_MARKET must be a 2-letter country code, e.g. US');
-  }
-
-  if (!/^[A-Z]{2}$/.test(config.tidalCountryCode)) {
-    throw new ConfigurationError('TIDAL_COUNTRY_CODE must be a 2-letter country code, e.g. US');
-  }
-
-  if (!/^[A-Z]{2}$/.test(config.appleMusicMarket)) {
-    throw new ConfigurationError('APPLE_MUSIC_MARKET must be a 2-letter country code, e.g. US');
-  }
-
   return Object.freeze(config);
 }
 
