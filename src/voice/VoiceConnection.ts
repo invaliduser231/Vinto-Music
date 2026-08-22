@@ -266,11 +266,39 @@ export class VoiceConnection {
     if (this.earrapeProtectionEnabled === next) return;
 
     this.earrapeProtectionEnabled = next;
-    if (!next) {
+    if (next) {
+      this._monitorSubscribedRemoteAudio();
+    } else {
+      this.remoteAudioMonitorToken += 1;
       this._resetEarrapeStates();
     }
 
     this._syncVoiceDeafState();
+  }
+
+  _monitorSubscribedRemoteAudio() {
+    const room = this.room as {
+      remoteParticipants?: Map<unknown, unknown> | Iterable<[unknown, unknown]>;
+    } | null;
+    const participants = room?.remoteParticipants;
+    if (!participants) return;
+
+    const entries = typeof (participants as Map<unknown, unknown>).values === 'function'
+      ? Array.from((participants as Map<unknown, unknown>).values())
+      : Array.from(participants as Iterable<[unknown, unknown]>, (entry) => entry?.[1]);
+
+    for (const participant of entries) {
+      const publications = (participant as {
+        trackPublications?: Map<unknown, unknown>;
+      } | null)?.trackPublications;
+      if (!publications?.values) continue;
+
+      for (const publication of publications.values()) {
+        const track = (publication as { track?: unknown } | null)?.track;
+        if (!track) continue;
+        this._monitorRemoteAudioTrack(track, participant).catch(() => null);
+      }
+    }
   }
 
   setBotUserId(botUserId: unknown) {
@@ -576,6 +604,7 @@ export class VoiceConnection {
   async _monitorRemoteAudioTrack(track: unknown, participant: unknown) {
     const trackKind = (track as { kind?: unknown } | null | undefined)?.kind;
     if (trackKind !== TrackKind.KIND_AUDIO) return;
+    if (!this.earrapeProtectionEnabled) return;
 
     const participantId = this._normalizeParticipantId(participant);
     if (!participantId) return;
@@ -589,16 +618,7 @@ export class VoiceConnection {
     try {
       for await (const frame of stream) {
         if (monitorToken !== this.remoteAudioMonitorToken) break;
-        if (!this.earrapeProtectionEnabled) {
-          const profileState = this.participantAudioStates.get(participantId) ?? null;
-          if (profileState) {
-            this._syncParticipantProfile(participantId, profileState, {
-              calmRmsSample: profileState.baselineRms,
-            }, Date.now(), false);
-          }
-          this.participantAudioStates.delete(participantId);
-          continue;
-        }
+        if (!this.earrapeProtectionEnabled) break;
 
         const metrics = this._computeFrameMetrics(frame);
         const decision = this._ingestParticipantFrame(participantId, metrics);

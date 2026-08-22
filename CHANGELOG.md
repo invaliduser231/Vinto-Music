@@ -5,6 +5,8 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 - Performance:
+  - stopped decoding incoming voice audio when earrape protection is off, which opened an opus decoder per participant in every channel and threw the result away frame by frame
+  - protection switched on at runtime now also starts watching participants that were already connected
   - handed playback volume to NodeLink instead of scaling every PCM sample in the bot process, which spawned a per-session audio processor as soon as volume differed from 100
   - the local processor now only runs for filter and equaliser presets, and applies volume relative to what the stream already did
 - Removals:
