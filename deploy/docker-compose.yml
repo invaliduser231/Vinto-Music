@@ -45,7 +45,7 @@ services:
     image: ${NODELINK_IMAGE:-ghcr.io/invaliduser231/nodelink:dev}
     pull_policy: always
     restart: unless-stopped
-    mem_limit: ${NODELINK_MEM_LIMIT:-2560m}
+    mem_limit: ${NODELINK_MEM_LIMIT:-4g}
     depends_on:
       yt-cipher:
         condition: service_started
