@@ -78,11 +78,37 @@ test('upsertSessionSnapshot does not duplicate identifier fields into $set', asy
   assert.equal('voiceChannelId' in call.update.$set, false);
   assert.equal('createdAt' in call.update.$set, false);
   assert.equal('updatedAt' in call.update.$set, true);
-  assert.deepEqual(result, {
-    guildId: '111111',
-    voiceChannelId: '222222',
-    state: { playing: true },
+  const written = result as Record<string, unknown>;
+  assert.equal(written.guildId, '111111');
+  assert.equal(written.voiceChannelId, '222222');
+  assert.deepEqual(written.state, { playing: true });
+  assert.equal('createdAt' in written, false);
+  assert.ok(written.updatedAt instanceof Date);
+});
+
+test('upsertSessionSnapshot does not read the document back after writing', async () => {
+  let findOneCalls = 0;
+  const snapshotCollection = {
+    async updateOne() {
+      return { acknowledged: true };
+    },
+    async findOne() {
+      findOneCalls += 1;
+      return null;
+    },
+  };
+
+  const store = new MusicLibraryStore({
+    guildPlaylistsCollection: createNoopCollection(),
+    userFavoritesCollection: createNoopCollection(),
+    guildHistoryCollection: createNoopCollection(),
+    guildFeaturesCollection: createNoopCollection(),
+    guildSessionSnapshotsCollection: snapshotCollection,
   });
+
+  await store.upsertSessionSnapshot('111111', '222222', { state: { playing: true } });
+
+  assert.equal(findOneCalls, 0);
 });
 
 

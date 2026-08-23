@@ -135,6 +135,8 @@ interface TasteRow {
 
 const USER_LOCALE_CACHE_TTL_MS = 5 * 60 * 1000;
 const USER_LOCALE_CACHE_MAX = 5000;
+const GUILD_FEATURE_CACHE_TTL_MS = 60 * 1000;
+const GUILD_FEATURE_CACHE_MAX = 5000;
 
 interface UserProfileDoc {
   userId: string;
@@ -229,6 +231,7 @@ export class MusicLibraryStore {
   maxHistoryTracks: number;
   _rmwChains: Map<string, Promise<unknown>>;
   userLocaleCache: Map<string, { locale: string | null; expiresAt: number }>;
+  guildFeatureCache: Map<string, { doc: FeatureConfigDoc; expiresAt: number }>;
 
   constructor(options: MusicLibraryStoreOptions) {
     this.guildPlaylists = options.guildPlaylistsCollection;
@@ -249,6 +252,7 @@ export class MusicLibraryStore {
     this.maxHistoryTracks = toPositiveInt(options.maxHistoryTracks, 200);
     this._rmwChains = new Map();
     this.userLocaleCache = new Map();
+    this.guildFeatureCache = new Map();
   }
 
   async _serialize<T>(key: string, fn: () => Promise<T>): Promise<T> {
@@ -313,20 +317,11 @@ export class MusicLibraryStore {
     return collection;
   }
 
-  async getGuildFeatureConfig(guildId: unknown): Promise<FeatureConfigDoc> {
-    const normalizedGuildId = normalizeGuildId(guildId);
-    if (!this.guildFeatures) {
-      return defaultGuildFeatureConfig(normalizedGuildId);
-    }
-
-    const doc = await this.guildFeatures.findOne(
-      { guildId: normalizedGuildId },
-      { projection: { _id: 0 } }
-    );
-    if (!doc) return defaultGuildFeatureConfig(normalizedGuildId);
-
+  _normalizeFeatureDoc(raw: Record<string, unknown>, guildId: string): FeatureConfigDoc {
+    const base = defaultGuildFeatureConfig(guildId);
+    const doc = raw as Partial<FeatureConfigDoc>;
     return {
-      ...defaultGuildFeatureConfig(normalizedGuildId),
+      ...base,
       ...doc,
       stations: Array.isArray(doc.stations)
         ? doc.stations
@@ -342,10 +337,53 @@ export class MusicLibraryStore {
       queueTemplates: Array.isArray(doc.queueTemplates) ? doc.queueTemplates : [],
       voiceProfiles: Array.isArray(doc.voiceProfiles) ? doc.voiceProfiles : [],
       queueGuard: {
-        ...defaultGuildFeatureConfig(normalizedGuildId).queueGuard,
+        ...base.queueGuard,
         ...(doc.queueGuard ?? {}),
       },
     };
+  }
+
+  _getCachedGuildFeature(guildId: string): FeatureConfigDoc | null {
+    const entry = this.guildFeatureCache.get(guildId);
+    if (!entry) return null;
+    if (entry.expiresAt <= Date.now()) {
+      this.guildFeatureCache.delete(guildId);
+      return null;
+    }
+    return entry.doc;
+  }
+
+  _cacheGuildFeature(guildId: string, doc: FeatureConfigDoc) {
+    if (this.guildFeatureCache.size >= GUILD_FEATURE_CACHE_MAX && !this.guildFeatureCache.has(guildId)) {
+      const oldest = this.guildFeatureCache.keys().next().value;
+      if (oldest !== undefined) this.guildFeatureCache.delete(oldest);
+    }
+    this.guildFeatureCache.delete(guildId);
+    this.guildFeatureCache.set(guildId, {
+      doc,
+      expiresAt: Date.now() + GUILD_FEATURE_CACHE_TTL_MS,
+    });
+  }
+
+  async getGuildFeatureConfig(guildId: unknown): Promise<FeatureConfigDoc> {
+    const normalizedGuildId = normalizeGuildId(guildId);
+    if (!this.guildFeatures) {
+      return defaultGuildFeatureConfig(normalizedGuildId);
+    }
+
+    const cached = this._getCachedGuildFeature(normalizedGuildId);
+    if (cached) return structuredClone(cached);
+
+    const doc = await this.guildFeatures.findOne(
+      { guildId: normalizedGuildId },
+      { projection: { _id: 0 } }
+    );
+    const normalized = doc
+      ? this._normalizeFeatureDoc(doc as Record<string, unknown>, normalizedGuildId)
+      : defaultGuildFeatureConfig(normalizedGuildId);
+
+    this._cacheGuildFeature(normalizedGuildId, normalized);
+    return structuredClone(normalized);
   }
 
   async patchGuildFeatureConfig(guildId: unknown, patch: unknown): Promise<FeatureConfigDoc> {
@@ -373,7 +411,15 @@ export class MusicLibraryStore {
       { upsert: true }
     );
 
-    return this.getGuildFeatureConfig(normalizedGuildId);
+    const base = this._getCachedGuildFeature(normalizedGuildId)
+      ?? await this.getGuildFeatureConfig(normalizedGuildId);
+    const merged = this._normalizeFeatureDoc(
+      { ...base, ...setPatch } as Record<string, unknown>,
+      normalizedGuildId
+    );
+
+    this._cacheGuildFeature(normalizedGuildId, merged);
+    return structuredClone(merged);
   }
 
   async setQueueTemplate(guildId: unknown, name: unknown, tracks: unknown[], createdBy: unknown = null) {
@@ -599,7 +645,12 @@ export class MusicLibraryStore {
       { upsert: true }
     );
 
-    return this.getSessionSnapshot(normalizedGuildId, normalizedVoiceChannelId);
+    return {
+      guildId: normalizedGuildId,
+      voiceChannelId: normalizedVoiceChannelId,
+      ...safePatch,
+      updatedAt: now,
+    };
   }
 
   async getSessionSnapshot(guildId: unknown, voiceChannelId: unknown) {
