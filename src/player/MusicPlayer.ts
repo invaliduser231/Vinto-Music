@@ -151,6 +151,7 @@ interface MusicPlayerOptions {
   ytdlpExtraArgs?: string[] | string | null;
   ytdlpProxyUrl?: string | null;
   maxQueueSize?: number;
+  maxTrackLengthHours?: number;
   maxPlaylistTracks?: number;
   minVolumePercent?: number;
   maxVolumePercent?: number;
@@ -400,6 +401,7 @@ export class MusicPlayer extends EventEmitter {
   ytdlpExtraArgs: string[];
   ytdlpProxyUrl: string | null;
   maxQueueSize: number;
+  maxTrackLengthMs: number;
   maxPlaylistTracks: number;
   minVolumePercent: number;
   maxVolumePercent: number;
@@ -505,6 +507,7 @@ export class MusicPlayer extends EventEmitter {
     this.ytdlpProxyUrl = String(options.ytdlpProxyUrl ?? process.env.YTDLP_PROXY_URL ?? '').trim() || null;
     this._useRuntimeYtDlpCookiesFile();
     this.maxQueueSize = options.maxQueueSize ?? 100;
+    this.maxTrackLengthMs = Math.max(0, (options.maxTrackLengthHours ?? 6) * 3_600_000);
     this.maxPlaylistTracks = options.maxPlaylistTracks ?? 25;
     this.minVolumePercent = options.minVolumePercent ?? 0;
     this.maxVolumePercent = options.maxVolumePercent ?? 200;
@@ -792,11 +795,17 @@ export class MusicPlayer extends EventEmitter {
     const input = Array.isArray(tracks) ? tracks : [];
     if (!input.length) return [];
 
-    const filteredTracks = dedupe
+    const dedupedTracks = dedupe
       ? input.filter((track) => !this._hasDuplicateTrack(track))
       : input;
 
+    const filteredTracks = dedupedTracks.filter((track) => !this._exceedsMaxTrackLength(track));
+    const tooLongCount = dedupedTracks.length - filteredTracks.length;
+
     if (!filteredTracks.length) {
+      if (tooLongCount > 0) {
+        throw new ValidationError(this._formatMaxTrackLengthMessage(dedupedTracks));
+      }
       return [];
     }
 
@@ -821,6 +830,32 @@ export class MusicPlayer extends EventEmitter {
     this.emit('tracksAdded', filteredTracks);
     this._scheduleNextTrackPrefetch();
     return filteredTracks;
+  }
+
+  _exceedsMaxTrackLength(track: Track): boolean {
+    if (this.maxTrackLengthMs <= 0) return false;
+    if (track?.isLive || track?.nodelinkInfo?.isStream) return false;
+
+    const lengthMs = Number(track?.nodelinkInfo?.length ?? 0);
+    if (!Number.isFinite(lengthMs) || lengthMs <= 0) return false;
+
+    return lengthMs > this.maxTrackLengthMs;
+  }
+
+  _formatMaxTrackLengthMessage(tracks: Track[]): string {
+    const limitHours = Math.round(this.maxTrackLengthMs / 3_600_000);
+    const longest = tracks.reduce((max, track) => {
+      const ms = Number(track?.nodelinkInfo?.length ?? 0);
+      return Number.isFinite(ms) && ms > max ? ms : max;
+    }, 0);
+
+    if (longest <= 0) {
+      return `Track is too long (maximum ${limitHours} hours).`;
+    }
+
+    const hours = Math.floor(longest / 3_600_000);
+    const minutes = Math.floor((longest % 3_600_000) / 60_000);
+    return `Track is too long (${hours}h ${minutes}m). The maximum is ${limitHours} hours.`;
   }
 
   _enforceQueueGuard(newTracks: Track[], guard: QueueGuardOption): void {

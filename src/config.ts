@@ -170,6 +170,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     sessionSnapshotFlushIntervalMs: parsePositiveInt(env.SESSION_SNAPSHOT_FLUSH_INTERVAL_MS, 30_000),
     sessionSnapshotMaxPendingTracks: parsePositiveInt(env.SESSION_SNAPSHOT_MAX_PENDING_TRACKS, 25),
     maxQueueSize: parsePositiveInt(env.MAX_QUEUE_SIZE, 100),
+    maxTrackLengthHours: parsePositiveInt(env.MAX_TRACK_LENGTH_HOURS, 6),
     maxPlaylistTracks: parsePositiveInt(env.MAX_PLAYLIST_TRACKS, 25),
     maxSavedPlaylistsPerGuild: parsePositiveInt(env.MAX_SAVED_PLAYLISTS_PER_GUILD, 100),
     maxSavedTracksPerPlaylist: parsePositiveInt(env.MAX_SAVED_TRACKS_PER_PLAYLIST, 500),

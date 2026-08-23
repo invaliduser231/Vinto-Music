@@ -541,6 +541,7 @@ export class SessionManager extends EventEmitter {
       ...(this.config.ytdlpProxyUrl != null ? { ytdlpProxyUrl: this.config.ytdlpProxyUrl } : {}),
       ...(this.config.youtubePlaylistResolver != null ? { youtubePlaylistResolver: this.config.youtubePlaylistResolver } : {}),
       ...(this.config.maxQueueSize != null ? { maxQueueSize: this.config.maxQueueSize } : {}),
+      ...(this.config.maxTrackLengthHours != null ? { maxTrackLengthHours: this.config.maxTrackLengthHours } : {}),
       ...(this.config.maxPlaylistTracks != null ? { maxPlaylistTracks: this.config.maxPlaylistTracks } : {}),
       ...((resolvedGuildConfig?.settings?.volumePercent ?? this.config.defaultVolumePercent) != null
         ? { defaultVolumePercent: resolvedGuildConfig?.settings?.volumePercent ?? this.config.defaultVolumePercent }
