@@ -27,6 +27,8 @@ import { runtimeMethods } from './sessionManager/runtimeMethods.ts';
 
 const PERSISTENT_RESTORE_CONNECT_RETRY_ATTEMPTS = 3;
 const PERSISTENT_RESTORE_CONNECT_RETRY_DELAY_MS = 250;
+const PERSISTENT_RESTORE_STAGGER_MS = 2500;
+const PERSISTENT_SYNC_DEBOUNCE_MS = 5000;
 
 function isRetryablePersistentRestoreConnectFailure(error: unknown): boolean {
   const message = String((error as { message?: unknown } | null | undefined)?.message ?? '').toLowerCase();
@@ -132,6 +134,7 @@ export class SessionManager extends EventEmitter {
   sessions: Map<string, Session>;
   snapshotFlushHandle: NodeJS.Timeout | null;
   playerSessionListeners: Map<string, PlayerSessionListeners>;
+  persistentSyncTimers: Map<string, NodeJS.Timeout>;
 
   constructor(options: SessionManagerOptions) {
     super();
@@ -147,6 +150,7 @@ export class SessionManager extends EventEmitter {
     this.botUserId = options.botUserId ? String(options.botUserId) : null;
 
     this.sessions = new Map();
+    this.persistentSyncTimers = new Map();
     this.snapshotFlushHandle = null;
     this.playerSessionListeners = new Map();
     this._startSnapshotFlushLoop();
@@ -197,14 +201,29 @@ export class SessionManager extends EventEmitter {
     );
   }
 
+  _clearPersistentSyncTimer(guildId: string): void {
+    const timer = this.persistentSyncTimers.get(guildId);
+    if (!timer) return;
+    clearTimeout(timer);
+    this.persistentSyncTimers.delete(guildId);
+  }
+
   _syncPersistentVoiceStateSoon(guildId: string, reason = 'state_change'): void {
-    this.syncPersistentVoiceState(guildId).catch((err) => {
-      this.logger?.debug?.('Failed to sync persistent voice state', {
-        guildId,
-        reason,
-        error: err instanceof Error ? err.message : String(err),
+    if (this.persistentSyncTimers.has(guildId)) return;
+
+    const timer = setTimeout(() => {
+      this.persistentSyncTimers.delete(guildId);
+      this.syncPersistentVoiceState(guildId).catch((err) => {
+        this.logger?.debug?.('Failed to sync persistent voice state', {
+          guildId,
+          reason,
+          error: err instanceof Error ? err.message : String(err),
+        });
       });
-    });
+    }, PERSISTENT_SYNC_DEBOUNCE_MS);
+
+    timer.unref?.();
+    this.persistentSyncTimers.set(guildId, timer);
   }
 
   _isVoiceModerationPermissionError(error: unknown): boolean {
@@ -830,6 +849,7 @@ export class SessionManager extends EventEmitter {
   }
 
   async syncPersistentVoiceState(guildId: string): Promise<boolean> {
+    this._clearPersistentSyncTimer(guildId);
     if (!this.library?.patchGuildFeatureConfig) return false;
 
     const guildSessions = this.listByGuild(guildId);
@@ -994,7 +1014,10 @@ export class SessionManager extends EventEmitter {
 
   async shutdown(): Promise<void> {
     const sessions = [...this.sessions.values()];
-    const guildIds = [...new Set(sessions.map((session) => String(session?.guildId ?? '').trim()).filter(Boolean))];
+    const guildIds = [...new Set([
+      ...sessions.map((session) => String(session?.guildId ?? '').trim()).filter(Boolean),
+      ...this.persistentSyncTimers.keys(),
+    ])];
 
     for (const session of sessions) {
       await this.persistSessionSnapshot(session, { force: true }).catch(() => null);
@@ -1024,7 +1047,11 @@ export class SessionManager extends EventEmitter {
     });
 
     const results = [];
+    let restoreIndex = 0;
     for (const binding of bindings) {
+      if (restoreIndex > 0) await delay(PERSISTENT_RESTORE_STAGGER_MS);
+      restoreIndex += 1;
+
       const guildId = String(binding?.guildId ?? '').trim();
       const voiceChannelId = toChannelId(binding?.voiceChannelId);
       const textChannelId = normalizeSessionChannelId(binding?.textChannelId);
