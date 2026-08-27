@@ -284,7 +284,7 @@ test('status explains how to link when nothing is connected', async () => {
   await execute(context);
 
   assert.equal(replyCalls.length, 1);
-  assert.ok(replyCalls[0]?.startsWith('info:You have not linked'));
+  assert.ok(replyCalls[0]?.startsWith('info:No Last.fm account linked'));
 });
 
 test('status shows the linked account with its counters', async () => {
@@ -344,7 +344,7 @@ test('blend refuses when nobody in the channel is linked', async () => {
 
   await execute(context);
 
-  assert.ok(replyCalls.some((entry) => entry.startsWith('warning:Nobody in this voice channel')));
+  assert.ok(replyCalls.some((entry) => entry.startsWith('warning:Nobody here has a Last.fm account linked')));
 });
 
 test('compare needs a second person', async () => {

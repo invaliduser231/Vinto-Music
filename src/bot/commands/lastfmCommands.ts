@@ -371,9 +371,9 @@ async function handleConnect(ctx: CommandContextLike, lastfm: LastFmBundle): Pro
       session = await lastfm.client.getSession(pending.token);
     } catch (err: unknown) {
       if (err instanceof LastFmApiError && (err.lastfmCode === 14 || err.lastfmCode === 15 || err.lastfmCode === 4)) {
-        await ctx.reply.warning(ctx.t('lastfm.connectNotAuthorized', {
-          url: lastfm.client.buildAuthUrl(pending.token),
-        }));
+        await ctx.reply.warning(ctx.t('lastfm.connectNotAuthorized'), [
+          { name: ctx.t('lastfm.connectStep1'), value: lastfm.client.buildAuthUrl(pending.token) },
+        ]);
         return;
       }
       throw err;
@@ -402,7 +402,6 @@ async function handleStatus(ctx: CommandContextLike, lastfm: LastFmBundle): Prom
   }
 
   const fields: EmbedField[] = [
-    { name: ctx.t('lastfm.fieldAccount'), value: account.username, inline: true },
     {
       name: ctx.t('lastfm.fieldScrobbling'),
       value: ctx.t(account.scrobblingEnabled ? 'common.on' : 'common.off'),
@@ -418,7 +417,7 @@ async function handleStatus(ctx: CommandContextLike, lastfm: LastFmBundle): Prom
     fields.push({ name: ctx.t('lastfm.fieldLastScrobble'), value: formatRelative(account.lastScrobbleAt, ctx.t), inline: true });
   }
 
-  await ctx.reply.info(ctx.t('lastfm.statusTitle'), fields);
+  await ctx.reply.info(ctx.t('lastfm.statusTitle', { user: account.username }), fields);
 }
 
 async function handleProfile(ctx: CommandContextLike, lastfm: LastFmBundle): Promise<void> {
