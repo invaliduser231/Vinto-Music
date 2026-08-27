@@ -107,15 +107,15 @@ test('autoplay resolves its candidates concurrently instead of one after another
   assert.ok(elapsed < 200, `four lookups took ${elapsed}ms, so they did not run in sequence`);
 });
 
-test('a hanging lookup does not hold back a candidate that already resolved', async () => {
+test('a hanging lookup is cut off by the deadline instead of stalling autoplay', async () => {
   const { router, session } = createRouter({
     similar: [
       { artist: 'Amy Winehouse', track: 'Rehab', match: 1 },
       { artist: 'Duffy', track: 'Mercy', match: 0.9 },
     ],
-    resolve: (query) => (query.includes('Rehab') ? [] : [{ title: query, duration: '3:00', source: 'deezer' }]),
+    resolve: (query) => (query.includes('Rehab') ? [] : [{ title: 'Mercy', artist: 'Duffy', duration: '3:41', source: 'deezer' }]),
     slowQueries: ['Amy Winehouse - Rehab'],
-    slowDelayMs: 5_000,
+    slowDelayMs: 30_000,
   });
 
   router.lastPlayedTracks.set('session-1', AMY);
@@ -124,8 +124,41 @@ test('a hanging lookup does not hold back a candidate that already resolved', as
   const title = await router._tryAutoplay(session as never);
   const elapsed = Date.now() - startedAt;
 
-  assert.equal(title, 'Duffy - Mercy');
-  assert.ok(elapsed < 1_000, `waited ${elapsed}ms for a lookup that had already failed elsewhere`);
+  assert.equal(title, 'Mercy');
+  assert.ok(elapsed < 4_000, `waited ${elapsed}ms although the deadline is 3s`);
+});
+
+test('a remix by a different artist is not accepted as the suggested track', async () => {
+  const { router, session, enqueued } = createRouter({
+    similar: [
+      { artist: 'Sade', track: 'Like a Tattoo', match: 1 },
+      { artist: 'Duffy', track: 'Mercy', match: 0.9 },
+    ],
+    resolve: (query) => (query.includes('Like a Tattoo')
+      ? [{ title: "Sade Like A Tattoo (Skep's Jungle Edit)", artist: 'Skep', duration: '7:01', source: 'deezer' }]
+      : [{ title: 'Mercy', artist: 'Duffy', duration: '3:41', source: 'deezer' }]),
+  });
+
+  router.lastPlayedTracks.set('session-1', AMY);
+  const title = await router._tryAutoplay(session as never);
+
+  assert.equal(title, 'Mercy', 'the jungle edit by Skep is not Sade');
+  assert.equal((enqueued[0] as { artist?: string }).artist, 'Duffy');
+});
+
+test('the highest ranked suggestion wins, not the fastest lookup', async () => {
+  const { router, session } = createRouter({
+    similar: [
+      { artist: 'Amy Winehouse', track: 'Rehab', match: 1 },
+      { artist: 'Duffy', track: 'Mercy', match: 0.9 },
+    ],
+    resolve: (query) => [{ title: query.split(' - ')[1], artist: query.split(' - ')[0], duration: '3:30', source: 'deezer' }],
+    slowQueries: ['Amy Winehouse - Rehab'],
+    slowDelayMs: 200,
+  });
+
+  router.lastPlayedTracks.set('session-1', AMY);
+  assert.equal(await router._tryAutoplay(session as never), 'Rehab');
 });
 
 test('autoplay does not suggest the track that just played', async () => {

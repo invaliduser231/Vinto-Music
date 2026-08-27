@@ -31,6 +31,7 @@ import {
 import type { BivariantCallback, CommandDefinition, MessagePayload, ReplyOptions, LoggerLike } from '../types/core.ts';
 import type { LastFmBundle } from './commands/helpers/types.ts';
 import { toLastFmTrack, trackIdentity } from '../integrations/lastfm/trackMetadata.ts';
+import { evaluateMirrorCandidate, normalizeMirrorText } from '../player/musicPlayer/mirrorMatch.ts';
 
 type RouterContextOptions = {
   prefix?: string;
@@ -193,7 +194,7 @@ type SearchReactionState = {
 };
 
 const AUTOPLAY_RESOLVE_CANDIDATES = 8;
-const AUTOPLAY_RESOLVE_TIMEOUT_MS = 8000;
+const AUTOPLAY_RESOLVE_TIMEOUT_MS = 3000;
 const DEFERRED_TRACK_START_MESSAGE_GRACE_MS = 1200;
 
 function delay(ms: number) {
@@ -805,6 +806,30 @@ export class CommandRouter {
     return null;
   }
 
+  _verifyAutoplayMatch(candidate: { artist: string; track: string }, tracks: unknown): unknown | null {
+    const list = Array.isArray(tracks) ? tracks : [];
+    const wantedArtist = normalizeMirrorText(String(candidate.artist).split(/[,;&/]| x | vs /i)[0] ?? '');
+
+    for (const track of list) {
+      if (!track) continue;
+
+      const evaluation = evaluateMirrorCandidate(
+        { title: candidate.track, artist: candidate.artist },
+        track as Record<string, unknown>,
+      );
+      if (evaluation.confidence === 'reject') continue;
+
+      const foundArtist = normalizeMirrorText((track as { artist?: unknown }).artist);
+      if (wantedArtist && foundArtist && !foundArtist.includes(wantedArtist) && !wantedArtist.includes(foundArtist)) {
+        continue;
+      }
+
+      return track;
+    }
+
+    return null;
+  }
+
   async _tryAutoplay(session: SessionLookup | null | undefined): Promise<string | null> {
     const client = this.lastfm?.client;
     if (!client) return null;
@@ -837,39 +862,41 @@ export class CommandRouter {
     );
     recent.add(trackIdentity(meta));
 
-    const queries = similar
+    const picks = similar
       .filter((candidate) => !recent.has(trackIdentity({ artist: candidate.artist, track: candidate.track })))
-      .slice(0, AUTOPLAY_RESOLVE_CANDIDATES)
-      .map((candidate) => `${candidate.artist} - ${candidate.track}`);
+      .slice(0, AUTOPLAY_RESOLVE_CANDIDATES);
+    const queries = picks.map((candidate) => `${candidate.artist} - ${candidate.track}`);
     if (!queries.length) {
       return this._skipAutoplay(session, 'every suggestion played recently', { similar: similar.length });
     }
 
     const previewTracks = player.previewTracks.bind(player);
     const startedAt = Date.now();
-    const pending = queries.map((query) => Promise.race([
-      previewTracks(query, { requestedBy: null, limit: 1 })
-        .then((tracks) => (Array.isArray(tracks) ? tracks[0] ?? null : null)),
-      delay(AUTOPLAY_RESOLVE_TIMEOUT_MS).then(() => null),
-    ]).catch(() => null));
+    const matches: Array<unknown | null> = new Array(picks.length).fill(null);
+    const lookups = picks.map((pick, index) => previewTracks(queries[index] as string, { requestedBy: null, limit: 3 })
+      .then((tracks) => {
+        matches[index] = this._verifyAutoplayMatch(pick, tracks);
+      })
+      .catch(() => undefined));
 
-    const winner = await Promise.any(pending.map((lookup, index) => lookup.then((track) => {
-      if (!track) throw new Error('unresolved');
-      return { track, index };
-    }))).catch(() => null);
+    await Promise.race([Promise.all(lookups), delay(AUTOPLAY_RESOLVE_TIMEOUT_MS)]);
 
-    if (winner) {
-      const added = player.enqueueResolvedTracks([winner.track], { dedupe: false });
-      if (added?.length) {
-        if (!player.playing) await player.play().catch(() => null);
-        this.logger?.info?.('Autoplay queued a Last.fm recommendation', {
-          guildId: session?.guildId ?? null,
-          query: queries[winner.index],
-          candidates: queries.length,
-          resolveMs: Date.now() - startedAt,
-        });
-        return String((added[0] as { title?: unknown })?.title ?? queries[winner.index]);
-      }
+    for (let index = 0; index < matches.length; index += 1) {
+      const match = matches[index];
+      if (!match) continue;
+
+      const added = player.enqueueResolvedTracks([match], { dedupe: false });
+      if (!added?.length) continue;
+
+      if (!player.playing) await player.play().catch(() => null);
+      this.logger?.info?.('Autoplay queued a Last.fm recommendation', {
+        guildId: session?.guildId ?? null,
+        query: queries[index],
+        rank: index + 1,
+        candidates: queries.length,
+        resolveMs: Date.now() - startedAt,
+      });
+      return String((added[0] as { title?: unknown })?.title ?? queries[index]);
     }
 
     return this._skipAutoplay(session, 'no suggestion could be resolved', {
