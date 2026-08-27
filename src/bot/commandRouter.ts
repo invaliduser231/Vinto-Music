@@ -192,7 +192,7 @@ type SearchReactionState = {
   expiresAt: number;
 };
 
-const AUTOPLAY_RESOLVE_CANDIDATES = 4;
+const AUTOPLAY_RESOLVE_CANDIDATES = 8;
 const DEFERRED_TRACK_START_MESSAGE_GRACE_MS = 1200;
 
 function delay(ms: number) {
@@ -795,20 +795,38 @@ export class CommandRouter {
     return eventT('lastfm.nowPlayingFooter', { count });
   }
 
+  _skipAutoplay(session: SessionLookup | null | undefined, reason: string, context: Record<string, unknown> = {}): null {
+    this.logger?.debug?.('Autoplay found nothing to queue', {
+      guildId: session?.guildId ?? null,
+      reason,
+      ...context,
+    });
+    return null;
+  }
+
   async _tryAutoplay(session: SessionLookup | null | undefined): Promise<string | null> {
     const client = this.lastfm?.client;
-    if (!client || session?.settings?.autoplayEnabled !== true) return null;
+    if (!client) return null;
+    if (session?.settings?.autoplayEnabled !== true) return null;
 
     const sessionId = String(session?.sessionId ?? '').trim();
     const previous = sessionId ? this.lastPlayedTracks.get(sessionId) : null;
     const meta = toLastFmTrack(previous as never, { minDurationSec: 1 });
-    if (!meta) return null;
+    if (!meta) {
+      return this._skipAutoplay(session, 'no usable previous track', {
+        title: String((previous as { title?: unknown } | null)?.title ?? '').trim() || null,
+      });
+    }
 
     const player = session?.player;
-    if (!player?.previewTracks || !player.enqueueResolvedTracks || !player.play) return null;
+    if (!player?.previewTracks || !player.enqueueResolvedTracks || !player.play) {
+      return this._skipAutoplay(session, 'player cannot queue');
+    }
 
     const similar = await client.trackGetSimilar(meta.artist, meta.track, 25).catch(() => []);
-    if (!similar.length) return null;
+    if (!similar.length) {
+      return this._skipAutoplay(session, 'last.fm knows no similar tracks', { seed: `${meta.artist} - ${meta.track}` });
+    }
 
     const recent = new Set(
       (Array.isArray(player.historyTracks) ? player.historyTracks : [])
@@ -822,7 +840,9 @@ export class CommandRouter {
       .filter((candidate) => !recent.has(trackIdentity({ artist: candidate.artist, track: candidate.track })))
       .slice(0, AUTOPLAY_RESOLVE_CANDIDATES)
       .map((candidate) => `${candidate.artist} - ${candidate.track}`);
-    if (!queries.length) return null;
+    if (!queries.length) {
+      return this._skipAutoplay(session, 'every suggestion played recently', { similar: similar.length });
+    }
 
     const previewTracks = player.previewTracks;
     const startedAt = Date.now();
@@ -847,7 +867,10 @@ export class CommandRouter {
       return String((added[0] as { title?: unknown })?.title ?? queries[index]);
     }
 
-    return null;
+    return this._skipAutoplay(session, 'no suggestion could be resolved', {
+      queries,
+      resolveMs: Date.now() - startedAt,
+    });
   }
 
   _resolveEventChannelId(session: SessionLookup | null | undefined) {
