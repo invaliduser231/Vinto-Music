@@ -314,8 +314,8 @@ test('the leaderboard lists linked accounts by scrobble count', async () => {
 
   assert.equal(paginated.length, 1);
   const rendered = JSON.stringify(paginated[0]);
-  assert.match(rendered, /1\. listener \(30\)/);
-  assert.match(rendered, /2\. other \(10\)/);
+  assert.match(rendered, /1\. \*\*listener\*\* `30`/);
+  assert.match(rendered, /2\. \*\*other\*\* `10`/);
 });
 
 test('fmplay queues the last scrobbled track', async () => {
@@ -377,7 +377,7 @@ test('autoplay reports and changes the guild setting', async () => {
   });
 
   await execute(show.context);
-  assert.ok(show.replyCalls[0]?.startsWith('info:Autoplay is off.'));
+  assert.ok(show.replyCalls[0]?.startsWith('info:Autoplay is **off**.'));
   assert.equal(patches.length, 0);
 });
 
@@ -392,5 +392,5 @@ test('love marks the playing track and unlove clears it', async () => {
   await resolveExecute('unlove')(unlove.context);
 
   assert.deepEqual(shared.loveCalls, ['love:M83 - Midnight City', 'unlove:M83 - Midnight City']);
-  assert.ok(love.replyCalls[0]?.startsWith('success:Loved M83 - Midnight City'));
+  assert.ok(love.replyCalls[0]?.startsWith('success:Loved **M83 - Midnight City**.'));
 });

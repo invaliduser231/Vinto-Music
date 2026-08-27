@@ -394,7 +394,7 @@ export class ScrobbleService {
 
     const t = await this._translator(playback.guildId);
     const text = hitCount
-      ? t('lastfm.milestoneScrobbles', { user: `<@${userId}>`, count: scrobbleCount })
+      ? t('lastfm.milestoneScrobbles', { user: `<@${userId}>`, count: scrobbleCount.toLocaleString(t.locale) })
       : t('lastfm.milestoneStreak', { user: `<@${userId}>`, count: streakDays });
 
     await this._say(playback, text);
