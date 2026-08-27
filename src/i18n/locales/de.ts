@@ -721,15 +721,15 @@ export const de: Catalog = {
     other: '{count} Tage',
   },
 
-  'lastfm.profileTitle': '**{user}** auf Last.fm',
+  'lastfm.profileTitle': '{user} auf Last.fm',
   'lastfm.fieldScrobbles': 'Scrobbles',
   'lastfm.fieldCountry': 'Land',
   'lastfm.fieldSince': 'Dabei seit',
   'lastfm.fieldTopArtists': 'Top-Künstler',
 
-  'lastfm.recentTitle': 'Letzte Scrobbles: **{user}**',
+  'lastfm.recentTitle': 'Letzte Scrobbles: {user}',
   'lastfm.nowPlayingTag': 'läuft gerade',
-  'lastfm.noRecent': '**{user}** hat keine Scrobbles.',
+  'lastfm.noRecent': '{user} hat keine Scrobbles.',
   'lastfm.justNow': 'gerade eben',
   'lastfm.minutesAgo': {
     one: 'vor {count} Minute',
@@ -744,8 +744,8 @@ export const de: Catalog = {
     other: 'vor {count} Tagen',
   },
 
-  'lastfm.topTitle': 'Top {kind}: **{user}**, {period}',
-  'lastfm.noTop': '**{user}** hat in dieser Auswertung nichts.',
+  'lastfm.topTitle': 'Top {kind}: {user}, {period}',
+  'lastfm.noTop': '{user} hat in dieser Auswertung nichts.',
   'lastfm.kindArtists': 'Künstler',
   'lastfm.kindTracks': 'Titel',
   'lastfm.kindAlbums': 'Alben',
@@ -758,14 +758,14 @@ export const de: Catalog = {
 
   'lastfm.compareUsage': 'Verwendung: `{prefix}lastfm compare <@user>`',
   'lastfm.compareSelf': 'Wähle jemand anderen.',
-  'lastfm.compareTitle': '**{left}** und **{right}**',
+  'lastfm.compareTitle': '{left} und {right}',
   'lastfm.fieldMatch': 'Übereinstimmung',
   'lastfm.fieldShared': 'Gemeinsame Künstler',
   'lastfm.fieldSharedArtists': 'Gemeinsam',
 
   'lastfm.blendNobody': 'Niemand hier hat ein Last.fm-Konto verknüpft.',
   'lastfm.blendEmpty': 'Aus diesen Profilen ließ sich kein Mix bauen.',
-  'lastfm.blendQueued': '**{count}** Titel aus **{listeners}** Profilen eingereiht.',
+  'lastfm.blendQueued': '**{count}** Titel aus {listeners} Profilen eingereiht.',
   'lastfm.fieldBlendedFrom': 'Gemischt aus',
 
   'lastfm.leaderboardGlobal': 'Top-Scrobbler',
@@ -774,7 +774,7 @@ export const de: Catalog = {
   'lastfm.leaderboardEmpty': 'Noch keine Scrobbles gezählt.',
   'lastfm.fieldRanking': 'Rangliste',
 
-  'lastfm.queued': '{track} eingereiht, von **{user}**.',
+  'lastfm.queued': '{track} eingereiht, von {user}.',
   'lastfm.queueFailed': 'Keine abspielbare Version für **{track}** gefunden.',
   'lastfm.trackNotSupported': 'Kein Künstler und Titel für Last.fm.',
   'lastfm.loved': '**{track}** als Lieblingslied markiert.',
@@ -786,8 +786,8 @@ export const de: Catalog = {
   'lastfm.milestoneScrobbles': '{user} hat **{count}** Scrobbles geknackt.',
   'lastfm.milestoneStreak': '{user} ist bei **{count}** Tagen am Stück.',
 
-  'autoplay.current': 'Autoplay ist **{state}**.',
-  'autoplay.set': 'Autoplay **{state}**.',
+  'autoplay.current': 'Autoplay ist derzeit **{state}**.',
+  'autoplay.set': 'Autoplay ist jetzt **{state}**.',
   'autoplay.queued': 'Autoplay hat **{track}** nachgelegt.',
 
   'cmd.lastfm.description': 'Last.fm-Konto verknüpfen und eigene Hördaten ansehen.',

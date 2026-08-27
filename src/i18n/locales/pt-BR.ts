@@ -721,15 +721,15 @@ export const ptBR: Catalog = {
     other: '{count} dias',
   },
 
-  'lastfm.profileTitle': '**{user}** no Last.fm',
+  'lastfm.profileTitle': '{user} no Last.fm',
   'lastfm.fieldScrobbles': 'Envios',
   'lastfm.fieldCountry': 'País',
   'lastfm.fieldSince': 'Membro desde',
   'lastfm.fieldTopArtists': 'Principais artistas',
 
-  'lastfm.recentTitle': 'Envios recentes: **{user}**',
+  'lastfm.recentTitle': 'Envios recentes: {user}',
   'lastfm.nowPlayingTag': 'tocando agora',
-  'lastfm.noRecent': '**{user}** não tem envios.',
+  'lastfm.noRecent': '{user} não tem envios.',
   'lastfm.justNow': 'agora mesmo',
   'lastfm.minutesAgo': {
     one: 'há {count} minuto',
@@ -744,8 +744,8 @@ export const ptBR: Catalog = {
     other: 'há {count} dias',
   },
 
-  'lastfm.topTitle': 'Top {kind}: **{user}**, {period}',
-  'lastfm.noTop': '**{user}** não tem nada nessa lista.',
+  'lastfm.topTitle': 'Top {kind}: {user}, {period}',
+  'lastfm.noTop': '{user} não tem nada nessa lista.',
   'lastfm.kindArtists': 'artistas',
   'lastfm.kindTracks': 'faixas',
   'lastfm.kindAlbums': 'álbuns',
@@ -758,14 +758,14 @@ export const ptBR: Catalog = {
 
   'lastfm.compareUsage': 'Uso: `{prefix}lastfm compare <@user>`',
   'lastfm.compareSelf': 'Escolha outra pessoa.',
-  'lastfm.compareTitle': '**{left}** e **{right}**',
+  'lastfm.compareTitle': '{left} e {right}',
   'lastfm.fieldMatch': 'Afinidade',
   'lastfm.fieldShared': 'Artistas em comum',
   'lastfm.fieldSharedArtists': 'Em comum',
 
   'lastfm.blendNobody': 'Ninguém aqui vinculou uma conta do Last.fm.',
   'lastfm.blendEmpty': 'Não deu para montar uma mistura com esses perfis.',
-  'lastfm.blendQueued': '**{count}** faixas de **{listeners}** perfis na fila.',
+  'lastfm.blendQueued': '**{count}** faixas de {listeners} perfis na fila.',
   'lastfm.fieldBlendedFrom': 'Misturado de',
 
   'lastfm.leaderboardGlobal': 'Top de envios',
@@ -774,7 +774,7 @@ export const ptBR: Catalog = {
   'lastfm.leaderboardEmpty': 'Nenhum envio contabilizado ainda.',
   'lastfm.fieldRanking': 'Classificação',
 
-  'lastfm.queued': '{track} na fila, de **{user}**.',
+  'lastfm.queued': '{track} na fila, de {user}.',
   'lastfm.queueFailed': 'Nenhuma versão tocável encontrada para **{track}**.',
   'lastfm.trackNotSupported': 'Sem artista e título para o Last.fm.',
   'lastfm.loved': '**{track}** marcada como favorita.',
@@ -787,7 +787,7 @@ export const ptBR: Catalog = {
   'lastfm.milestoneStreak': '{user} está em **{count}** dias seguidos.',
 
   'autoplay.current': 'A reprodução automática está **{state}**.',
-  'autoplay.set': 'Reprodução automática **{state}**.',
+  'autoplay.set': 'A reprodução automática agora está **{state}**.',
   'autoplay.queued': 'A reprodução automática adicionou **{track}**.',
 
   'cmd.lastfm.description': 'Vincular sua conta do Last.fm e ver seus dados de audição.',

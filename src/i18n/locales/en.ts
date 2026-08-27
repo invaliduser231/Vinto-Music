@@ -719,15 +719,15 @@ export const en = {
     other: '{count} days',
   },
 
-  'lastfm.profileTitle': '**{user}** on Last.fm',
+  'lastfm.profileTitle': '{user} on Last.fm',
   'lastfm.fieldScrobbles': 'Scrobbles',
   'lastfm.fieldCountry': 'Country',
   'lastfm.fieldSince': 'Member since',
   'lastfm.fieldTopArtists': 'Top artists',
 
-  'lastfm.recentTitle': 'Recent scrobbles: **{user}**',
+  'lastfm.recentTitle': 'Recent scrobbles: {user}',
   'lastfm.nowPlayingTag': 'playing now',
-  'lastfm.noRecent': '**{user}** has no scrobbles.',
+  'lastfm.noRecent': '{user} has no scrobbles.',
   'lastfm.justNow': 'just now',
   'lastfm.minutesAgo': {
     one: '{count} minute ago',
@@ -742,8 +742,8 @@ export const en = {
     other: '{count} days ago',
   },
 
-  'lastfm.topTitle': 'Top {kind}: **{user}**, {period}',
-  'lastfm.noTop': '**{user}** has nothing in that chart.',
+  'lastfm.topTitle': 'Top {kind}: {user}, {period}',
+  'lastfm.noTop': '{user} has nothing in that chart.',
   'lastfm.kindArtists': 'artists',
   'lastfm.kindTracks': 'tracks',
   'lastfm.kindAlbums': 'albums',
@@ -756,14 +756,14 @@ export const en = {
 
   'lastfm.compareUsage': 'Usage: `{prefix}lastfm compare <@user>`',
   'lastfm.compareSelf': 'Pick someone else.',
-  'lastfm.compareTitle': '**{left}** and **{right}**',
+  'lastfm.compareTitle': '{left} and {right}',
   'lastfm.fieldMatch': 'Match',
   'lastfm.fieldShared': 'Shared artists',
   'lastfm.fieldSharedArtists': 'In common',
 
   'lastfm.blendNobody': 'Nobody here has a Last.fm account linked.',
   'lastfm.blendEmpty': 'No mix could be built from those profiles.',
-  'lastfm.blendQueued': 'Queued **{count}** tracks from **{listeners}** profiles.',
+  'lastfm.blendQueued': 'Queued **{count}** tracks from {listeners} profiles.',
   'lastfm.fieldBlendedFrom': 'Mixed from',
 
   'lastfm.leaderboardGlobal': 'Top scrobblers',
@@ -772,7 +772,7 @@ export const en = {
   'lastfm.leaderboardEmpty': 'No scrobbles counted yet.',
   'lastfm.fieldRanking': 'Ranking',
 
-  'lastfm.queued': 'Queued {track}, from **{user}**.',
+  'lastfm.queued': 'Queued {track}, from {user}.',
   'lastfm.queueFailed': 'No playable version found for **{track}**.',
   'lastfm.trackNotSupported': 'No artist and title for Last.fm.',
   'lastfm.loved': 'Loved **{track}**.',
@@ -784,8 +784,8 @@ export const en = {
   'lastfm.milestoneScrobbles': '{user} passed **{count}** scrobbles.',
   'lastfm.milestoneStreak': '{user} is on a **{count}** day streak.',
 
-  'autoplay.current': 'Autoplay is **{state}**.',
-  'autoplay.set': 'Autoplay **{state}**.',
+  'autoplay.current': 'Autoplay is currently **{state}**.',
+  'autoplay.set': 'Autoplay is now **{state}**.',
   'autoplay.queued': 'Autoplay added **{track}**.',
 
   'cmd.lastfm.description': 'Link your Last.fm account and browse your listening data.',

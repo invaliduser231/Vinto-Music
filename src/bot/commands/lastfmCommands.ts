@@ -134,7 +134,7 @@ function formatRankedList(entries: LastFmRankedEntry[], t: CommandContextLike['t
   return entries
     .map((entry, index) => {
       const label = entry.artist ? `${entry.artist} - ${entry.name}` : entry.name;
-      return `${index + 1}. **${label}** ${formatCount(entry.playcount, t)}`;
+      return `${index + 1}. ${label} ${formatCount(entry.playcount, t)}`;
     })
     .join('\n')
     .slice(0, 1000);
@@ -408,7 +408,7 @@ async function handleStatus(ctx: CommandContextLike, lastfm: LastFmBundle): Prom
   const fields: EmbedField[] = [
     {
       name: ctx.t('lastfm.fieldScrobbling'),
-      value: `**${ctx.t(account.scrobblingEnabled ? 'common.on' : 'common.off')}**`,
+      value: ctx.t(account.scrobblingEnabled ? 'common.on' : 'common.off'),
       inline: true,
     },
     { name: ctx.t('lastfm.fieldViaBot'), value: formatCount(account.scrobbleCount, ctx.t), inline: true },
@@ -469,7 +469,7 @@ async function handleRecent(ctx: CommandContextLike, lastfm: LastFmBundle): Prom
 
   const lines = recent.map((entry, index) => {
     const when = entry.nowPlaying ? ctx.t('lastfm.nowPlayingTag') : formatRelative(entry.playedAt, ctx.t);
-    return `${index + 1}. **${entry.artist} - ${entry.track}** (${when})`;
+    return `${index + 1}. ${entry.artist} - ${entry.track} (${when})`;
   });
 
   await ctx.reply.info(ctx.t('lastfm.recentTitle', { user: username }), [
@@ -635,7 +635,7 @@ async function handleLeaderboard(ctx: CommandContextLike, lastfm: LastFmBundle):
     return;
   }
 
-  const lines = top.map((entry, index) => `${index + 1}. **${entry.username}** ${formatCount(entry.scrobbleCount, ctx.t)}`);
+  const lines = top.map((entry, index) => `${index + 1}. ${entry.username} ${formatCount(entry.scrobbleCount, ctx.t)}`);
   const title = serverScope ? ctx.t('lastfm.leaderboardServer') : ctx.t('lastfm.leaderboardGlobal');
 
   await ctx.sendPaginated([
