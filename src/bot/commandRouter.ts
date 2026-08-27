@@ -844,7 +844,7 @@ export class CommandRouter {
       return this._skipAutoplay(session, 'every suggestion played recently', { similar: similar.length });
     }
 
-    const previewTracks = player.previewTracks;
+    const previewTracks = player.previewTracks.bind(player);
     const startedAt = Date.now();
     const resolved = await Promise.all(queries.map((query) => previewTracks(query, { requestedBy: null, limit: 1 })
       .then((tracks) => (Array.isArray(tracks) ? tracks[0] ?? null : null))

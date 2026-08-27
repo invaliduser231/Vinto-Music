@@ -17,7 +17,11 @@ function createRouter(options: {
   const player = {
     playing: false,
     historyTracks: options.history ?? [],
-    async previewTracks(query: string) {
+    searchBackend: 'deezer',
+    async previewTracks(this: { searchBackend: string }, query: string) {
+      if (this?.searchBackend !== 'deezer') {
+        throw new TypeError('previewTracks lost its player binding');
+      }
       previewCalls.push({ query, startedAt: Date.now() });
       if (options.previewDelayMs) {
         await new Promise((resolve) => setTimeout(resolve, options.previewDelayMs));
