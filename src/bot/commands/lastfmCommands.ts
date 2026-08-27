@@ -14,7 +14,7 @@ import {
 } from './commandHelpers.ts';
 import { buildInfoPayload } from './responseUtils.ts';
 import { LastFmApiError } from '../../integrations/lastfm/LastFmClient.ts';
-import { toLastFmTrack } from '../../integrations/lastfm/trackMetadata.ts';
+import { toLastFmTrack, trackIdentity } from '../../integrations/lastfm/trackMetadata.ts';
 import type { LastFmPeriod, LastFmRankedEntry } from '../../integrations/lastfm/LastFmClient.ts';
 import type { CommandContextLike, LastFmBundle, SessionLike, TrackDataLike } from './helpers/types.ts';
 import type { EmbedField } from '../../types/core.ts';
@@ -25,6 +25,7 @@ const PENDING_TOKEN_PRUNE_INTERVAL_MS = 5 * 60 * 1000;
 const BLEND_TRACKS_PER_USER = 3;
 const BLEND_MAX_TRACKS = 24;
 const COMPARE_ARTIST_SAMPLE = 100;
+const RECENT_LOOKBACK = 10;
 
 type LastFmCommandContext = CommandContextLike & {
   sessions: CommandContextLike['sessions'] & {
@@ -122,6 +123,17 @@ async function resolveLinkedUsername(ctx: CommandContextLike, targetUserId: stri
     );
   }
   return account.username;
+}
+
+function currentTrackIdentity(ctx: CommandContextLike): string | null {
+  const session = ctx.sessions.get(ctx.guildId, {
+    voiceChannelId: ctx.activeVoiceChannelId,
+    textChannelId: ctx.channelId,
+  });
+
+  const track = session?.player?.displayTrack ?? session?.player?.currentTrack ?? null;
+  const meta = toLastFmTrack(track as never, { minDurationSec: 1 });
+  return meta ? trackIdentity(meta) : null;
 }
 
 function formatCount(value: number, t: CommandContextLike['t']): string {
@@ -290,8 +302,9 @@ export function registerLastFmCommands(registry: RegistryLike) {
       if (!targetUserId) throw new ValidationError(ctx.t('errors.userIdUnresolved'));
 
       const username = await resolveLinkedUsername(ctx, targetUserId);
-      const recent = await withLastFmErrors(ctx, () => lastfm.client.userGetRecentTracks(username, 1));
-      const entry = recent[0];
+      const recent = await withLastFmErrors(ctx, () => lastfm.client.userGetRecentTracks(username, RECENT_LOOKBACK));
+      const playing = currentTrackIdentity(ctx);
+      const entry = recent.find((candidate) => trackIdentity(candidate) !== playing);
       if (!entry) {
         await ctx.reply.warning(ctx.t('lastfm.noRecent', { user: username }));
         return;

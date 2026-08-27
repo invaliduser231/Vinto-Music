@@ -974,7 +974,6 @@ export class MusicPlayer extends EventEmitter {
             error: nodeLinkErr instanceof Error ? nodeLinkErr.message : String(nodeLinkErr),
           });
 
-          // The local pipeline does not pre-scale audio, so the delegated volume has to go back to the processor.
           this.streamAppliedVolumePercent = 100;
           this._cleanupProcesses();
         }

@@ -5,6 +5,7 @@ import { registerCommands } from '../src/bot/commands/index.ts';
 import { CommandRegistry } from '../src/bot/commandRegistry.ts';
 import { createTranslator } from '../src/i18n/index.ts';
 import { ValidationError } from '../src/core/errors.ts';
+import type { LastFmRecentTrack } from '../src/integrations/lastfm/LastFmClient.ts';
 
 type Execute = NonNullable<NonNullable<ReturnType<CommandRegistry['resolve']>>['execute']>;
 
@@ -41,10 +42,10 @@ function createLastFm(overrides: Record<string, unknown> = {}) {
     buildAuthUrl(token: string) {
       return `https://www.last.fm/api/auth/?api_key=key&token=${token}`;
     },
-    async userGetRecentTracks() {
+    async userGetRecentTracks(): Promise<LastFmRecentTrack[]> {
       return [{
-        artist: 'M83',
-        track: 'Midnight City',
+        artist: 'Nina Chuba',
+        track: 'Glatteis',
         album: null,
         url: null,
         imageUrl: null,
@@ -344,8 +345,24 @@ test('fmplay queues the last scrobbled track', async () => {
   await execute(context);
 
   assert.equal(enqueued.length, 1);
-  assert.equal((enqueued[0] as { title?: string }).title, 'M83 - Midnight City');
+  assert.equal((enqueued[0] as { title?: string }).title, 'Nina Chuba - Glatteis');
   assert.ok(replyCalls.some((entry) => entry.startsWith('success:')));
+});
+
+test('fmplay skips the track the bot is already playing', async () => {
+  const execute = resolveExecute('fmplay');
+  const shared = createLastFm();
+  shared.linked.set(AUTHOR_ID, 'listener');
+  shared.client.userGetRecentTracks = async (): Promise<LastFmRecentTrack[]> => [
+    { artist: 'M83', track: 'Midnight City', album: null, url: null, imageUrl: null, nowPlaying: true, playedAt: null },
+    { artist: 'Nina Chuba', track: 'Glatteis', album: null, url: null, imageUrl: null, nowPlaying: false, playedAt: new Date() },
+  ];
+
+  const { context, enqueued } = createContext({ lastfm: shared });
+  await execute(context);
+
+  assert.equal(enqueued.length, 1);
+  assert.equal((enqueued[0] as { title?: string }).title, 'Nina Chuba - Glatteis', 'queued the previous scrobble, not the running track');
 });
 
 test('fmplay needs a linked account', async () => {
