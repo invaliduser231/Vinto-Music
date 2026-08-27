@@ -277,6 +277,23 @@ test('connect hands out a link first and finishes on the second run', async () =
   assert.ok(second.replyCalls.some((entry) => entry.startsWith('success:') && entry.includes('listener')));
 });
 
+test('the overview leads with the link state instead of a filler line', async () => {
+  const execute = resolveExecute('lastfm');
+
+  const fresh = createContext({ args: [] });
+  await execute(fresh.context);
+  assert.ok(fresh.replyCalls[0]?.startsWith('info:No Last.fm account linked'));
+
+  const shared = createLastFm();
+  shared.linked.set(AUTHOR_ID, 'listener');
+  const linked = createContext({ args: [], lastfm: shared });
+  await execute(linked.context);
+  assert.ok(linked.replyCalls[0]?.startsWith('info:Connected as **listener**.'));
+
+  assert.ok(linked.replyCalls[0]?.includes('lastfm connect'));
+  assert.ok(linked.replyCalls[0]?.includes('lastfm blend'));
+});
+
 test('status explains how to link when nothing is connected', async () => {
   const execute = resolveExecute('lastfm');
   const { context, replyCalls } = createContext({ args: ['status'] });

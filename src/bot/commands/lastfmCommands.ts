@@ -211,11 +211,7 @@ export function registerLastFmCommands(registry: RegistryLike) {
       const sub = String(ctx.args[0] ?? '').trim().toLowerCase();
 
       if (!sub || sub === 'help') {
-        await ctx.reply.info(ctx.t('lastfm.overview'), [
-          { name: ctx.t('lastfm.overviewAccount'), value: ctx.t('lastfm.overviewAccountValue', { prefix: ctx.prefix }) },
-          { name: ctx.t('lastfm.overviewStats'), value: ctx.t('lastfm.overviewStatsValue', { prefix: ctx.prefix }) },
-          { name: ctx.t('lastfm.overviewSocial'), value: ctx.t('lastfm.overviewSocialValue', { prefix: ctx.prefix }) },
-        ]);
+        await handleOverview(ctx, lastfm);
         return;
       }
 
@@ -362,6 +358,19 @@ export function registerLastFmCommands(registry: RegistryLike) {
       await ctx.reply.success(ctx.t('autoplay.set', { state: ctx.t(value ? 'common.on' : 'common.off') }));
     },
   }));
+}
+
+async function handleOverview(ctx: CommandContextLike, lastfm: LastFmBundle): Promise<void> {
+  const account = await lastfm.accounts.get(ctx.authorId);
+  const state = account
+    ? ctx.t('lastfm.statusTitle', { user: account.username })
+    : ctx.t('lastfm.notLinkedSelf', { prefix: ctx.prefix });
+
+  await ctx.reply.info(state, [
+    { name: ctx.t('lastfm.overviewAccount'), value: ctx.t('lastfm.overviewAccountValue', { prefix: ctx.prefix }) },
+    { name: ctx.t('lastfm.overviewStats'), value: ctx.t('lastfm.overviewStatsValue', { prefix: ctx.prefix }) },
+    { name: ctx.t('lastfm.overviewSocial'), value: ctx.t('lastfm.overviewSocialValue', { prefix: ctx.prefix }) },
+  ]);
 }
 
 async function handleConnect(ctx: CommandContextLike, lastfm: LastFmBundle): Promise<void> {

@@ -690,7 +690,6 @@ export const en = {
   'lastfm.sessionInvalid': 'Session expired. Use `{prefix}lastfm connect`.',
   'lastfm.apiError': 'Last.fm returned an error: `{error}`',
 
-  'lastfm.overview': 'Your Last.fm account and listening data.',
   'lastfm.overviewAccount': 'Account',
   'lastfm.overviewAccountValue': '`{prefix}lastfm connect`, `{prefix}lastfm status`, `{prefix}lastfm on|off`, `{prefix}lastfm disconnect`',
   'lastfm.overviewStats': 'Stats',
@@ -698,7 +697,7 @@ export const en = {
   'lastfm.overviewSocial': 'Together',
   'lastfm.overviewSocialValue': '`{prefix}lastfm compare @user`, `{prefix}lastfm blend`, `{prefix}lastfm leaderboard [server|global]`, `{prefix}fmplay`, `{prefix}love`',
 
-  'lastfm.connectStart': 'Link your Last.fm account.',
+  'lastfm.connectStart': 'Link your Last.fm account',
   'lastfm.connectStep1': '1. Open and allow access',
   'lastfm.connectStep2': '2. Run again to finish',
   'lastfm.connectFooter': 'Only for you. Expires in 15 minutes.',

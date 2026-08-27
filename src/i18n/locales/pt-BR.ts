@@ -692,7 +692,6 @@ export const ptBR: Catalog = {
   'lastfm.sessionInvalid': 'Sessão expirada. Use `{prefix}lastfm connect`.',
   'lastfm.apiError': 'O Last.fm retornou um erro: `{error}`',
 
-  'lastfm.overview': 'Sua conta do Last.fm e seus dados de audição.',
   'lastfm.overviewAccount': 'Conta',
   'lastfm.overviewAccountValue': '`{prefix}lastfm connect`, `{prefix}lastfm status`, `{prefix}lastfm on|off`, `{prefix}lastfm disconnect`',
   'lastfm.overviewStats': 'Estatísticas',
@@ -700,7 +699,7 @@ export const ptBR: Catalog = {
   'lastfm.overviewSocial': 'Em grupo',
   'lastfm.overviewSocialValue': '`{prefix}lastfm compare @user`, `{prefix}lastfm blend`, `{prefix}lastfm leaderboard [server|global]`, `{prefix}fmplay`, `{prefix}love`',
 
-  'lastfm.connectStart': 'Vincular sua conta do Last.fm.',
+  'lastfm.connectStart': 'Vincular sua conta do Last.fm',
   'lastfm.connectStep1': '1. Abra e permita o acesso',
   'lastfm.connectStep2': '2. Execute de novo para concluir',
   'lastfm.connectFooter': 'Só para você. Expira em 15 minutos.',

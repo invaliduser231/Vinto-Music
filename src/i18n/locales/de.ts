@@ -692,7 +692,6 @@ export const de: Catalog = {
   'lastfm.sessionInvalid': 'Sitzung abgelaufen. Nutze `{prefix}lastfm connect`.',
   'lastfm.apiError': 'Last.fm meldet einen Fehler: `{error}`',
 
-  'lastfm.overview': 'Dein Last.fm-Konto und deine Hördaten.',
   'lastfm.overviewAccount': 'Konto',
   'lastfm.overviewAccountValue': '`{prefix}lastfm connect`, `{prefix}lastfm status`, `{prefix}lastfm on|off`, `{prefix}lastfm disconnect`',
   'lastfm.overviewStats': 'Statistik',
@@ -700,7 +699,7 @@ export const de: Catalog = {
   'lastfm.overviewSocial': 'Gemeinsam',
   'lastfm.overviewSocialValue': '`{prefix}lastfm compare @user`, `{prefix}lastfm blend`, `{prefix}lastfm leaderboard [server|global]`, `{prefix}fmplay`, `{prefix}love`',
 
-  'lastfm.connectStart': 'Last.fm-Konto verknüpfen.',
+  'lastfm.connectStart': 'Last.fm-Konto verknüpfen',
   'lastfm.connectStep1': '1. Öffnen und Zugriff erlauben',
   'lastfm.connectStep2': '2. Erneut ausführen zum Abschluss',
   'lastfm.connectFooter': 'Nur für dich. Läuft nach 15 Minuten ab.',
