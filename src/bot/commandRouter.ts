@@ -796,7 +796,7 @@ export class CommandRouter {
   }
 
   _skipAutoplay(session: SessionLookup | null | undefined, reason: string, context: Record<string, unknown> = {}): null {
-    this.logger?.debug?.('Autoplay found nothing to queue', {
+    this.logger?.info?.('Autoplay found nothing to queue', {
       guildId: session?.guildId ?? null,
       reason,
       ...context,
