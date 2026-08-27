@@ -59,7 +59,13 @@ test('translations keep the same placeholders across locales', () => {
 });
 
 test('no translation is left as an untranslated copy of english', () => {
-  const shared = new Set(['language.usage', 'perm.ADMINISTRATOR']);
+  const shared = new Set([
+    'language.usage',
+    'perm.ADMINISTRATOR',
+    'lastfm.overviewAccountValue',
+    'lastfm.overviewStatsValue',
+    'lastfm.overviewSocialValue',
+  ]);
   let identical = 0;
 
   for (const key of Object.keys(en)) {

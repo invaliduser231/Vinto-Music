@@ -163,6 +163,22 @@ Operational note: when NodeLink is enabled, `/healthz` and `/readyz` now include
 | `DEEZER_TRACK_FORMATS` | `MP3_128,MP3_64` | Optional comma-separated Deezer format preference order. Allowed values are `FLAC`, `MP3_320`, `MP3_256`, `MP3_128`, `MP3_64`, `AAC_64`. Invalid entries are ignored. This override is read directly by `MusicPlayer`. |
 | `STRICT_MEDIA_AUTH` | `0` | Treat provider auth/bootstrap failures as fatal. |
 
+## Last.fm
+
+Scrobbling is off until `LASTFM_ENABLED=1` and all three credentials are present. Get an API key and secret at <https://www.last.fm/api/account/create>. Generate the encryption key once with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` and keep it stable, because rotating it makes every stored session key unreadable and forces users to link again.
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `LASTFM_ENABLED` | `0` | Master switch. When off, the Last.fm commands report that the feature is not configured and nothing else changes. |
+| `LASTFM_API_KEY` | empty | Required when enabled. |
+| `LASTFM_API_SECRET` | empty | Required when enabled. Used to sign write calls. |
+| `LASTFM_ENCRYPTION_KEY` | empty | Required when enabled. 32 bytes as hex, base64 or raw. Encrypts stored session keys with AES-256-GCM. |
+| `LASTFM_REQUEST_TIMEOUT_MS` | `10000` | Per-request timeout against the Last.fm API. |
+| `LASTFM_SCROBBLE_MIN_SECONDS` | `30` | Tracks shorter than this are never scrobbled, matching the Last.fm rules. |
+| `LASTFM_AUTOPLAY_DEFAULT_ENABLED` | `0` | Default for the per-guild `autoplay` setting. |
+
+Two collections are created on demand: `user_lastfm_accounts` holds the linked accounts and their encrypted session keys, `lastfm_scrobble_retries` buffers failed submissions and expires them after 14 days.
+
 ## Spotify Token Helper
 
 These are used only by `pnpm spotify:token`.

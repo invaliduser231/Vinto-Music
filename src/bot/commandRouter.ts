@@ -29,6 +29,8 @@ import {
   sendPaginated,
 } from './commandRouterOperations.ts';
 import type { BivariantCallback, CommandDefinition, MessagePayload, ReplyOptions, LoggerLike } from '../types/core.ts';
+import type { LastFmBundle } from './commands/helpers/types.ts';
+import { toLastFmTrack } from '../integrations/lastfm/trackMetadata.ts';
 
 type RouterContextOptions = {
   prefix?: string;
@@ -82,6 +84,7 @@ type SessionLookup = {
     dedupeEnabled?: boolean;
     voteSkipRatio?: number;
     voteSkipMinVotes?: number;
+    autoplayEnabled?: boolean;
   };
   connection?: {
     channelId?: string | null;
@@ -90,6 +93,8 @@ type SessionLookup = {
     playing?: boolean;
     currentTrack?: unknown;
     pendingTracks?: unknown[];
+    historyTracks?: unknown[];
+    previewTracks?: BivariantCallback<[string, { requestedBy?: string | null; limit?: number }], Promise<unknown[]>>;
     getProgressSeconds?: () => number;
     createTrackFromData?: (track: unknown, requestedBy?: string | null) => unknown;
     enqueueResolvedTracks?: (tracks: unknown[], options?: Record<string, unknown>) => unknown[];
@@ -215,6 +220,7 @@ type CommandRouterOptions = {
   errorReporter?: ErrorReporterLike | null;
   commandRateLimiter?: CommandRateLimiter | null;
   voteService?: { hasVoted: (userId: string) => boolean } | null;
+  lastfm?: LastFmBundle | null;
 };
 
 export class CommandRouter {
@@ -237,10 +243,12 @@ export class CommandRouter {
   helpPaginations: Map<string, HelpPaginationState>;
   searchReactionSelections: Map<string, SearchReactionState>;
   nowPlayingMessages: Map<string, { channelId: string; messageId: string }>;
+  lastPlayedTracks: Map<string, Record<string, unknown>>;
   weeklySweepHandle: NodeJS.Timeout | null;
   ephemeralCleanupHandle: NodeJS.Timeout | null;
   commandRateLimiter: CommandRateLimiter;
   voteService: { hasVoted: (userId: string) => boolean } | null;
+  lastfm: LastFmBundle | null;
   responder: ReturnType<typeof makeResponder>;
   registry: CommandRegistry;
   constructor(options: CommandRouterOptions) {
@@ -263,6 +271,7 @@ export class CommandRouter {
     this.helpPaginations = new Map();
     this.searchReactionSelections = new Map();
     this.nowPlayingMessages = new Map();
+    this.lastPlayedTracks = new Map();
     this.weeklySweepHandle = null;
     this.ephemeralCleanupHandle = null;
     const rateLimiterOptions = {
@@ -276,6 +285,7 @@ export class CommandRouter {
     };
     this.commandRateLimiter = options.commandRateLimiter ?? new CommandRateLimiter(rateLimiterOptions);
     this.voteService = options.voteService ?? null;
+    this.lastfm = options.lastfm ?? null;
 
     this.responder = makeResponder(this.rest, this.config.enableEmbeds !== undefined
       ? { enableEmbeds: this.config.enableEmbeds }
@@ -481,6 +491,7 @@ export class CommandRouter {
       voiceStateStore: this.voiceStateStore,
       lyrics: this.lyrics,
       library: this.library,
+      lastfm: this.lastfm,
       permissionService: this.permissionService,
       guildStateCache: this.guildStateCache,
       botUserId: this.botUserId,
@@ -641,7 +652,7 @@ export class CommandRouter {
       }
 
       const eventT = createTranslator(await this._resolveGuildLocale(session?.guildId ?? null));
-      const published = await this._publishNowPlaying(session, track, channelId, voiceChannelTag);
+      const published = await this._publishNowPlaying(session, track, channelId, voiceChannelTag, eventT);
       if (!published) {
         await this._safeReply(
           channelId,
@@ -694,6 +705,23 @@ export class CommandRouter {
         return;
       }
 
+      const autoplayedTitle = await this._tryAutoplay(session);
+      if (autoplayedTitle) {
+        const autoplayChannelId = this._resolveEventChannelId(session);
+        if (autoplayChannelId) {
+          const autoplayT = createTranslator(await this._resolveGuildLocale(session?.guildId ?? null));
+          await this._safeReply(
+            autoplayChannelId,
+            'info',
+            autoplayT('autoplay.queued', { track: autoplayedTitle }),
+            null,
+            null,
+            session?.settings?.minimalMode ? { minimalMode: true } : undefined
+          );
+        }
+        return;
+      }
+
       const channelId = this._resolveEventChannelId(session);
       if (!channelId) return;
 
@@ -715,6 +743,8 @@ export class CommandRouter {
 
     this.sessions.on('destroyed', async (payload?: SessionEventPayload) => {
       const { session, reason } = payload ?? {};
+      const destroyedSessionId = String(session?.sessionId ?? '').trim();
+      if (destroyedSessionId) this.lastPlayedTracks.delete(destroyedSessionId);
       const channelId = this._resolveEventChannelId(session);
       if (!channelId) return;
       if (reason === 'manual_command') return;
@@ -730,7 +760,11 @@ export class CommandRouter {
 
     this.sessions.on('trackEnd', async (payload?: SessionEventPayload) => {
       const { session, track, seekRestart, skipped } = payload ?? {};
-      if (!this.library || !session?.guildId || !track || seekRestart) return;
+      if (!session?.guildId || !track || seekRestart) return;
+
+      const sessionId = String(session.sessionId ?? '').trim();
+      if (sessionId) this.lastPlayedTracks.set(sessionId, track as Record<string, unknown>);
+      if (!this.library) return;
 
       await this.library.appendGuildHistory?.(session.guildId, track).catch((err) => {
         this.logger?.warn?.('Failed to persist guild history entry', {
@@ -743,6 +777,64 @@ export class CommandRouter {
         await this.library.recordUserSignal(session.guildId, String(track.requestedBy), 'skip', track).catch(() => null);
       }
     });
+  }
+
+  async _buildScrobbleFooter(
+    session: SessionLookup | null | undefined,
+    eventT: ReturnType<typeof createTranslator>,
+  ): Promise<string | null> {
+    const scrobbler = this.lastfm?.scrobbler;
+    const guildId = String(session?.guildId ?? '').trim();
+    const voiceChannelId = String(session?.connection?.channelId ?? '').trim();
+    if (!scrobbler || !guildId || !voiceChannelId) return null;
+
+    const count = await scrobbler.countLinkedListeners(guildId, voiceChannelId).catch(() => 0);
+    if (count <= 0) return null;
+
+    return eventT('lastfm.nowPlayingFooter', { count });
+  }
+
+  async _tryAutoplay(session: SessionLookup | null | undefined): Promise<string | null> {
+    const client = this.lastfm?.client;
+    if (!client || session?.settings?.autoplayEnabled !== true) return null;
+
+    const sessionId = String(session?.sessionId ?? '').trim();
+    const previous = sessionId ? this.lastPlayedTracks.get(sessionId) : null;
+    const meta = toLastFmTrack(previous as never, { minDurationSec: 1 });
+    if (!meta) return null;
+
+    const player = session?.player;
+    if (!player?.previewTracks || !player.enqueueResolvedTracks || !player.play) return null;
+
+    const similar = await client.trackGetSimilar(meta.artist, meta.track, 25).catch(() => []);
+    if (!similar.length) return null;
+
+    const recent = new Set(
+      (Array.isArray(player.historyTracks) ? player.historyTracks : [])
+        .map((entry) => String((entry as { title?: unknown })?.title ?? '').trim().toLowerCase())
+        .filter(Boolean)
+    );
+
+    for (const candidate of similar.slice(0, 8)) {
+      const query = `${candidate.artist} - ${candidate.track}`;
+      if (recent.has(query.toLowerCase())) continue;
+
+      const resolved = await player.previewTracks(query, { requestedBy: null, limit: 1 }).catch(() => []);
+      const first = Array.isArray(resolved) ? resolved[0] : null;
+      if (!first) continue;
+
+      const added = player.enqueueResolvedTracks([first], { dedupe: false });
+      if (!added?.length) continue;
+
+      if (!player.playing) await player.play().catch(() => null);
+      this.logger?.info?.('Autoplay queued a Last.fm recommendation', {
+        guildId: session?.guildId ?? null,
+        query,
+      });
+      return String((added[0] as { title?: unknown })?.title ?? query);
+    }
+
+    return null;
   }
 
   _resolveEventChannelId(session: SessionLookup | null | undefined) {
@@ -769,6 +861,7 @@ export class CommandRouter {
     track: Record<string, unknown>,
     channelId: string,
     voiceChannelTag: string,
+    eventT: ReturnType<typeof createTranslator>,
   ): Promise<boolean> {
     if (session?.settings?.minimalMode === true) return false;
     if (this.config.enableEmbeds === false) return false;
@@ -784,6 +877,7 @@ export class CommandRouter {
     const descriptionParts = [`**${title}**`, `\`${duration}\``];
     if (requestedBy) descriptionParts.push(`• <@${requestedBy}>`);
 
+    const scrobblerFooter = await this._buildScrobbleFooter(session, eventT);
     const embed = buildEmbed({
       title: `Now playing${voiceChannelTag}`,
       description: descriptionParts.join(' '),
@@ -791,6 +885,7 @@ export class CommandRouter {
       thumbnailUrl: (track?.thumbnailUrl as string | null | undefined) ?? null,
       author: buildTrackAuthor(track as never),
       url: url || null,
+      footer: scrobblerFooter,
     });
 
     const payload: MessagePayload = {

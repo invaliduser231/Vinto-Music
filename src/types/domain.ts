@@ -56,6 +56,7 @@ export interface SessionSettings {
   stayInVoiceEnabled?: boolean;
   earrapeProtectionEnabled?: boolean;
   minimalMode?: boolean;
+  autoplayEnabled?: boolean;
   volumePercent?: number;
   voteSkipRatio?: number;
   voteSkipMinVotes?: number;
@@ -71,6 +72,7 @@ export interface GuildConfig {
     stayInVoiceEnabled?: boolean;
     earrapeProtectionEnabled?: boolean;
     minimalMode?: boolean;
+    autoplayEnabled?: boolean;
     volumePercent?: number;
     voteSkipRatio?: number;
     voteSkipMinVotes?: number;

@@ -89,6 +89,7 @@ function cloneConfig(config: GuildConfigDocument) {
       stayInVoiceEnabled: config.settings.stayInVoiceEnabled,
       earrapeProtectionEnabled: config.settings.earrapeProtectionEnabled,
       minimalMode: config.settings.minimalMode,
+      autoplayEnabled: config.settings.autoplayEnabled,
       volumePercent: config.settings.volumePercent,
       voteSkipRatio: config.settings.voteSkipRatio,
       voteSkipMinVotes: config.settings.voteSkipMinVotes,
@@ -114,6 +115,7 @@ type GuildConfigPatch = {
     stayInVoiceEnabled?: unknown;
     earrapeProtectionEnabled?: unknown;
     minimalMode?: unknown;
+    autoplayEnabled?: unknown;
     volumePercent?: unknown;
     voteSkipRatio?: unknown;
     voteSkipMinVotes?: unknown;
@@ -130,6 +132,7 @@ type GuildConfigDocLike = {
     stayInVoiceEnabled?: unknown;
     earrapeProtectionEnabled?: unknown;
     minimalMode?: unknown;
+    autoplayEnabled?: unknown;
     volumePercent?: unknown;
     voteSkipRatio?: unknown;
     voteSkipMinVotes?: unknown;
@@ -175,6 +178,7 @@ export class GuildConfigStore {
         stayInVoiceEnabled: Boolean(options.defaults?.settings?.stayInVoiceEnabled),
         earrapeProtectionEnabled: Boolean(options.defaults?.settings?.earrapeProtectionEnabled),
         minimalMode: Boolean(options.defaults?.settings?.minimalMode),
+        autoplayEnabled: Boolean(options.defaults?.settings?.autoplayEnabled),
         volumePercent: normalizeVolumePercent(options.defaults?.settings?.volumePercent, 100),
         voteSkipRatio: toRatio(options.defaults?.settings?.voteSkipRatio, 0.5),
         voteSkipMinVotes: toPositiveInt(options.defaults?.settings?.voteSkipMinVotes, 2),
@@ -261,6 +265,7 @@ export class GuildConfigStore {
             stayInVoiceEnabled: next.settings.stayInVoiceEnabled,
             earrapeProtectionEnabled: next.settings.earrapeProtectionEnabled,
             minimalMode: next.settings.minimalMode,
+            autoplayEnabled: next.settings.autoplayEnabled,
             volumePercent: next.settings.volumePercent,
             voteSkipRatio: next.settings.voteSkipRatio,
             voteSkipMinVotes: next.settings.voteSkipMinVotes,
@@ -310,6 +315,10 @@ export class GuildConfigStore {
 
       if (settingsPatch.minimalMode !== undefined) {
         next.settings.minimalMode = toBool(settingsPatch.minimalMode, next.settings.minimalMode);
+      }
+
+      if (settingsPatch.autoplayEnabled !== undefined) {
+        next.settings.autoplayEnabled = toBool(settingsPatch.autoplayEnabled, next.settings.autoplayEnabled);
       }
 
       if (settingsPatch.volumePercent !== undefined) {
@@ -368,6 +377,7 @@ export class GuildConfigStore {
           this.defaults.settings.earrapeProtectionEnabled
         ),
         minimalMode: toBool(settings.minimalMode, this.defaults.settings.minimalMode),
+        autoplayEnabled: toBool(settings.autoplayEnabled, this.defaults.settings.autoplayEnabled),
         volumePercent: normalizeVolumePercent(settings.volumePercent, this.defaults.settings.volumePercent),
         voteSkipRatio: toRatio(settings.voteSkipRatio, this.defaults.settings.voteSkipRatio),
         voteSkipMinVotes: toPositiveInt(settings.voteSkipMinVotes, this.defaults.settings.voteSkipMinVotes),
@@ -390,6 +400,7 @@ export class GuildConfigStore {
     if (as.stayInVoiceEnabled !== bs.stayInVoiceEnabled) return false;
     if (as.earrapeProtectionEnabled !== bs.earrapeProtectionEnabled) return false;
     if (as.minimalMode !== bs.minimalMode) return false;
+    if (as.autoplayEnabled !== bs.autoplayEnabled) return false;
     if (as.volumePercent !== bs.volumePercent) return false;
     if (as.voteSkipRatio !== bs.voteSkipRatio) return false;
     if (as.voteSkipMinVotes !== bs.voteSkipMinVotes) return false;
@@ -439,6 +450,7 @@ type GuildConfigSettings = {
   stayInVoiceEnabled: boolean;
   earrapeProtectionEnabled: boolean;
   minimalMode: boolean;
+  autoplayEnabled: boolean;
   volumePercent: number;
   voteSkipRatio: number;
   voteSkipMinVotes: number;
@@ -468,7 +480,7 @@ type GuildConfigCollection = {
 type GuildConfigStoreOptions = {
   collection: GuildConfigCollection;
   logger?: LoggerLike | undefined;
-  defaults?: Partial<GuildConfigDocument> | undefined;
+  defaults?: { prefix?: string; settings?: Partial<GuildConfigSettings> } | undefined;
   cacheTtlMs?: number;
   maxCacheSize?: number;
 };

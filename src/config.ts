@@ -205,6 +205,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     deezerArl: env.DEEZER_ARL?.trim() || null,
     strictMediaAuth: parseBool(env.STRICT_MEDIA_AUTH, false),
 
+    lastfmEnabled: parseBool(env.LASTFM_ENABLED, false),
+    lastfmApiKey: env.LASTFM_API_KEY?.trim() || null,
+    lastfmApiSecret: env.LASTFM_API_SECRET?.trim() || null,
+    lastfmEncryptionKey: env.LASTFM_ENCRYPTION_KEY?.trim() || null,
+    lastfmRequestTimeoutMs: parsePositiveInt(env.LASTFM_REQUEST_TIMEOUT_MS, 10_000),
+    lastfmScrobbleMinSeconds: parsePositiveInt(env.LASTFM_SCROBBLE_MIN_SECONDS, 30),
+    lastfmAutoplayDefaultEnabled: parseBool(env.LASTFM_AUTOPLAY_DEFAULT_ENABLED, false),
+
     ffmpegBin: env.FFMPEG_BIN?.trim() || null,
     ytdlpBin: env.YTDLP_BIN?.trim() || null,
     ytdlpCookiesFile: env.YTDLP_COOKIES_FILE?.trim() || null,
@@ -295,6 +303,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
 
   if (config.fluxerlistStatsEnabled && !config.fluxerlistApiKey) {
     throw new ConfigurationError('FLUXERLIST_API_KEY is required when FLUXERLIST_STATS_ENABLED=1');
+  }
+
+  if (config.lastfmEnabled) {
+    if (!config.lastfmApiKey) {
+      throw new ConfigurationError('LASTFM_API_KEY is required when LASTFM_ENABLED=1');
+    }
+    if (!config.lastfmApiSecret) {
+      throw new ConfigurationError('LASTFM_API_SECRET is required when LASTFM_ENABLED=1');
+    }
+    if (!config.lastfmEncryptionKey) {
+      throw new ConfigurationError('LASTFM_ENCRYPTION_KEY is required when LASTFM_ENABLED=1');
+    }
   }
 
   return Object.freeze(config);

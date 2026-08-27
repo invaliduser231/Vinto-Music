@@ -2,8 +2,23 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [0.9.0] - 2026-08-27
 
+- Last.fm:
+  - everyone listening in a voice channel can now scrobble what plays there to their own profile, opt-in per user with `lastfm connect`, no server-wide switch involved
+  - session keys are stored encrypted with AES-256-GCM and the feature refuses to start without `LASTFM_ENCRYPTION_KEY` instead of falling back to plain text
+  - listening time is tracked per user on a 15 second ticker, so people joining mid-track are credited from the moment they join and people leaving stop counting
+  - a track counts once it runs past half its length or four minutes, matching the Last.fm rules, and live streams, radio and previews are never submitted
+  - now playing is pushed at track start and for anyone joining later, and the now playing embed shows how many listeners it is scrobbling for
+  - failed submissions land in a retry queue with a five minute flush loop, an expired session key unlinks the account and says so once
+  - added `lastfm profile`, `recent`, `top`, `compare`, `blend`, `leaderboard`, `status`, `on` and `off`, plus `fmplay`, `love` and `unlove`
+  - `blend` builds a queue from the top artists of everyone currently in the voice channel
+  - milestone and streak notices go to the session log channel
+- Features:
+  - added a guild-scoped `autoplay` command that keeps playback going with Last.fm recommendations when the queue runs out
+- Configuration:
+  - added `LASTFM_ENABLED`, `LASTFM_API_KEY`, `LASTFM_API_SECRET`, `LASTFM_ENCRYPTION_KEY`, `LASTFM_REQUEST_TIMEOUT_MS`, `LASTFM_SCROBBLE_MIN_SECONDS` and `LASTFM_AUTOPLAY_DEFAULT_ENABLED`
+  - added the `lastfm_scrobbles_total`, `lastfm_scrobble_failures_total`, `lastfm_now_playing_total` and `lastfm_accounts_linked` metrics
 - Performance:
   - stopped decoding incoming voice audio when earrape protection is off, which opened an opus decoder per participant in every channel and threw the result away frame by frame
   - protection switched on at runtime now also starts watching participants that were already connected
@@ -26,6 +41,11 @@ All notable changes to this project are documented in this file.
   - stopped issuing ISRC mirror lookups after the configured search backend returned nothing five times in a row, since not every backend indexes ISRCs
   - logged an empty mirror search result at debug level instead of warning about discarded candidates that never existed
 - Tests:
+  - covered the Last.fm encryption round trip, tampered payloads and wrong keys
+  - covered the api signature, error code mapping, and that auth failures are not retried while rate limits are
+  - covered artist and title extraction from noisy video titles
+  - covered the scrobble rules, mid-track joins, paused accounts, seek restarts, expired session keys and the retry queue
+  - covered the two-step connect flow, the leaderboard, `fmplay`, `love` and `autoplay`
   - added coverage that unrelated mirror candidates are rejected instead of queued
   - added coverage that Tidal and Spotify track links bypass NodeLink URL resolution in `all` mode while still streaming through NodeLink
   - added coverage that Spotify albums keep using NodeLink without bot-side Spotify credentials

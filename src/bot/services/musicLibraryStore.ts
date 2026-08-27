@@ -292,6 +292,7 @@ export class MusicLibraryStore {
     if (this.userProfiles) {
       await this.userProfiles.createIndex!({ userId: 1 }, { unique: true });
       await this.userProfiles.createIndex!({ updatedAt: -1 });
+      await this.userProfiles.createIndex!({ 'guildStats.guildId': 1 });
     }
 
     if (this.guildRecaps) {
@@ -722,6 +723,20 @@ export class MusicLibraryStore {
       guildStats,
       taste: Array.isArray(doc.taste) ? doc.taste : [],
     };
+  }
+
+  async listGuildParticipantIds(guildId: unknown, limit: number = 500): Promise<string[]> {
+    const safeGuildId = normalizeGuildId(guildId);
+    if (!safeGuildId || !this.userProfiles?.find) return [];
+
+    const docs = await this.userProfiles
+      .find({ 'guildStats.guildId': safeGuildId }, { projection: { _id: 0, userId: 1 } })
+      .sort({ updatedAt: -1 })
+      .limit(Math.max(1, Math.min(2_000, limit)))
+      .toArray()
+      .catch(() => [] as UserProfileDoc[]);
+
+    return docs.map((doc) => String(doc.userId)).filter(Boolean);
   }
 
   async getUserLocale(userId: unknown): Promise<string | null> {

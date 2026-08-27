@@ -20,6 +20,10 @@ import { EarrapeProfileStore } from '../bot/services/earrapeProfileStore.ts';
 import { MonitoringServer } from '../monitoring/server.ts';
 import { initializeSentry } from '../monitoring/sentry.ts';
 import { NodeLinkClient } from '../player/musicPlayer/NodeLinkClient.ts';
+import { LastFmClient } from '../integrations/lastfm/LastFmClient.ts';
+import { parseEncryptionKey } from '../integrations/lastfm/secretBox.ts';
+import { LastFmAccountStore } from '../bot/services/lastFmAccountStore.ts';
+import { ScrobbleService } from '../bot/services/scrobbleService.ts';
 import { sanitizeBrokenLocalProxyEnv } from './proxy.ts';
 import { verifyApiConnectivity, resolveGatewayUrl } from './connectivity.ts';
 import { bindGatewayMetrics, bindSessionMetrics, createAppMetrics } from './metrics.ts';
@@ -238,6 +242,25 @@ export async function startApp() {
   });
   await earrapeProfiles.init();
 
+  const lastfmClient = config.lastfmEnabled && config.lastfmApiKey && config.lastfmApiSecret
+    ? new LastFmClient({
+      apiKey: config.lastfmApiKey,
+      apiSecret: config.lastfmApiSecret,
+      requestTimeoutMs: config.lastfmRequestTimeoutMs,
+      logger: logger.child('lastfm'),
+    })
+    : null;
+
+  const lastfmAccounts = lastfmClient && config.lastfmEncryptionKey
+    ? new LastFmAccountStore({
+      collection: mongo.collection('user_lastfm_accounts'),
+      retryCollection: mongo.collection('lastfm_scrobble_retries'),
+      encryptionKey: parseEncryptionKey(config.lastfmEncryptionKey),
+      logger: logger.child('lastfm-accounts'),
+    })
+    : null;
+  if (lastfmAccounts) await lastfmAccounts.init();
+
   const connectivityRest = rest as ConnectivityRest;
   const gatewayUrl = await resolveGatewayUrl({ config, rest: connectivityRest, logger });
   const initialGuildCount = await fetchCurrentGuildCount(rest).catch(() => null);
@@ -308,6 +331,30 @@ export async function startApp() {
       gatewayConnected = connected;
     },
   });
+  const scrobbler = lastfmClient && lastfmAccounts
+    ? new ScrobbleService({
+      client: lastfmClient,
+      accounts: lastfmAccounts,
+      voiceStateStore,
+      rest,
+      guildConfigs,
+      logger: logger.child('scrobbler'),
+      minDurationSec: config.lastfmScrobbleMinSeconds,
+      fallbackLocale: config.defaultLanguage,
+      metrics: {
+        scrobblesTotal: metricSet.lastfmScrobblesTotal,
+        scrobbleFailuresTotal: metricSet.lastfmScrobbleFailuresTotal,
+        nowPlayingTotal: metricSet.lastfmNowPlayingTotal,
+        accountsLinked: metricSet.lastfmAccountsLinked,
+      },
+    })
+    : null;
+  if (scrobbler) {
+    scrobbler.bind(sessions);
+    scrobbler.start();
+    logger.info('Last.fm scrobbling enabled');
+  }
+
   const unbindSessionMetrics = bindSessionMetrics(sessions, metricSet, {
     telemetryIntervalMs: config.memoryTelemetryIntervalMs,
   });
@@ -439,6 +486,9 @@ export async function startApp() {
   const routerOptions = {
     config,
     voteService,
+    ...(lastfmClient && lastfmAccounts
+      ? { lastfm: { client: lastfmClient, accounts: lastfmAccounts, scrobbler } }
+      : {}),
     logger: logger.child('commands'),
     rest: rest as CommandRouterCtorOptions['rest'],
     gateway,
@@ -468,6 +518,7 @@ export async function startApp() {
 
     resolvedBotUserId = normalized;
     sessions.setBotUserId(normalized);
+    scrobbler?.setBotUserId(normalized);
     permissions.setBotUserId(normalized);
     router.setBotUserId(normalized);
     voteService.setBotId(config.fluxerlistBotId ?? normalized);
@@ -682,6 +733,7 @@ export async function startApp() {
       });
     });
 
+    scrobbler?.stop();
     unbindSessionMetrics();
     unbindGatewayMetrics();
     if (presenceUpdateHandle) {

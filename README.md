@@ -48,6 +48,7 @@ Resilient, self-hosted music bot for Fluxer with persistent music data, queue sa
 - Fast playlist UX with first-track start plus background queueing for large external playlists and mixes.
 - Optional opportunistic YouTube startup prefetch to reduce time-to-audio for direct video playback.
 - Persistent guild playlists, favorites, history, queue templates, recap data, and lightweight user taste/reputation signals in MongoDB.
+- Optional Last.fm support: everyone listening in a voice channel can scrobble to their own profile, plus profile stats, taste comparison, channel blends, and recommendation-driven autoplay.
 - Built-in `/healthz`, `/readyz`, and Prometheus `/metrics` endpoints.
 - Optional Sentry reporting, opt-in runtime playback diagnostics, and memory telemetry / heap snapshot controls.
 
@@ -258,6 +259,23 @@ Default prefix: `!`
 - `station <list|show|save|delete> ...`
 - `fav`, `favs`, `favname <index> <alias>`, `ufav`, `favplay <index|alias>`
 
+### Last.fm
+
+Available when `LASTFM_ENABLED=1`. Each listener links their own account, nothing is enabled server-wide.
+
+- `lastfm connect` / `lastfm disconnect` / `lastfm status`
+- `lastfm on` / `lastfm off` to pause scrobbling without unlinking
+- `lastfm profile [@user]`, `lastfm recent [@user]`
+- `lastfm top [artists|tracks|albums] [7d|1m|3m|6m|1y|all] [@user]`
+- `lastfm compare <@user>` for a taste match score
+- `lastfm blend` builds a queue from the top artists of everyone currently in the voice channel
+- `lastfm leaderboard [server|global]`
+- `fmplay [@user]` queues the track someone scrobbled last
+- `love` / `unlove` for the currently playing track
+- `autoplay [on|off]` keeps playback going with Last.fm recommendations when the queue runs out
+
+A track is scrobbled once it is longer than 30 seconds and the listener heard at least half of it or four minutes, whichever comes first. Listeners who join mid-track are counted from the moment they join. Live streams and radio are never scrobbled.
+
 ### Guild Config
 
 - `prefix`
@@ -270,6 +288,7 @@ Default prefix: `!`
 - `247`
 - `dedupe`
 - `earrape [on|off]`
+- `autoplay [on|off]`
 
 ### Extended Features
 

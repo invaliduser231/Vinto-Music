@@ -2,6 +2,15 @@ import type { Locale, TranslationKey, Translator } from '../../../i18n/index.ts'
 import type { PermissionFlag } from '../../permissions/flags.ts';
 import type { PermissionCheck } from '../../permissions/resolver.ts';
 import type { BivariantCallback, CommandDefinition, MessagePayload } from '../../../types/core.ts';
+import type { LastFmClient } from '../../../integrations/lastfm/LastFmClient.ts';
+import type { LastFmAccountStore } from '../../services/lastFmAccountStore.ts';
+import type { ScrobbleService } from '../../services/scrobbleService.ts';
+
+export type LastFmBundle = {
+  client: LastFmClient;
+  accounts: LastFmAccountStore;
+  scrobbler: ScrobbleService | null;
+};
 
 export type GuildConfigLike = {
   guildId?: string;
@@ -11,6 +20,7 @@ export type GuildConfigLike = {
     stayInVoiceEnabled: boolean;
     earrapeProtectionEnabled?: boolean;
     minimalMode?: boolean;
+    autoplayEnabled?: boolean;
     volumePercent: number;
     voteSkipRatio: number;
     voteSkipMinVotes: number;
@@ -62,6 +72,7 @@ export type SessionLike = {
     stayInVoiceEnabled: boolean;
     earrapeProtectionEnabled?: boolean;
     minimalMode?: boolean;
+    autoplayEnabled?: boolean;
     voteSkipRatio: number;
     voteSkipMinVotes: number;
     djRoleIds: Set<string>;
@@ -147,6 +158,7 @@ export type LibraryLike = {
   }>;
   patchGuildFeatureConfig: (guildId: string, patch: Record<string, unknown>) => Promise<unknown>;
   getUserLocale?: (userId: string) => Promise<string | null>;
+  listGuildParticipantIds?: (guildId: string, limit?: number) => Promise<string[]>;
   setUserLocale?: (userId: string, locale: string | null) => Promise<string | null>;
   getVoiceProfile: (guildId: string, channelId: string) => Promise<{ moodPreset?: string | null; stayInVoiceEnabled?: boolean | null } | null>;
   setVoiceProfile: (guildId: string, channelId: string, patch: Record<string, unknown>) => Promise<unknown>;
@@ -216,6 +228,7 @@ export type CommandContextLike = {
     update: (guildId: string, patch: Record<string, unknown>) => Promise<GuildConfigLike>;
   } | null;
   library?: LibraryLike | null;
+  lastfm?: LastFmBundle | null;
   sessions: {
     get: (guildId: string, selector?: Record<string, unknown>) => SessionLike | null;
     has: (guildId: string, selector?: Record<string, unknown>) => boolean;
@@ -233,6 +246,7 @@ export type CommandContextLike = {
     resolveMemberVoiceChannel: (message: Record<string, unknown>) => string | null;
     resolveMemberVoiceChannelWithFallback?: (message: Record<string, unknown>, rest: unknown, timeoutMs?: number) => Promise<string | null>;
     countUsersInChannel: (guildId: string, channelId: string, excludedUserIds?: string[]) => number;
+    getUsersInChannel?: (guildId: string, channelId: string) => string[];
     [key: string]: unknown;
   };
   permissionService?: {

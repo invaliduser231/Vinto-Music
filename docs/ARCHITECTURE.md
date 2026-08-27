@@ -114,12 +114,26 @@ MongoDB collections used by the current code:
 - `guild_session_snapshots`: compact per-session playback snapshots for 24/7 resume and restart recovery
 - `user_profiles`: lightweight taste memory and guild-level reputation stats
 - `guild_recaps`: recap send-state metadata
+- `user_lastfm_accounts`: linked Last.fm accounts, session keys encrypted with AES-256-GCM, scrobble counters and day streaks
+- `lastfm_scrobble_retries`: scrobbles that failed against the Last.fm API, expired by a TTL index after 14 days
 
 Notes:
 
 - Restart recovery is intentionally separate from 24/7. Non-24/7 sessions are restored only when they were active at shutdown.
 
 The guild config store keeps a TTL cache in memory to reduce repeated reads for hot guilds.
+
+## Last.fm Scrobbling
+
+Only active when `LASTFM_ENABLED=1`. `ScrobbleService` subscribes to the same `SessionManager` events the command router uses:
+
+- `trackStart`: the track is mapped to an artist and title pair. Live streams, radio, previews and anything shorter than `LASTFM_SCROBBLE_MIN_SECONDS` are dropped right here. Every listener in the voice channel that has a linked account gets a now playing update.
+- A single 15 second ticker across all sessions attributes listening time per user, so someone joining mid-track is credited only from the moment they joined, and someone leaving stops accumulating.
+- `trackEnd`: a user is scrobbled when they heard at least half the track or four minutes, whichever comes first. Submissions run at most five at a time and carry the original start timestamp.
+
+Failures never propagate back into the playback path. An invalid session key (Last.fm error 9) unlinks the account and posts a single notice; anything else lands in `lastfm_scrobble_retries` and is retried by a five minute flush loop, which is safe because Last.fm accepts backdated scrobbles for two weeks.
+
+Autoplay lives in the command router. When a queue runs empty and the guild has `autoplayEnabled`, the last played track is fed into `track.getSimilar` and the first resolvable suggestion is queued instead of announcing an empty queue.
 
 ## Monitoring and Reliability
 
@@ -130,6 +144,7 @@ The guild config store keeps a TTL cache in memory to reduce repeated reads for 
   - `/healthz`
   - `/readyz`
   - `/metrics`
+- Last.fm exposes `lastfm_scrobbles_total`, `lastfm_scrobble_failures_total`, `lastfm_now_playing_total` and `lastfm_accounts_linked`.
 - Shutdown handles active sessions, monitoring server, MongoDB, and Sentry flushing.
 
 ## Practical Self-Hosting Implication

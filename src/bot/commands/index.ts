@@ -27,10 +27,12 @@ import {
 } from './commandHelpers.ts';
 import { registerCorePlaybackCommands } from './corePlaybackCommands.ts';
 import { registerQueueEffectsAndMiscCommands } from './queueEffectsMiscCommands.ts';
+import { registerLastFmCommands } from './lastfmCommands.ts';
 import type { CommandRegistry } from '../commandRegistry.ts';
 
 export function registerCommands(registry: CommandRegistry) {
   registerCorePlaybackCommands(registry);
+  registerLastFmCommands(registry);
 
   registerLibraryCommands(registry, {
     PLAYLIST_PAGE_SIZE,

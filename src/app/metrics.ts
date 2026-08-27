@@ -60,6 +60,10 @@ export function createAppMetrics() {
     sessionsIdleTimersActive: registry.gauge('sessions_idle_timers_active', 'Sessions currently holding idle timers'),
     sessionPlayerListenerEntries: registry.gauge('session_player_listener_entries', 'Tracked player listener sets in SessionManager'),
     sessionPendingTracks: registry.gauge('session_pending_tracks', 'Total pending tracks across all sessions'),
+    lastfmScrobblesTotal: registry.counter('lastfm_scrobbles_total', 'Tracks scrobbled to Last.fm'),
+    lastfmScrobbleFailuresTotal: registry.counter('lastfm_scrobble_failures_total', 'Failed Last.fm scrobble submissions'),
+    lastfmNowPlayingTotal: registry.counter('lastfm_now_playing_total', 'Last.fm now playing updates sent'),
+    lastfmAccountsLinked: registry.gauge('lastfm_accounts_linked', 'Linked Last.fm accounts'),
   };
 }
 
