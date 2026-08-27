@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 ## [0.9.0] - 2026-08-27
 
 - Fixes:
-  - stopped  from queueing the track the bot is already playing, which it had reported to Last.fm as now playing moments earlier
+  - stopped `fmplay` from queueing the track the bot is already playing, which it had reported to Last.fm as now playing moments earlier
   - stopped double applying the volume when a NodeLink stream failed and playback fell back to the local pipeline, which left the bot silently at full volume and made a later volume change clip
 - Last.fm:
   - everyone listening in a voice channel can now scrobble what plays there to their own profile, opt-in per user with `lastfm connect`, no server-wide switch involved
