@@ -193,6 +193,7 @@ type SearchReactionState = {
 };
 
 const AUTOPLAY_RESOLVE_CANDIDATES = 8;
+const AUTOPLAY_RESOLVE_TIMEOUT_MS = 8000;
 const DEFERRED_TRACK_START_MESSAGE_GRACE_MS = 1200;
 
 function delay(ms: number) {
@@ -846,25 +847,29 @@ export class CommandRouter {
 
     const previewTracks = player.previewTracks.bind(player);
     const startedAt = Date.now();
-    const resolved = await Promise.all(queries.map((query) => previewTracks(query, { requestedBy: null, limit: 1 })
-      .then((tracks) => (Array.isArray(tracks) ? tracks[0] ?? null : null))
-      .catch(() => null)));
+    const pending = queries.map((query) => Promise.race([
+      previewTracks(query, { requestedBy: null, limit: 1 })
+        .then((tracks) => (Array.isArray(tracks) ? tracks[0] ?? null : null)),
+      delay(AUTOPLAY_RESOLVE_TIMEOUT_MS).then(() => null),
+    ]).catch(() => null));
 
-    for (let index = 0; index < resolved.length; index += 1) {
-      const first = resolved[index];
-      if (!first) continue;
+    const winner = await Promise.any(pending.map((lookup, index) => lookup.then((track) => {
+      if (!track) throw new Error('unresolved');
+      return { track, index };
+    }))).catch(() => null);
 
-      const added = player.enqueueResolvedTracks([first], { dedupe: false });
-      if (!added?.length) continue;
-
-      if (!player.playing) await player.play().catch(() => null);
-      this.logger?.info?.('Autoplay queued a Last.fm recommendation', {
-        guildId: session?.guildId ?? null,
-        query: queries[index],
-        candidates: queries.length,
-        resolveMs: Date.now() - startedAt,
-      });
-      return String((added[0] as { title?: unknown })?.title ?? queries[index]);
+    if (winner) {
+      const added = player.enqueueResolvedTracks([winner.track], { dedupe: false });
+      if (added?.length) {
+        if (!player.playing) await player.play().catch(() => null);
+        this.logger?.info?.('Autoplay queued a Last.fm recommendation', {
+          guildId: session?.guildId ?? null,
+          query: queries[winner.index],
+          candidates: queries.length,
+          resolveMs: Date.now() - startedAt,
+        });
+        return String((added[0] as { title?: unknown })?.title ?? queries[winner.index]);
+      }
     }
 
     return this._skipAutoplay(session, 'no suggestion could be resolved', {

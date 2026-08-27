@@ -10,6 +10,8 @@ function createRouter(options: {
   history?: Array<{ title: string; artist: string; duration: string }>;
   resolve?: (query: string) => unknown[];
   previewDelayMs?: number;
+  slowQueries?: string[];
+  slowDelayMs?: number;
 }) {
   const previewCalls: PreviewCall[] = [];
   const enqueued: unknown[] = [];
@@ -23,6 +25,9 @@ function createRouter(options: {
         throw new TypeError('previewTracks lost its player binding');
       }
       previewCalls.push({ query, startedAt: Date.now() });
+      if (options.slowQueries?.includes(query)) {
+        await new Promise((resolve) => setTimeout(resolve, options.slowDelayMs ?? 5_000).unref?.());
+      }
       if (options.previewDelayMs) {
         await new Promise((resolve) => setTimeout(resolve, options.previewDelayMs));
       }
@@ -100,6 +105,27 @@ test('autoplay resolves its candidates concurrently instead of one after another
   assert.equal(title, 'Adele - Rolling in the Deep');
   assert.equal(previewCalls.length, 4, 'all candidates are looked up in one round');
   assert.ok(elapsed < 200, `four lookups took ${elapsed}ms, so they did not run in sequence`);
+});
+
+test('a hanging lookup does not hold back a candidate that already resolved', async () => {
+  const { router, session } = createRouter({
+    similar: [
+      { artist: 'Amy Winehouse', track: 'Rehab', match: 1 },
+      { artist: 'Duffy', track: 'Mercy', match: 0.9 },
+    ],
+    resolve: (query) => (query.includes('Rehab') ? [] : [{ title: query, duration: '3:00', source: 'deezer' }]),
+    slowQueries: ['Amy Winehouse - Rehab'],
+    slowDelayMs: 5_000,
+  });
+
+  router.lastPlayedTracks.set('session-1', AMY);
+
+  const startedAt = Date.now();
+  const title = await router._tryAutoplay(session as never);
+  const elapsed = Date.now() - startedAt;
+
+  assert.equal(title, 'Duffy - Mercy');
+  assert.ok(elapsed < 1_000, `waited ${elapsed}ms for a lookup that had already failed elsewhere`);
 });
 
 test('autoplay does not suggest the track that just played', async () => {
