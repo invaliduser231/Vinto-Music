@@ -1244,3 +1244,74 @@ test('a filter preset keeps volume local so both are applied together', () => {
 
   assert.equal(player._canDelegateVolumeToStream(), false);
 });
+
+test('a failed NodeLink stream hands the volume back to the local processor', async () => {
+  const player = createPlayer();
+
+  player.nodeLinkClient = {
+    enabled: true,
+    streamTrack: async () => {
+      throw new Error('nodelink stream unavailable');
+    },
+  } as unknown as MusicPlayer['nodeLinkClient'];
+
+  player.setVolumePercent(20);
+  await assert.rejects(
+    player._startNodeLinkStream(
+      player.createTrackFromData({
+        title: 'x',
+        url: 'https://www.youtube.com/watch?v=1NiSbpN-LaI',
+        duration: '3:00',
+        source: 'youtube',
+        nodelinkEncodedTrack: 'encoded',
+      }),
+      player.playbackStartupToken ?? 0,
+      0,
+    ),
+  );
+
+  assert.equal(player.streamAppliedVolumePercent, 100, 'nothing pre-scaled the audio');
+  assert.equal(player._getLiveAudioProcessorState().volumePercent, 20);
+  assert.equal(player._shouldUseLiveAudioProcessor(), true, 'the local processor has to apply the volume');
+
+  player.stop();
+});
+
+test('the local fallback after a late NodeLink failure does not double apply the volume', async () => {
+  const player = createPlayer();
+  const started: string[] = [];
+
+  player.nodeLinkClient = {
+    enabled: true,
+    streamTrack: async () => Readable.from([Buffer.alloc(4)]),
+  } as unknown as MusicPlayer['nodeLinkClient'];
+  player.voice = { ...player.voice, sendAudio: async () => {} } as MusicPlayer['voice'];
+  player._awaitInitialPlaybackChunk = async () => {
+    throw new Error('no audio before the timeout');
+  };
+  player._startYouTubePipeline = async () => {
+    started.push('local');
+  };
+
+  player.setVolumePercent(20);
+  player.enqueueResolvedTracks([
+    player.createTrackFromData({
+      title: 'x',
+      url: 'https://www.youtube.com/watch?v=1NiSbpN-LaI',
+      duration: '3:00',
+      source: 'youtube',
+      nodelinkEncodedTrack: 'encoded',
+    }),
+  ]);
+
+  await player.play();
+
+  assert.deepEqual(started, ['local'], 'playback fell back to the local pipeline');
+  assert.equal(player.streamAppliedVolumePercent, 100);
+  assert.equal(player._getLiveAudioProcessorState().volumePercent, 20, 'volume is applied once, locally');
+
+  player.setVolumePercent(100);
+  assert.equal(player._getLiveAudioProcessorState().volumePercent, 100, 'raising it back does not amplify');
+
+  player.stop();
+});

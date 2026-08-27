@@ -974,6 +974,8 @@ export class MusicPlayer extends EventEmitter {
             error: nodeLinkErr instanceof Error ? nodeLinkErr.message : String(nodeLinkErr),
           });
 
+          // The local pipeline does not pre-scale audio, so the delegated volume has to go back to the processor.
+          this.streamAppliedVolumePercent = 100;
           this._cleanupProcesses();
         }
       }
@@ -1578,12 +1580,12 @@ export class MusicPlayer extends EventEmitter {
     const positionMs = Math.max(0, Number.parseInt(String(track.seekStartSec ?? 0), 10) || 0) * 1000;
     const guildId = String((this.voice as { guildId?: unknown } | null | undefined)?.guildId ?? '').trim() || null;
     const delegatedVolume = this._canDelegateVolumeToStream() ? this.volumePercent : 100;
-    this.streamAppliedVolumePercent = delegatedVolume;
     const nodeLinkStream = await this.nodeLinkClient.streamTrack(track, {
       positionMs,
       volume: delegatedVolume,
       ...(guildId ? { guildId } : {}),
     });
+    this.streamAppliedVolumePercent = delegatedVolume;
     this.sourceStream = nodeLinkStream as PipelineStreamLike;
     this._bindPipelineErrorHandler(nodeLinkStream, 'nodelink.stream');
 
