@@ -30,7 +30,7 @@ import {
 } from './commandRouterOperations.ts';
 import type { BivariantCallback, CommandDefinition, MessagePayload, ReplyOptions, LoggerLike } from '../types/core.ts';
 import type { LastFmBundle } from './commands/helpers/types.ts';
-import { toLastFmTrack } from '../integrations/lastfm/trackMetadata.ts';
+import { toLastFmTrack, trackIdentity } from '../integrations/lastfm/trackMetadata.ts';
 
 type RouterContextOptions = {
   prefix?: string;
@@ -192,6 +192,7 @@ type SearchReactionState = {
   expiresAt: number;
 };
 
+const AUTOPLAY_RESOLVE_CANDIDATES = 4;
 const DEFERRED_TRACK_START_MESSAGE_GRACE_MS = 1200;
 
 function delay(ms: number) {
@@ -811,16 +812,26 @@ export class CommandRouter {
 
     const recent = new Set(
       (Array.isArray(player.historyTracks) ? player.historyTracks : [])
-        .map((entry) => String((entry as { title?: unknown })?.title ?? '').trim().toLowerCase())
-        .filter(Boolean)
+        .map((entry) => toLastFmTrack(entry as never, { minDurationSec: 1 }))
+        .filter((entry): entry is NonNullable<typeof entry> => entry != null)
+        .map((entry) => trackIdentity(entry))
     );
+    recent.add(trackIdentity(meta));
 
-    for (const candidate of similar.slice(0, 8)) {
-      const query = `${candidate.artist} - ${candidate.track}`;
-      if (recent.has(query.toLowerCase())) continue;
+    const queries = similar
+      .filter((candidate) => !recent.has(trackIdentity({ artist: candidate.artist, track: candidate.track })))
+      .slice(0, AUTOPLAY_RESOLVE_CANDIDATES)
+      .map((candidate) => `${candidate.artist} - ${candidate.track}`);
+    if (!queries.length) return null;
 
-      const resolved = await player.previewTracks(query, { requestedBy: null, limit: 1 }).catch(() => []);
-      const first = Array.isArray(resolved) ? resolved[0] : null;
+    const previewTracks = player.previewTracks;
+    const startedAt = Date.now();
+    const resolved = await Promise.all(queries.map((query) => previewTracks(query, { requestedBy: null, limit: 1 })
+      .then((tracks) => (Array.isArray(tracks) ? tracks[0] ?? null : null))
+      .catch(() => null)));
+
+    for (let index = 0; index < resolved.length; index += 1) {
+      const first = resolved[index];
       if (!first) continue;
 
       const added = player.enqueueResolvedTracks([first], { dedupe: false });
@@ -829,9 +840,11 @@ export class CommandRouter {
       if (!player.playing) await player.play().catch(() => null);
       this.logger?.info?.('Autoplay queued a Last.fm recommendation', {
         guildId: session?.guildId ?? null,
-        query,
+        query: queries[index],
+        candidates: queries.length,
+        resolveMs: Date.now() - startedAt,
       });
-      return String((added[0] as { title?: unknown })?.title ?? query);
+      return String((added[0] as { title?: unknown })?.title ?? queries[index]);
     }
 
     return null;

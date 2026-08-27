@@ -5,6 +5,8 @@ All notable changes to this project are documented in this file.
 ## [0.9.0] - 2026-08-27
 
 - Fixes:
+  - resolved autoplay candidates in one concurrent round instead of up to eight sequential lookups, which left a long silence between tracks
+  - compared autoplay candidates against artist and title, so recently played tracks are actually skipped instead of coming back
   - stopped `fmplay` from queueing the track the bot is already playing, which it had reported to Last.fm as now playing moments earlier
   - stopped double applying the volume when a NodeLink stream failed and playback fell back to the local pipeline, which left the bot silently at full volume and made a later volume change clip
 - Last.fm:
