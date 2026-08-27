@@ -767,7 +767,7 @@ export const en = {
 
   'lastfm.leaderboardGlobal': 'Top scrobblers',
   'lastfm.leaderboardServer': 'Top scrobblers here',
-  'lastfm.leaderboardHint': 'Counts tracks scrobbled through this bot.',
+  'lastfm.leaderboardFooter': 'Scrobbles counted by this bot',
   'lastfm.leaderboardEmpty': 'No scrobbles counted yet.',
   'lastfm.fieldRanking': 'Ranking',
 

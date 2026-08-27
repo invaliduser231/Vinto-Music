@@ -769,7 +769,7 @@ export const de: Catalog = {
 
   'lastfm.leaderboardGlobal': 'Top-Scrobbler',
   'lastfm.leaderboardServer': 'Top-Scrobbler hier',
-  'lastfm.leaderboardHint': 'Zählt Titel, die über diesen Bot gescrobbelt wurden.',
+  'lastfm.leaderboardFooter': 'Von diesem Bot gezählte Scrobbles',
   'lastfm.leaderboardEmpty': 'Noch keine Scrobbles gezählt.',
   'lastfm.fieldRanking': 'Rangliste',
 

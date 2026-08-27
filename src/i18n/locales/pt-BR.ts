@@ -769,7 +769,7 @@ export const ptBR: Catalog = {
 
   'lastfm.leaderboardGlobal': 'Top de envios',
   'lastfm.leaderboardServer': 'Top de envios aqui',
-  'lastfm.leaderboardHint': 'Conta as faixas enviadas por este bot.',
+  'lastfm.leaderboardFooter': 'Envios contados por este bot',
   'lastfm.leaderboardEmpty': 'Nenhum envio contabilizado ainda.',
   'lastfm.fieldRanking': 'Classificação',
 

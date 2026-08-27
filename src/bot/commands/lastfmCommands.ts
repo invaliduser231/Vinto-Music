@@ -12,7 +12,7 @@ import {
   parseOnOff,
   trackLabel,
 } from './commandHelpers.ts';
-import { buildSingleFieldInfoPayload } from './responseUtils.ts';
+import { buildInfoPayload } from './responseUtils.ts';
 import { LastFmApiError } from '../../integrations/lastfm/LastFmClient.ts';
 import { toLastFmTrack } from '../../integrations/lastfm/trackMetadata.ts';
 import type { LastFmPeriod, LastFmRankedEntry } from '../../integrations/lastfm/LastFmClient.ts';
@@ -648,7 +648,13 @@ async function handleLeaderboard(ctx: CommandContextLike, lastfm: LastFmBundle):
   const title = serverScope ? ctx.t('lastfm.leaderboardServer') : ctx.t('lastfm.leaderboardGlobal');
 
   await ctx.sendPaginated([
-    buildSingleFieldInfoPayload(ctx, title, ctx.t('lastfm.leaderboardHint'), ctx.t('lastfm.fieldRanking'), lines.join('\n')),
+    buildInfoPayload(
+      ctx,
+      title,
+      '',
+      [{ name: ctx.t('lastfm.fieldRanking'), value: lines.join('\n') }],
+      { footer: ctx.t('lastfm.leaderboardFooter') },
+    ),
   ]);
 }
 
