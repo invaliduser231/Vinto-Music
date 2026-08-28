@@ -953,7 +953,11 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
         }
       }
 
-      const globalCounts = await fetchCachedGlobalGuildAndUserCounts(typedCtx.rest).catch(() => null);
+      const library = typedCtx.library as { getTotalPlays?: () => Promise<number> } | null;
+      const [globalCounts, totalPlays] = await Promise.all([
+        fetchCachedGlobalGuildAndUserCounts(typedCtx.rest).catch(() => null),
+        library?.getTotalPlays ? library.getTotalPlays().catch(() => null) : Promise.resolve(null),
+      ]);
       const serverCountLabel = globalCounts?.guildCount == null
         ? typedCtx.t('common.notAvailable')
         : String(globalCounts.guildCount);
@@ -971,6 +975,11 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
         { name: typedCtx.t('stats.serversTotal'), value: serverCountLabel, inline: true },
         { name: typedCtx.t('stats.usersTotal'), value: userCountLabel, inline: true },
         { name: typedCtx.t('stats.heapUsed'), value: `${Math.round(mem.heapUsed / 1024 / 1024)} MB`, inline: true },
+        {
+          name: typedCtx.t('stats.tracksPlayed'),
+          value: totalPlays == null ? typedCtx.t('common.notAvailable') : `\`${totalPlays.toLocaleString(typedCtx.t.locale)}\``,
+          inline: true,
+        },
       ]);
     },
   }));

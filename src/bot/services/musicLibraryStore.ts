@@ -213,6 +213,8 @@ interface CollectionLike<T> {
   find?: (filter: Record<string, unknown>, options?: Record<string, unknown>) => CursorLike<T>;
   countDocuments?: (filter: Record<string, unknown>) => Promise<number>;
   insertOne?: (document: T) => Promise<unknown>;
+  updateMany?(filter: Record<string, unknown>, update: Record<string, unknown>[]): Promise<unknown>;
+  aggregate?(pipeline: Record<string, unknown>[]): { toArray(): Promise<Array<Record<string, unknown>>> };
 }
 
 export class MusicLibraryStore {
@@ -278,6 +280,7 @@ export class MusicLibraryStore {
 
     await this.guildHistory.createIndex!({ guildId: 1 }, { unique: true });
     await this.guildHistory.createIndex!({ updatedAt: -1 });
+    await this._seedTotalPlays();
 
     if (this.guildFeatures) {
       await this.guildFeatures.createIndex!({ guildId: 1 }, { unique: true });
@@ -1282,6 +1285,9 @@ export class MusicLibraryStore {
         $set: {
           updatedAt: now,
         },
+        $inc: {
+          totalPlays: 1,
+        },
         $push: {
           tracks: {
             $each: [normalizedTrack],
@@ -1291,6 +1297,30 @@ export class MusicLibraryStore {
       },
       { upsert: true }
     );
+  }
+
+  async getTotalPlays(): Promise<number> {
+    if (!this.guildHistory.aggregate) return 0;
+
+    const rows = await this.guildHistory.aggregate([
+      { $group: { _id: null, total: { $sum: { $ifNull: ['$totalPlays', 0] } } } },
+    ]).toArray().catch(() => [] as Array<{ total?: number }>);
+
+    const total = Number(rows[0]?.total ?? 0);
+    return Number.isFinite(total) && total > 0 ? total : 0;
+  }
+
+  async _seedTotalPlays(): Promise<void> {
+    if (!this.guildHistory.updateMany) return;
+
+    await this.guildHistory.updateMany(
+      { totalPlays: { $exists: false } },
+      [{ $set: { totalPlays: { $size: { $ifNull: ['$tracks', []] } } } }],
+    ).catch((err: unknown) => {
+      this.logger?.warn?.('Failed to seed guild history play counters', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
   }
 
   async listGuildHistory(guildId: unknown, page: number = 1, pageSize: number = DEFAULT_PAGE_SIZE) {

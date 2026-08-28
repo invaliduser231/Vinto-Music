@@ -781,8 +781,10 @@ export class CommandRouter {
         });
       });
 
-      if (skipped && this.library.recordUserSignal && track?.requestedBy && /^\d{6,}$/.test(String(track.requestedBy))) {
-        await this.library.recordUserSignal(session.guildId, String(track.requestedBy), 'skip', track).catch(() => null);
+      if (this.library.recordUserSignal && track?.requestedBy && /^\d{6,}$/.test(String(track.requestedBy))) {
+        await this.library
+          .recordUserSignal(session.guildId, String(track.requestedBy), skipped ? 'skip' : 'play', track)
+          .catch(() => null);
       }
     });
   }

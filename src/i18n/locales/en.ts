@@ -198,6 +198,7 @@ export const en = {
   'stats.serversTotal': 'Servers total',
   'stats.usersTotal': 'Users total',
   'stats.heapUsed': 'Heap Used',
+  'stats.tracksPlayed': 'Tracks played',
   'stats.counting': 'counting...',
   'stats.partial': '{count} (partial)',
 

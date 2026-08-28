@@ -200,6 +200,7 @@ export const ptBR: Catalog = {
   'stats.serversTotal': 'Servidores no total',
   'stats.usersTotal': 'Usuários no total',
   'stats.heapUsed': 'Heap usado',
+  'stats.tracksPlayed': 'Faixas tocadas',
   'stats.counting': 'contando...',
   'stats.partial': '{count} (parcial)',
 

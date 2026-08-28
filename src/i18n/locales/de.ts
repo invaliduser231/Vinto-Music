@@ -200,6 +200,7 @@ export const de: Catalog = {
   'stats.serversTotal': 'Server gesamt',
   'stats.usersTotal': 'Nutzer gesamt',
   'stats.heapUsed': 'Heap belegt',
+  'stats.tracksPlayed': 'Abgespielte Titel',
   'stats.counting': 'wird gezählt...',
   'stats.partial': '{count} (unvollständig)',
 

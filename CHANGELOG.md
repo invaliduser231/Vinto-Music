@@ -29,6 +29,8 @@ All notable changes to this project are documented in this file.
   - `blend` builds a queue from the top artists of everyone currently in the voice channel
   - milestone and streak notices go to the session log channel
 - Features:
+  - counted every track appended to the guild history in a field that trimming cannot reach, so the all-time play count survives the 200 entry cap, and showed it in `stats`
+  - recorded a finished track as a play signal, which the user profile schema always supported but nothing ever sent, leaving every reputation and play stat at zero
   - added a guild-scoped `autoplay` command that keeps playback going with Last.fm recommendations when the queue runs out
 - Configuration:
   - added `LASTFM_ENABLED`, `LASTFM_API_KEY`, `LASTFM_API_SECRET`, `LASTFM_ENCRYPTION_KEY`, `LASTFM_REQUEST_TIMEOUT_MS`, `LASTFM_SCROBBLE_MIN_SECONDS` and `LASTFM_AUTOPLAY_DEFAULT_ENABLED`
