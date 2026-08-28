@@ -5,6 +5,7 @@ All notable changes to this project are documented in this file.
 ## [0.9.0] - 2026-08-27
 
 - Fixes:
+  - showed the play count in every render of `stats` rather than only the last one, which waits for the user count across every guild and can take minutes
   - fell back to the top tracks of the seed artist when last.fm knows no similar tracks, which is a real gap in their data for songs like Ich + Ich - Pflaster and used to end the autoplay chain
   - normalised the track identity before comparing, so a suggestion that only adds a featuring credit is recognised as already played instead of looping two tracks forever
   - removed a stray null byte that had crept into the track metadata source
