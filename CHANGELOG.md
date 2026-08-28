@@ -5,6 +5,8 @@ All notable changes to this project are documented in this file.
 ## [0.9.0] - 2026-08-27
 
 - Fixes:
+  - normalised the track identity before comparing, so a suggestion that only adds a featuring credit is recognised as already played instead of looping two tracks forever
+  - removed a stray null byte that had crept into the track metadata source
   - seeded the next autoplay suggestion from what last.fm proposed rather than from the track the search actually returned, so one imprecise match no longer ends the chain
   - stopped autoplay once the voice channel is empty, otherwise it kept the session alive forever because the idle timer only fires while nothing is playing
   - verified autoplay suggestions against the requested artist and title, so a remix by an unrelated artist is no longer accepted as the recommended track

@@ -235,6 +235,23 @@ test('autoplay skips what is still in the session history', async () => {
   assert.deepEqual(previewCalls.map((call) => call.query), ['Duffy - Mercy']);
 });
 
+test('a suggestion that only differs by a featuring credit counts as recently played', async () => {
+  const { router, session, previewCalls } = createRouter({
+    similar: [
+      { artist: 'Kraftklub', track: 'Fallen in Liebe feat. Nina Chuba', match: 1 },
+      { artist: 'Kraftklub', track: 'Karten auf den Tisch', match: 0.9 },
+    ],
+    history: [
+      { title: 'Fallen in Liebe', artist: 'Kraftklub', duration: '2:20' },
+    ],
+  });
+
+  router.lastPlayedTracks.set('session-1', AMY);
+
+  assert.equal(await router._tryAutoplay(session as never), 'Kraftklub - Karten auf den Tisch');
+  assert.deepEqual(previewCalls.map((call) => call.query), ['Kraftklub - Karten auf den Tisch']);
+});
+
 test('autoplay stays quiet when nothing resolves', async () => {
   const { router, session, enqueued } = createRouter({
     similar: [{ artist: 'Amy Winehouse', track: 'Rehab', match: 1 }],

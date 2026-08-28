@@ -86,3 +86,25 @@ test('deferred metadata and youtube mix placeholders are skipped', () => {
   assert.equal(toLastFmTrack({ title: 'Artist - Song', duration: '4:00', metadataDeferred: true }), null);
   assert.equal(toLastFmTrack({ title: 'YouTube Mix Track', artist: 'Mix', duration: '4:00' }), null);
 });
+
+test('the identity ignores featuring credits and bracketed extras', async () => {
+  const { trackIdentity } = await import('../src/integrations/lastfm/trackMetadata.ts');
+
+  const played = trackIdentity({ artist: 'Kraftklub', track: 'Fallen in Liebe' });
+  const suggested = trackIdentity({ artist: 'Kraftklub', track: 'Fallen in Liebe feat. Nina Chuba' });
+  assert.equal(suggested, played);
+
+  assert.equal(
+    trackIdentity({ artist: 'Kraftklub', track: 'Fahr mit mir (4x4) (feat. Tokio Hotel)' }),
+    trackIdentity({ artist: 'Kraftklub', track: 'Fahr mit mir (4x4)' }),
+  );
+});
+
+test('the identity still separates different tracks by the same artist', async () => {
+  const { trackIdentity } = await import('../src/integrations/lastfm/trackMetadata.ts');
+
+  assert.notEqual(
+    trackIdentity({ artist: 'Kraftklub', track: 'Fallen in Liebe' }),
+    trackIdentity({ artist: 'Kraftklub', track: 'Fahr mit mir' }),
+  );
+});
