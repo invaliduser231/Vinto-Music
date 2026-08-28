@@ -12,6 +12,7 @@ function createRouter(options: {
   previewDelayMs?: number;
   slowQueries?: string[];
   slowDelayMs?: number;
+  listeners?: number;
 }) {
   const previewCalls: PreviewCall[] = [];
   const enqueued: unknown[] = [];
@@ -66,7 +67,7 @@ function createRouter(options: {
       on: () => null,
       sessions: new Map(),
     },
-    voiceStateStore: { countUsersInChannel: () => 1 },
+    voiceStateStore: { countUsersInChannel: () => options.listeners ?? 1 },
     lyrics: null,
     lastfm: {
       client: {
@@ -241,6 +242,18 @@ test('autoplay stays quiet when nothing resolves', async () => {
 
   assert.equal(await router._tryAutoplay(session as never), null);
   assert.equal(enqueued.length, 0);
+});
+
+test('autoplay stops once the channel is empty so the session can time out', async () => {
+  const { router, session, previewCalls } = createRouter({
+    similar: [{ artist: 'Amy Winehouse', track: 'Rehab', match: 1 }],
+    listeners: 0,
+  });
+
+  router.lastPlayedTracks.set('session-1', AMY);
+
+  assert.equal(await router._tryAutoplay(session as never), null);
+  assert.equal(previewCalls.length, 0, 'no lookups for an empty room');
 });
 
 test('autoplay stays off when the guild did not enable it', async () => {

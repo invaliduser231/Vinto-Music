@@ -5,6 +5,7 @@ All notable changes to this project are documented in this file.
 ## [0.9.0] - 2026-08-27
 
 - Fixes:
+  - stopped autoplay once the voice channel is empty, otherwise it kept the session alive forever because the idle timer only fires while nothing is playing
   - verified autoplay suggestions against the requested artist and title, so a remix by an unrelated artist is no longer accepted as the recommended track
   - ranked autoplay search results by how well the artist matches instead of gating on it, so a different act is preferred away but still used when nothing closer exists
   - kept the last.fm ranking when picking an autoplay track and capped the whole lookup round at three seconds, instead of waiting for the slowest search

@@ -851,6 +851,17 @@ export class CommandRouter {
     if (!client) return null;
     if (session?.settings?.autoplayEnabled !== true) return null;
 
+    const guildId = String(session?.guildId ?? '').trim();
+    const voiceChannelId = String(session?.connection?.channelId ?? '').trim();
+    if (guildId && voiceChannelId) {
+      const listeners = this.voiceStateStore.countUsersInChannel(
+        guildId,
+        voiceChannelId,
+        this.botUserId ? [this.botUserId] : [],
+      );
+      if (listeners <= 0) return this._skipAutoplay(session, 'nobody is listening');
+    }
+
     const sessionId = String(session?.sessionId ?? '').trim();
     const previous = sessionId ? this.lastPlayedTracks.get(sessionId) : null;
     const meta = toLastFmTrack(previous as never, { minDurationSec: 1 });
