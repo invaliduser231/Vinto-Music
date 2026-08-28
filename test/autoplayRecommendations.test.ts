@@ -146,21 +146,31 @@ test('a remix by a different artist is not accepted as the suggested track', asy
   assert.equal((enqueued[0] as { artist?: string }).artist, 'Duffy');
 });
 
-test('an artist whose name merely starts the same is rejected', async () => {
+test('the exact artist wins when the search offers a near namesake too', async () => {
   const { router, session, enqueued } = createRouter({
-    similar: [
-      { artist: 'Adele', track: "I'll Be Waiting", match: 1 },
-      { artist: 'Duffy', track: 'Mercy', match: 0.9 },
+    similar: [{ artist: 'Adele', track: "I'll Be Waiting", match: 1 }],
+    resolve: () => [
+      { title: "I'll Be Waiting", artist: 'Adele Harley', duration: '3:29', source: 'deezer' },
+      { title: "I'll Be Waiting", artist: 'Adele', duration: '4:01', source: 'deezer' },
     ],
-    resolve: (query) => (query.includes('Waiting')
-      ? [{ title: "I'll Be Waiting", artist: 'Adele Harley', duration: '3:29', source: 'deezer' }]
-      : [{ title: 'Mercy', artist: 'Duffy', duration: '3:41', source: 'deezer' }]),
   });
 
   router.lastPlayedTracks.set('session-1', AMY);
 
-  assert.equal(await router._tryAutoplay(session as never), 'Mercy', 'Adele Harley is not Adele');
-  assert.equal((enqueued[0] as { artist?: string }).artist, 'Duffy');
+  assert.equal(await router._tryAutoplay(session as never), "I'll Be Waiting");
+  assert.equal((enqueued[0] as { artist?: string }).artist, 'Adele');
+});
+
+test('a near namesake is still used when nothing closer turns up', async () => {
+  const { router, session, enqueued } = createRouter({
+    similar: [{ artist: 'Adele', track: "I'll Be Waiting", match: 1 }],
+    resolve: () => [{ title: "I'll Be Waiting", artist: 'Adele Harley', duration: '3:29', source: 'deezer' }],
+  });
+
+  router.lastPlayedTracks.set('session-1', AMY);
+
+  assert.equal(await router._tryAutoplay(session as never), "I'll Be Waiting");
+  assert.equal((enqueued[0] as { artist?: string }).artist, 'Adele Harley');
 });
 
 test('a leading article in the artist name is not treated as a mismatch', async () => {

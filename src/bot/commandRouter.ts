@@ -814,9 +814,19 @@ export class CommandRouter {
       .join(' ');
   }
 
+  _rateAutoplayArtist(wanted: string, found: string): number {
+    if (!wanted || !found) return 1;
+    if (wanted === found) return 0;
+
+    const wantedTokens = new Set(wanted.split(' ').filter(Boolean));
+    const shared = found.split(' ').filter((token) => wantedTokens.has(token));
+    return shared.length ? 1 : 2;
+  }
+
   _verifyAutoplayMatch(candidate: { artist: string; track: string }, tracks: unknown): unknown | null {
     const list = Array.isArray(tracks) ? tracks : [];
     const wantedArtist = this._artistKey(candidate.artist);
+    let best: { track: unknown; rank: number } | null = null;
 
     for (const track of list) {
       if (!track) continue;
@@ -827,13 +837,13 @@ export class CommandRouter {
       );
       if (evaluation.confidence === 'reject') continue;
 
-      const foundArtist = this._artistKey((track as { artist?: unknown }).artist);
-      if (wantedArtist && foundArtist && foundArtist !== wantedArtist) continue;
-
-      return track;
+      const rank = this._rateAutoplayArtist(wantedArtist, this._artistKey((track as { artist?: unknown }).artist));
+      if (rank >= 2) continue;
+      if (rank === 0) return track;
+      if (!best || rank < best.rank) best = { track, rank };
     }
 
-    return null;
+    return best?.track ?? null;
   }
 
   async _tryAutoplay(session: SessionLookup | null | undefined): Promise<string | null> {
