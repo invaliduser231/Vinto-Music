@@ -6,6 +6,7 @@ All notable changes to this project are documented in this file.
 
 - Fixes:
   - verified autoplay suggestions against the requested artist and title, so a remix by an unrelated artist is no longer accepted as the recommended track
+  - required the artist name to match exactly rather than as a substring, so an act like Adele Harley no longer stands in for Adele and derails the recommendation chain
   - kept the last.fm ranking when picking an autoplay track and capped the whole lookup round at three seconds, instead of waiting for the slowest search
   - kept the player binding when autoplay resolves candidates, without it every lookup threw before it started
   - resolved autoplay candidates in one concurrent round instead of up to eight sequential lookups, which left a long silence between tracks

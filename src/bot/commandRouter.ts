@@ -806,9 +806,17 @@ export class CommandRouter {
     return null;
   }
 
+  _artistKey(value: unknown): string {
+    const primary = String(value ?? '').split(/[,;&/]| x | vs /i)[0] ?? '';
+    return normalizeMirrorText(primary)
+      .split(' ')
+      .filter((token) => token && token !== 'the')
+      .join(' ');
+  }
+
   _verifyAutoplayMatch(candidate: { artist: string; track: string }, tracks: unknown): unknown | null {
     const list = Array.isArray(tracks) ? tracks : [];
-    const wantedArtist = normalizeMirrorText(String(candidate.artist).split(/[,;&/]| x | vs /i)[0] ?? '');
+    const wantedArtist = this._artistKey(candidate.artist);
 
     for (const track of list) {
       if (!track) continue;
@@ -819,10 +827,8 @@ export class CommandRouter {
       );
       if (evaluation.confidence === 'reject') continue;
 
-      const foundArtist = normalizeMirrorText((track as { artist?: unknown }).artist);
-      if (wantedArtist && foundArtist && !foundArtist.includes(wantedArtist) && !wantedArtist.includes(foundArtist)) {
-        continue;
-      }
+      const foundArtist = this._artistKey((track as { artist?: unknown }).artist);
+      if (wantedArtist && foundArtist && foundArtist !== wantedArtist) continue;
 
       return track;
     }

@@ -146,6 +146,33 @@ test('a remix by a different artist is not accepted as the suggested track', asy
   assert.equal((enqueued[0] as { artist?: string }).artist, 'Duffy');
 });
 
+test('an artist whose name merely starts the same is rejected', async () => {
+  const { router, session, enqueued } = createRouter({
+    similar: [
+      { artist: 'Adele', track: "I'll Be Waiting", match: 1 },
+      { artist: 'Duffy', track: 'Mercy', match: 0.9 },
+    ],
+    resolve: (query) => (query.includes('Waiting')
+      ? [{ title: "I'll Be Waiting", artist: 'Adele Harley', duration: '3:29', source: 'deezer' }]
+      : [{ title: 'Mercy', artist: 'Duffy', duration: '3:41', source: 'deezer' }]),
+  });
+
+  router.lastPlayedTracks.set('session-1', AMY);
+
+  assert.equal(await router._tryAutoplay(session as never), 'Mercy', 'Adele Harley is not Adele');
+  assert.equal((enqueued[0] as { artist?: string }).artist, 'Duffy');
+});
+
+test('a leading article in the artist name is not treated as a mismatch', async () => {
+  const { router, session } = createRouter({
+    similar: [{ artist: 'The Beatles', track: 'Come Together', match: 1 }],
+    resolve: () => [{ title: 'Come Together', artist: 'Beatles', duration: '4:20', source: 'deezer' }],
+  });
+
+  router.lastPlayedTracks.set('session-1', AMY);
+  assert.equal(await router._tryAutoplay(session as never), 'Come Together');
+});
+
 test('the highest ranked suggestion wins, not the fastest lookup', async () => {
   const { router, session } = createRouter({
     similar: [
