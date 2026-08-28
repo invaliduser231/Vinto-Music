@@ -6,14 +6,16 @@ import { CommandRouter } from '../src/bot/commandRouter.ts';
 type PreviewCall = { query: string; startedAt: number };
 
 function createRouter(options: {
-  similar: Array<{ artist: string; track: string; match: number }>;
+  similar?: Array<{ artist: string; track: string; match: number }>;
   history?: Array<{ title: string; artist: string; duration: string }>;
   resolve?: (query: string) => unknown[];
   previewDelayMs?: number;
   slowQueries?: string[];
   slowDelayMs?: number;
   listeners?: number;
+  similarFor?: (artist: string, track: string) => Array<{ artist: string; track: string; match: number }>;
 }) {
+  const seeds: string[] = [];
   const previewCalls: PreviewCall[] = [];
   const enqueued: unknown[] = [];
 
@@ -71,8 +73,9 @@ function createRouter(options: {
     lyrics: null,
     lastfm: {
       client: {
-        async trackGetSimilar() {
-          return options.similar;
+        async trackGetSimilar(artist: string, track: string) {
+          seeds.push(`${artist} - ${track}`);
+          return options.similarFor ? options.similarFor(artist, track) : options.similar;
         },
       },
       accounts: {},
@@ -80,7 +83,7 @@ function createRouter(options: {
     },
   } as unknown as ConstructorParameters<typeof CommandRouter>[0]);
 
-  return { router, session, previewCalls, enqueued };
+  return { router, session, previewCalls, enqueued, seeds };
 }
 
 const AMY = { title: 'Back To Black', artist: 'Amy Winehouse', duration: '4:00' };
@@ -266,4 +269,30 @@ test('autoplay stays off when the guild did not enable it', async () => {
 
   assert.equal(await router._tryAutoplay(session as never), null);
   assert.equal(previewCalls.length, 0);
+});
+
+test('the next suggestion follows what last.fm proposed, not the stand-in that got played', async () => {
+  const { router, session, seeds } = createRouter({
+    similarFor: (artist, track) => {
+      if (artist === 'Amy Winehouse') return [{ artist: 'Adele', track: "I'll Be Waiting", match: 1 }];
+      if (artist === 'Adele') return [{ artist: 'Duffy', track: 'Mercy', match: 1 }];
+      return [];
+    },
+    resolve: (query) => (query.includes('Waiting')
+      ? [{ title: "I'll Be Waiting", artist: 'Adele Harley', duration: '3:29', source: 'deezer' }]
+      : [{ title: 'Mercy', artist: 'Duffy', duration: '3:41', source: 'deezer' }]),
+  });
+
+  router.lastPlayedTracks.set('session-1', AMY);
+  assert.equal(await router._tryAutoplay(session as never), "I'll Be Waiting");
+
+  router.lastPlayedTracks.set('session-1', {
+    title: "I'll Be Waiting",
+    artist: 'Adele Harley',
+    duration: '3:29',
+  });
+  session.player.playing = false;
+
+  assert.equal(await router._tryAutoplay(session as never), 'Mercy', 'the chain continues from Adele');
+  assert.deepEqual(seeds, ['Amy Winehouse - Back To Black', "Adele - I'll Be Waiting"]);
 });

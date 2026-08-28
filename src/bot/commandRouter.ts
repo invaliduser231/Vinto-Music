@@ -247,6 +247,7 @@ export class CommandRouter {
   searchReactionSelections: Map<string, SearchReactionState>;
   nowPlayingMessages: Map<string, { channelId: string; messageId: string }>;
   lastPlayedTracks: Map<string, Record<string, unknown>>;
+  autoplaySeeds: Map<string, { artist: string; track: string; playedIdentity: string }>;
   weeklySweepHandle: NodeJS.Timeout | null;
   ephemeralCleanupHandle: NodeJS.Timeout | null;
   commandRateLimiter: CommandRateLimiter;
@@ -275,6 +276,7 @@ export class CommandRouter {
     this.searchReactionSelections = new Map();
     this.nowPlayingMessages = new Map();
     this.lastPlayedTracks = new Map();
+    this.autoplaySeeds = new Map();
     this.weeklySweepHandle = null;
     this.ephemeralCleanupHandle = null;
     const rateLimiterOptions = {
@@ -747,7 +749,10 @@ export class CommandRouter {
     this.sessions.on('destroyed', async (payload?: SessionEventPayload) => {
       const { session, reason } = payload ?? {};
       const destroyedSessionId = String(session?.sessionId ?? '').trim();
-      if (destroyedSessionId) this.lastPlayedTracks.delete(destroyedSessionId);
+      if (destroyedSessionId) {
+        this.lastPlayedTracks.delete(destroyedSessionId);
+        this.autoplaySeeds.delete(destroyedSessionId);
+      }
       const channelId = this._resolveEventChannelId(session);
       if (!channelId) return;
       if (reason === 'manual_command') return;
@@ -864,7 +869,13 @@ export class CommandRouter {
 
     const sessionId = String(session?.sessionId ?? '').trim();
     const previous = sessionId ? this.lastPlayedTracks.get(sessionId) : null;
-    const meta = toLastFmTrack(previous as never, { minDurationSec: 1 });
+    const resolvedMeta = toLastFmTrack(previous as never, { minDurationSec: 1 });
+
+    const suggested = sessionId ? this.autoplaySeeds.get(sessionId) : null;
+    const meta = suggested && resolvedMeta && trackIdentity(resolvedMeta) === suggested.playedIdentity
+      ? { artist: suggested.artist, track: suggested.track }
+      : resolvedMeta;
+
     if (!meta) {
       return this._skipAutoplay(session, 'no usable previous track', {
         title: String((previous as { title?: unknown } | null)?.title ?? '').trim() || null,
@@ -914,6 +925,16 @@ export class CommandRouter {
 
       const added = player.enqueueResolvedTracks([match], { dedupe: false });
       if (!added?.length) continue;
+
+      const playedMeta = toLastFmTrack(added[0] as never, { minDurationSec: 1 });
+      if (sessionId && playedMeta) {
+        const pick = picks[index] as { artist: string; track: string };
+        this.autoplaySeeds.set(sessionId, {
+          artist: pick.artist,
+          track: pick.track,
+          playedIdentity: trackIdentity(playedMeta),
+        });
+      }
 
       if (!player.playing) await player.play().catch(() => null);
       this.logger?.info?.('Autoplay queued a Last.fm recommendation', {
