@@ -14,6 +14,7 @@ function createRouter(options: {
   slowDelayMs?: number;
   listeners?: number;
   similarFor?: (artist: string, track: string) => Array<{ artist: string; track: string; match: number }>;
+  topTracksFor?: (artist: string) => Array<{ artist: string; track: string; match: number }>;
 }) {
   const seeds: string[] = [];
   const previewCalls: PreviewCall[] = [];
@@ -73,6 +74,9 @@ function createRouter(options: {
     lyrics: null,
     lastfm: {
       client: {
+        async artistGetTopTracks(artist: string) {
+          return options.topTracksFor ? options.topTracksFor(artist) : [];
+        },
         async trackGetSimilar(artist: string, track: string) {
           seeds.push(`${artist} - ${track}`);
           return options.similarFor ? options.similarFor(artist, track) : options.similar;
@@ -312,4 +316,31 @@ test('the next suggestion follows what last.fm proposed, not the stand-in that g
 
   assert.equal(await router._tryAutoplay(session as never), 'Mercy', 'the chain continues from Adele');
   assert.deepEqual(seeds, ['Amy Winehouse - Back To Black', "Adele - I'll Be Waiting"]);
+});
+
+test('the artist top tracks carry the chain when last.fm knows no similar tracks', async () => {
+  const { router, session, previewCalls } = createRouter({
+    similarFor: () => [],
+    topTracksFor: (artist) => (artist === 'Amy Winehouse'
+      ? [{ artist: 'Amy Winehouse', track: 'Valerie', match: 400 }]
+      : []),
+    resolve: () => [{ title: 'Valerie', artist: 'Amy Winehouse', duration: '3:38', source: 'deezer' }],
+  });
+
+  router.lastPlayedTracks.set('session-1', AMY);
+
+  assert.equal(await router._tryAutoplay(session as never), 'Valerie');
+  assert.deepEqual(previewCalls.map((call) => call.query), ['Amy Winehouse - Valerie']);
+});
+
+test('autoplay only gives up when neither source knows anything', async () => {
+  const { router, session, previewCalls } = createRouter({
+    similarFor: () => [],
+    topTracksFor: () => [],
+  });
+
+  router.lastPlayedTracks.set('session-1', AMY);
+
+  assert.equal(await router._tryAutoplay(session as never), null);
+  assert.equal(previewCalls.length, 0);
 });

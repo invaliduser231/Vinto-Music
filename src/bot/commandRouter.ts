@@ -887,7 +887,12 @@ export class CommandRouter {
       return this._skipAutoplay(session, 'player cannot queue');
     }
 
-    const similar = await client.trackGetSimilar(meta.artist, meta.track, 25).catch(() => []);
+    let source = 'similar tracks';
+    let similar = await client.trackGetSimilar(meta.artist, meta.track, 25).catch(() => []);
+    if (!similar.length) {
+      source = 'artist top tracks';
+      similar = await client.artistGetTopTracks(meta.artist, 15).catch(() => []);
+    }
     if (!similar.length) {
       return this._skipAutoplay(session, 'last.fm knows no similar tracks', { seed: `${meta.artist} - ${meta.track}` });
     }
@@ -905,7 +910,7 @@ export class CommandRouter {
       .slice(0, AUTOPLAY_RESOLVE_CANDIDATES);
     const queries = picks.map((candidate) => `${candidate.artist} - ${candidate.track}`);
     if (!queries.length) {
-      return this._skipAutoplay(session, 'every suggestion played recently', { similar: similar.length });
+      return this._skipAutoplay(session, 'every suggestion played recently', { source, similar: similar.length });
     }
 
     const previewTracks = player.previewTracks.bind(player);
@@ -940,6 +945,7 @@ export class CommandRouter {
       this.logger?.info?.('Autoplay queued a Last.fm recommendation', {
         guildId: session?.guildId ?? null,
         query: queries[index],
+        source,
         rank: index + 1,
         candidates: queries.length,
         resolveMs: Date.now() - startedAt,
