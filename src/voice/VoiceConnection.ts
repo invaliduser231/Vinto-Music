@@ -26,6 +26,9 @@ const CONCEALMENT_MAX_FRAMES = 12;
 const PUMP_IDLE_WAIT_MS = 5;
 const CAPTURE_FRAME_MAX_RETRIES = 12;
 const CAPTURE_FRAME_RETRY_DELAY_MS = 20;
+const RECONNECT_MAX_ATTEMPTS = 5;
+const RECONNECT_BASE_DELAY_MS = 1_000;
+const RECONNECT_MAX_DELAY_MS = 30_000;
 const EARRAPE_WARMUP_MS = 1_100;
 const EARRAPE_CONFIDENCE_TRIGGER = 1.05;
 const EARRAPE_CONFIDENCE_MAX = 2.5;
@@ -67,6 +70,7 @@ type VoiceConnectionOptions = {
   botUserId?: string | null;
   onEarrapeDetected?: EarrapeDetectionHandler | null;
   earrapeProfileStore?: EarrapeProfileStoreLike | null;
+  autoReconnectEnabled?: boolean;
 };
 
 type VoiceServerUpdate = {
@@ -215,7 +219,14 @@ export class VoiceConnection {
   earrapeProfileStore: EarrapeProfileStoreLike | null;
   onAudioPumpFatalError: (() => void) | null;
   onReconnected: (() => void) | null;
+  onReconnectFailed: (() => void) | null;
+  autoReconnectEnabled: boolean;
   _hasConnectedBefore: boolean;
+  _reconnectToken: number;
+  _reconnectInProgress: boolean;
+  _reconnectMaxAttempts: number;
+  _reconnectBaseDelayMs: number;
+  _reconnectMaxDelayMs: number;
   constructor(gateway: GatewayLike, guildId: string, options: VoiceConnectionOptions = {}) {
     this.gateway = gateway;
     this.guildId = guildId;
@@ -250,7 +261,14 @@ export class VoiceConnection {
     this.participantAudioStates = new Map();
     this.onAudioPumpFatalError = null;
     this.onReconnected = null;
+    this.onReconnectFailed = null;
+    this.autoReconnectEnabled = options.autoReconnectEnabled !== false;
     this._hasConnectedBefore = false;
+    this._reconnectToken = 0;
+    this._reconnectInProgress = false;
+    this._reconnectMaxAttempts = RECONNECT_MAX_ATTEMPTS;
+    this._reconnectBaseDelayMs = RECONNECT_BASE_DELAY_MS;
+    this._reconnectMaxDelayMs = RECONNECT_MAX_DELAY_MS;
   }
 
   get connected() {
@@ -312,6 +330,10 @@ export class VoiceConnection {
   async connect(channelId: string) {
     if (!channelId) {
       throw new Error('Missing voice channel id.');
+    }
+
+    if (!this._reconnectInProgress) {
+      this._cancelAutoReconnect();
     }
 
     if (this.connected) {
@@ -391,6 +413,7 @@ export class VoiceConnection {
   }
 
   async disconnect() {
+    this._cancelAutoReconnect();
     this._stopAudioPump();
     this._stopRemoteAudioMonitoring();
     this.gateway.leaveVoice(this.guildId);
@@ -433,6 +456,102 @@ export class VoiceConnection {
     this.channelId = null;
   }
 
+  _cancelAutoReconnect() {
+    this._reconnectToken += 1;
+    this._reconnectInProgress = false;
+  }
+
+  _handleUnexpectedRoomDisconnect(room: Room) {
+    if (this.room !== room) return;
+
+    const channelId = this.channelId;
+    const willReconnect = Boolean(this.autoReconnectEnabled && channelId);
+
+    this.logger?.warn?.('Voice room disconnected', {
+      guildId: this.guildId,
+      channelId,
+      willReconnect,
+    });
+
+    if (!willReconnect) return;
+
+    void this._runAutoReconnect(channelId!);
+  }
+
+  async _runAutoReconnect(channelId: string) {
+    if (this._reconnectInProgress) return;
+
+    this._reconnectToken += 1;
+    const token = this._reconnectToken;
+    this._reconnectInProgress = true;
+
+    this._stopAudioPump();
+    this._stopRemoteAudioMonitoring();
+    await this._closeAudioResources();
+
+    try {
+      for (let attempt = 1; attempt <= this._reconnectMaxAttempts; attempt += 1) {
+        const delayMs = Math.min(
+          this._reconnectBaseDelayMs * 2 ** (attempt - 1),
+          this._reconnectMaxDelayMs,
+        );
+        await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+
+        if (token !== this._reconnectToken) return;
+        if (this.connected) return;
+
+        try {
+          await this.connect(channelId);
+          if (token !== this._reconnectToken) return;
+
+          this.logger?.info?.('Voice connection restored after unexpected disconnect', {
+            guildId: this.guildId,
+            channelId,
+            attempt,
+          });
+          return;
+        } catch (err) {
+          if (token !== this._reconnectToken) return;
+
+          this.logger?.warn?.('Voice reconnect attempt failed', {
+            guildId: this.guildId,
+            channelId,
+            attempt,
+            maxAttempts: this._reconnectMaxAttempts,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+
+      if (token !== this._reconnectToken) return;
+
+      this.logger?.error?.('Voice reconnect gave up', {
+        guildId: this.guildId,
+        channelId,
+        attempts: this._reconnectMaxAttempts,
+      });
+      this._notifyReconnectFailed();
+    } finally {
+      if (token === this._reconnectToken) {
+        this._reconnectInProgress = false;
+      }
+    }
+  }
+
+  _notifyReconnectFailed() {
+    const notify = this.onReconnectFailed;
+    if (typeof notify !== 'function') return;
+
+    try {
+      notify();
+    } catch (err) {
+      this.logger?.error?.('Voice reconnect failure handler threw', {
+        guildId: this.guildId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   async _closeAudioResources() {
     const source = this.audioSource;
     const track = this.audioTrack;
@@ -471,7 +590,7 @@ export class VoiceConnection {
     if (typeof roomLike.on !== 'function') return;
 
     this.roomDisconnectedListener = () => {
-      this.logger?.warn?.('Voice room disconnected', { guildId: this.guildId });
+      this._handleUnexpectedRoomDisconnect(room);
     };
     this.roomTrackSubscribedListener = (track, _publication, participant) => {
       this._monitorRemoteAudioTrack(track, participant).catch((err) => {
@@ -1023,10 +1142,18 @@ export class VoiceConnection {
     });
   }
 
+  _isClosedSourceError(err: unknown) {
+    const maybeError = this._toErrorLike(err);
+    const message = String(maybeError?.message ?? err ?? '').toLowerCase();
+    return message.includes('audiosource is closed');
+  }
+
   _isFatalCaptureError(err: unknown) {
     const maybeError = this._toErrorLike(err);
     const message = String(maybeError?.message ?? err ?? '').toLowerCase();
-    return message.includes('failed to capture frame') || message.includes('invalidstate');
+    return message.includes('failed to capture frame')
+      || message.includes('invalidstate')
+      || message.includes('audiosource is closed');
   }
 
   _handleFatalCaptureError() {
@@ -1227,6 +1354,7 @@ export class VoiceConnection {
           token !== this.audioPumpToken
           || !this.connected
           || !this._isFatalCaptureError(err)
+          || this._isClosedSourceError(err)
           || attempt >= CAPTURE_FRAME_MAX_RETRIES
         ) {
           throw err;

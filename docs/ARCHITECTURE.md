@@ -138,6 +138,7 @@ Autoplay lives in the command router. When a queue runs empty and the guild has 
 ## Monitoring and Reliability
 
 - Gateway reconnects with exponential backoff and resumes sessions when possible.
+- `VoiceConnection` rejoins on its own when LiveKit reports an unexpected room disconnect, using exponential backoff and rebuilding the audio track. A deliberate disconnect detaches the listener first, so teardown never triggers a rejoin. Once the attempts are exhausted the session manager destroys the session instead of leaving it stranded.
 - REST requests retry on retryable failures and respect route/global rate limits.
 - Mongo health is tracked with recurring ping checks.
 - Monitoring endpoints:

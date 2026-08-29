@@ -709,6 +709,15 @@ export class SessionManager extends EventEmitter {
     player.on('trackError', playerListeners.trackError);
     player.on('queueEmpty', playerListeners.queueEmpty);
 
+    connection.onReconnectFailed = () => {
+      if (!this._hasSessionInstance(session)) return;
+      this.logger?.warn?.('Destroying session after voice reconnect gave up', {
+        guildId,
+        sessionId: session.sessionId,
+      });
+      this.destroy(guildId, 'voice_reconnect_failed', { sessionId: session.sessionId! }).catch(() => null);
+    };
+
     this.sessions.set(session.sessionId!, session);
     this.playerSessionListeners.set(session.sessionId!, playerListeners);
     this._scheduleIdleTimeout(session);
