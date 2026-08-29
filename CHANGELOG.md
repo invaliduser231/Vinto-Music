@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.9.2] - 2026-08-29
+
+- Fixes:
+  - played tracks to the end instead of cutting the last second, which happened because a track was closed when the source stream ran dry rather than when its audio had been heard, and the following `clearQueue` threw away everything the pump had already buffered
+  - waited for the pump to finish and the audio source to play out before closing a track, bounded by three seconds so a stuck stream cannot stall the queue
+  - kept skips and seeks immediate, where discarding the buffer is the point
+- Tests:
+  - covered the drain order on track end, the skip and seek exemptions, the timeout, and adapters without drain support
+
 ## [0.9.1] - 2026-08-29
 
 - Reliability:
