@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.9.1] - 2026-08-29
+
+- Reliability:
+  - rejoined the voice channel on an unexpected LiveKit room disconnect, with exponential backoff over five attempts, instead of logging the drop and sitting out the rest of the session
+  - closed the stale audio source before a rejoin, since `_ensureAudioTrack` reuses an existing track and would otherwise publish into the dead room
+  - destroyed the session once the rejoin attempts are exhausted, so nothing lingers as a connectionless zombie
+  - left a deliberate disconnect untouched, which detaches the room listener before tearing down, and ignored disconnect events coming from a room that is no longer the active one
+- Fixes:
+  - treated `AudioSource is closed` as a recoverable capture error, the message `@livekit/rtc-node` throws when a frame is still in flight while the source is torn down, which previously fell through to a plain error log and left the track stalled
+  - skipped the capture retry loop for a closed source, where retrying can never succeed, rather than burning twelve attempts before giving up
+- Tests:
+  - covered the rejoin path, the retry limit, stale room events, the opt-out, and both capture error classes
+
 ## [0.9.0] - 2026-08-27
 
 - Fixes:
