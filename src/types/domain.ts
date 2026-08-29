@@ -145,6 +145,7 @@ export interface VoiceConnectionLike {
   disconnect?: () => Promise<unknown>;
   sendAudio?: (stream: unknown) => Promise<unknown>;
   stopAudio?: () => unknown;
+  waitForPlaybackDrain?: (timeoutMs?: number) => Promise<void>;
   pauseAudio?: () => unknown;
   resumeAudio?: () => unknown;
   setEarrapeProtectionEnabled?: (enabled: unknown) => void;

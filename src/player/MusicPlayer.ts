@@ -132,6 +132,7 @@ interface VoiceAdapterLike {
   getDiagnostics?: () => Promise<unknown>;
   onAudioPumpFatalError?: (() => void) | null;
   onReconnected?: (() => void) | null;
+  waitForPlaybackDrain?: (timeoutMs?: number) => Promise<void>;
 }
 
 class PlaybackStartupAbortedError extends Error {
@@ -667,6 +668,22 @@ export class MusicPlayer extends EventEmitter {
     });
   }
 
+  async _drainPlaybackBeforeClose(): Promise<void> {
+    if (this.skipRequested || this.pendingSeekTrack) return;
+
+    const voice = this.voice as VoiceAdapterLike | null | undefined;
+    const drain = voice?.waitForPlaybackDrain;
+    if (typeof drain !== 'function') return;
+
+    try {
+      await drain.call(voice);
+    } catch (err) {
+      this.logger?.debug?.('Playback drain before track close failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   _setNormalizedInputUrlCacheEntry(key: string, value: { url: string; expiresAtMs: number }): void {
     this._pruneExpiredNormalizedInputUrlCacheEntries();
     this.normalizedInputUrlCache.delete(key);
@@ -1045,6 +1062,7 @@ export class MusicPlayer extends EventEmitter {
       let playbackStarted = false;
       ffmpegProc.once?.('close', async (code: unknown, signal: unknown) => {
         if (!playbackStarted) return;
+        await this._drainPlaybackBeforeClose();
         await this._handleTrackClose(track, code, signal, playbackToken);
       });
 
@@ -1593,6 +1611,7 @@ export class MusicPlayer extends EventEmitter {
     const onClose = async () => {
       if (!playbackStarted || closeHandled) return;
       closeHandled = true;
+      await this._drainPlaybackBeforeClose();
       await this._handleTrackClose(track, 0, null, playbackToken);
     };
     nodeLinkStream.once('end', onClose);

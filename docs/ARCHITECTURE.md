@@ -46,6 +46,8 @@ Operationally that means:
 6. `VoiceConnection` publishes PCM frames into the platform voice session.
 7. Persistent features write through Mongo-backed stores where needed.
 
+A track is only closed once its audio has actually been played, not when the source stream ends. The pump deliberately keeps up to `MAX_QUEUE_MS` buffered, so both moments are up to a second apart, and tearing the pump down at the source-stream end would cut off the tail. `MusicPlayer` therefore awaits `VoiceConnection.waitForPlaybackDrain()` before `_handleTrackClose`, bounded by a timeout and skipped for skips and seeks, where the buffer is meant to be discarded.
+
 ## Playback Resolution Strategy
 
 Resolution is intentionally layered:

@@ -29,6 +29,8 @@ const CAPTURE_FRAME_RETRY_DELAY_MS = 20;
 const RECONNECT_MAX_ATTEMPTS = 5;
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_DELAY_MS = 30_000;
+const PLAYBACK_DRAIN_MAX_WAIT_MS = 3_000;
+const PLAYBACK_DRAIN_POLL_MS = 20;
 const EARRAPE_WARMUP_MS = 1_100;
 const EARRAPE_CONFIDENCE_TRIGGER = 1.05;
 const EARRAPE_CONFIDENCE_MAX = 2.5;
@@ -1193,6 +1195,36 @@ export class VoiceConnection {
 
   stopAudio() {
     this._stopAudioPump();
+  }
+
+  async waitForPlaybackDrain(timeoutMs: number = PLAYBACK_DRAIN_MAX_WAIT_MS) {
+    const source = this.audioSource;
+    const token = this.audioPumpToken;
+    if (!source || !this.connected) return;
+
+    const budgetMs = Math.max(0, Number(timeoutMs) || 0);
+    const deadline = Date.now() + budgetMs;
+
+    while (this.currentAudioStream && token === this.audioPumpToken && Date.now() < deadline) {
+      await new Promise<void>((resolve) => setTimeout(resolve, PLAYBACK_DRAIN_POLL_MS));
+    }
+
+    if (token !== this.audioPumpToken) return;
+
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) return;
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    try {
+      await Promise.race([
+        Promise.resolve(source.waitForPlayout()).catch(() => undefined),
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, remainingMs);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   _waitForVoiceServer(): Promise<VoiceServerUpdate> {
