@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.10.2] - 2026-08-30
+
+- Fixes:
+  - sent users to the site they came from after signing in. Behind a reverse proxy the OAuth callback built its redirect from the internal request host, which dropped the browser on the container hostname
+
 ## [0.10.1] - 2026-08-30
 
 - Security:
