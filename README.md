@@ -35,6 +35,7 @@ Resilient, self-hosted music bot for Fluxer with persistent music data, queue sa
 - [Quick Start](#quick-start)
 - [Self-Hosting On Fluxer](#self-hosting-on-fluxer)
 - [Configuration](#configuration)
+- [Dashboard](#dashboard)
 - [Commands](#commands)
 - [Troubleshooting](#troubleshooting)
 - [Architecture](#architecture)
@@ -238,6 +239,15 @@ With `DEEZER_ARL` configured, plain text `play` resolution prefers Deezer before
 - Architecture notes: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - Env template: [.env.example](.env.example)
 
+## Dashboard
+
+Optional web UI for session-scoped playback control in a guild voice channel.
+
+- Setup: [dashboard/README.md](dashboard/README.md)
+- Enable with `DASHBOARD_API_ENABLED=1` and a long `DASHBOARD_API_SECRET`
+- Default bind: `127.0.0.1:9092`
+- Includes live player and queue control, search, history, lyrics, library and radio access, sound effects, vote skip, party mode, insights and Last.fm account controls
+
 ## Commands
 
 Default prefix: `!`
@@ -272,7 +282,7 @@ Available when `LASTFM_ENABLED=1`. Each listener links their own account, nothin
 - `lastfm leaderboard [server|global]`
 - `fmplay [@user]` queues the track someone scrobbled last
 - `love` / `unlove` for the currently playing track
-- `autoplay [on|off]` keeps playback going with Last.fm recommendations when the queue runs out
+- `autoplay [on|off]` controls Last.fm recommendations for the current voice channel
 
 A track is scrobbled once it is longer than 30 seconds and the listener heard at least half of it or four minutes, whichever comes first. Listeners who join mid-track are counted from the moment they join. Live streams and radio are never scrobbled.
 

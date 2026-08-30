@@ -111,6 +111,12 @@ services:
       MONITORING_ENABLED: ${MONITORING_ENABLED:-1}
       MONITORING_HOST: 0.0.0.0
       MONITORING_PORT: ${MONITORING_PORT:-9091}
+      DASHBOARD_API_ENABLED: ${DASHBOARD_API_ENABLED:-1}
+      DASHBOARD_API_HOST: 0.0.0.0
+      DASHBOARD_API_PORT: ${DASHBOARD_API_PORT:-9092}
+      DASHBOARD_API_SECRET: ${DASHBOARD_API_SECRET:-change-me-locally-use-long-secret}
+      DASHBOARD_API_ALLOWED_ORIGINS: ${DASHBOARD_API_ALLOWED_ORIGINS:-http://127.0.0.1:3000}
+      DASHBOARD_API_PROGRESS_INTERVAL_MS: ${DASHBOARD_API_PROGRESS_INTERVAL_MS:-2000}
       UNHEALTHY_EXIT_ENABLED: ${UNHEALTHY_EXIT_ENABLED:-1}
       UNHEALTHY_EXIT_AFTER_MS: ${UNHEALTHY_EXIT_AFTER_MS:-180000}
       UNHEALTHY_CHECK_INTERVAL_MS: ${UNHEALTHY_CHECK_INTERVAL_MS:-5000}
@@ -122,6 +128,7 @@ services:
       - /vinto/cookies.txt:/app/cookies.txt:ro
     ports:
       - "${MONITORING_PORT:-9091}:${MONITORING_PORT:-9091}"
+      - "${DASHBOARD_API_PORT:-9092}:${DASHBOARD_API_PORT:-9092}"
     logging:
       driver: json-file
       options:
@@ -133,6 +140,34 @@ services:
       timeout: 5s
       retries: 5
       start_period: 40s
+
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_DASHBOARD_API_URL: ${NEXT_PUBLIC_DASHBOARD_API_URL:-http://127.0.0.1:9092}
+        NEXT_PUBLIC_DASHBOARD_WS_URL: ${NEXT_PUBLIC_DASHBOARD_WS_URL:-ws://127.0.0.1:9092}
+        NEXT_PUBLIC_VISUALIZER_LEAD_MS: ${NEXT_PUBLIC_VISUALIZER_LEAD_MS:-600}
+        NEXT_PUBLIC_DASHBOARD_API_SECRET: ${DASHBOARD_API_SECRET:-change-me-locally-use-long-secret}
+        NEXT_PUBLIC_USE_MOCK_SESSION: "0"
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "127.0.0.1:${DASHBOARD_PORT:-3000}:3000"
+    environment:
+      FLUXER_OAUTH_CLIENT_ID: ${FLUXER_OAUTH_CLIENT_ID:-}
+      FLUXER_OAUTH_CLIENT_SECRET: ${FLUXER_OAUTH_CLIENT_SECRET:-}
+      FLUXER_OAUTH_REDIRECT_URI: ${FLUXER_OAUTH_REDIRECT_URI:-http://127.0.0.1:3000/api/auth/callback}
+      FLUXER_OAUTH_SCOPE: ${FLUXER_OAUTH_SCOPE:-identify guilds}
+      FLUXER_API_BASE: ${FLUXER_API_BASE:-https://api.fluxer.app/v1}
+      AUTH_COOKIE_SECRET: ${AUTH_COOKIE_SECRET:-}
+    logging:
+      driver: json-file
+      options:
+        max-size: ${DASHBOARD_LOG_MAX_SIZE:-25m}
+        max-file: ${DASHBOARD_LOG_MAX_FILE:-3}
 
   mongo:
     image: mongo:7

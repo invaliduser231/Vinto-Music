@@ -125,6 +125,14 @@ Notes:
 
 The guild config store keeps a TTL cache in memory to reduce repeated reads for hot guilds.
 
+## Dashboard API
+
+`DashboardServer` exposes authenticated HTTP snapshots and a WebSocket control channel on the separately configured dashboard bind address. It derives voice membership and role permissions server-side before returning session data or applying an action.
+
+The HTTP hub combines playlists, favorites, stations, queue templates, recaps, taste data and optional Last.fm views. WebSocket actions cover playback, queue changes, effects, vote skip, temporary DJ handoff, personal Last.fm operations and party battles. Party state lives in a shared in-memory store so the dashboard and `party` command operate on the same guild battle; it expires after 12 hours and is intentionally not persisted across restarts.
+
+The Next.js client keeps fast controls optimistic, then reconciles them against the authoritative session broadcasts. Guild settings are edited as a local draft and sent only when saved. OAuth identifies the viewer when enabled; the bot API remains responsible for guild membership, voice-channel membership and permission checks.
+
 ## Last.fm Scrobbling
 
 Only active when `LASTFM_ENABLED=1`. `ScrobbleService` subscribes to the same `SessionManager` events the command router uses:
@@ -135,7 +143,7 @@ Only active when `LASTFM_ENABLED=1`. `ScrobbleService` subscribes to the same `S
 
 Failures never propagate back into the playback path. An invalid session key (Last.fm error 9) unlinks the account and posts a single notice; anything else lands in `lastfm_scrobble_retries` and is retried by a five minute flush loop, which is safe because Last.fm accepts backdated scrobbles for two weeks.
 
-Autoplay lives in the command router. When a queue runs empty and the guild has `autoplayEnabled`, the last played track is fed into `track.getSimilar` and the first resolvable suggestion is queued instead of announcing an empty queue.
+Autoplay lives in the command router. Each voice profile can override `autoplayEnabled`; channels without an override use the configured default. When a queue runs empty and autoplay is enabled for that session, the last played track is fed into `track.getSimilar` and the first resolvable suggestion is queued instead of announcing an empty queue.
 
 ## Monitoring and Reliability
 

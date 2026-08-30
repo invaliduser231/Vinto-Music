@@ -134,8 +134,9 @@ The NodeLink server must run with `NODELINK_ENABLELOADSTREAMENDPOINT=true`; othe
 | --- | --- | --- |
 | `NODELINK_ENABLED` | `0` | Enable NodeLink backend integration. Exact resolution routing depends on `NODELINK_ROUTING_MODE`. Docker Compose defaults this to `1` for the bundled sidecar. |
 | `NODELINK_IMAGE` | `performanc/nodelink:latest` | Docker image used by the bundled NodeLink sidecar. Use `latest` for automatic updates via `docker compose pull`, or pin a tag such as `performanc/nodelink:3.7.0`. |
-| `NODELINK_BASE_URL` | empty | HTTP base URL of NodeLink, for example `http://nodelink:3000` in Docker Compose. Required when `NODELINK_ENABLED=1`. |
+| `NODELINK_BASE_URL` | empty | HTTP base URL of NodeLink, for example `http://nodelink:3000` in Docker Compose. Required when `NODELINK_ENABLED=1`. Compose only exposes NodeLink on the internal network. If you run the bot outside Compose and publish NodeLink to the host, map it to a port other than 3000, which the dashboard occupies. |
 | `NODELINK_PASSWORD` | empty | Authorization password sent to NodeLink. Must match `NODELINK_SERVER_PASSWORD` on the NodeLink service. |
+| `NODELINK_MIRROR_SEARCH_ORDER` | `dzsearch,tdsearch,scsearch,ytsearch,ytmsearch` | Search identifiers tried in order when a track resolves but its source cannot be streamed, for example Spotify. The first identifier that returns a playable match wins, and the source that just failed is skipped. Put the sources with the best audio first. |
 | `NODELINK_DEFAULT_SEARCH` | `search` | Prefix for plain text queries sent to NodeLink, for example `search` or another NodeLink-supported search identifier. |
 | `NODELINK_ROUTING_MODE` | `smart` | NodeLink routing policy: `smart` uses NodeLink for text search + YouTube URLs, `all` tries NodeLink first for all URLs/queries, `youtube-only` limits NodeLink to direct YouTube URLs. Tidal, Apple Music, and Spotify links are resolved by the bot itself, because NodeLink silently swaps in a mirror for them while keeping the original track metadata. Playback of those mirrors still goes through NodeLink. Spotify albums, playlists, and artists only take this path when `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` are set. |
 | `NODELINK_REQUEST_TIMEOUT_MS` | `15000` | Timeout for NodeLink `loadtracks` requests. |
@@ -175,7 +176,7 @@ Scrobbling is off until `LASTFM_ENABLED=1` and all three credentials are present
 | `LASTFM_ENCRYPTION_KEY` | empty | Required when enabled. 32 bytes as hex, base64 or raw. Encrypts stored session keys with AES-256-GCM. |
 | `LASTFM_REQUEST_TIMEOUT_MS` | `10000` | Per-request timeout against the Last.fm API. |
 | `LASTFM_SCROBBLE_MIN_SECONDS` | `30` | Tracks shorter than this are never scrobbled, matching the Last.fm rules. |
-| `LASTFM_AUTOPLAY_DEFAULT_ENABLED` | `0` | Default for the per-guild `autoplay` setting. |
+| `LASTFM_AUTOPLAY_DEFAULT_ENABLED` | `0` | Default for voice channels without an explicit `autoplay` setting. |
 
 Two collections are created on demand: `user_lastfm_accounts` holds the linked accounts and their encrypted session keys, `lastfm_scrobble_retries` buffers failed submissions and expires them after 14 days.
 
@@ -239,6 +240,22 @@ Notes:
 | `UNHEALTHY_CHECK_INTERVAL_MS` | `5000` | How often the runtime checks whether unhealthy state should trigger a forced exit. |
 | `SENTRY_DSN` | empty | Optional Sentry DSN. |
 | `SENTRY_ENVIRONMENT` | `production` | Sentry environment label. |
+
+## Dashboard API
+
+Local web UI for session-scoped playback control. Disabled by default.
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `DASHBOARD_API_ENABLED` | `0` | Start the dashboard HTTP and WebSocket server. |
+| `DASHBOARD_API_HOST` | `127.0.0.1` | Bind host. Keep on localhost unless you explicitly expose it. |
+| `DASHBOARD_API_PORT` | `9092` | Bind port. |
+| `DASHBOARD_API_SECRET` | empty | Shared secret for dashboard auth. Minimum 24 characters when enabled. |
+| `DASHBOARD_API_ALLOWED_ORIGINS` | `http://localhost:3000` | Comma-separated browser origins for CORS. |
+| `NEXT_PUBLIC_VISUALIZER_LEAD_MS` | `600` | Dashboard-side delay before a spectrum frame is drawn. The analyzer taps the audio upstream of the voice buffer, so frames arrive before listeners hear them. Measured on this stack as a median lead of 613 ms, ranging from 362 to 856 ms as the buffer drains and refills. The `fluxer_bot_voice_queued_duration_ms` metric reports the current lead so it can be retuned per deployment. |
+| `DASHBOARD_API_PROGRESS_INTERVAL_MS` | `2000` | Now playing progress resync interval for WebSocket clients. The dashboard interpolates the position locally between resyncs, and every player action is broadcast immediately, so a low value only adds load. |
+
+The dashboard Next.js app uses separate `NEXT_PUBLIC_*` variables in `dashboard/.env.local`. See `dashboard/README.md`.
 
 ## Practical Presets
 
