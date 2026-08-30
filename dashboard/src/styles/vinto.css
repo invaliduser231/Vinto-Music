@@ -1,0 +1,2281 @@
+:root {
+  --bg-base: #121214;
+  --bg-surface: #1a1a1d;
+  --bg-surface-hover: #232328;
+  --bg-glass: rgba(26, 26, 29, 0.6);
+  --vinto-pink: #ff2d78;
+  --vinto-pink-hover: #e01f65;
+  --vinto-pink-glow: rgba(255, 45, 120, 0.3);
+  --text-main: #ffffff;
+  --text-muted: #8c8c93;
+  --text-dark: #121214;
+  --border-color: rgba(255, 255, 255, 0.05);
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-full: 9999px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--bg-base);
+  color: var(--text-main);
+  font-family: var(--font-body), 'IBM Plex Sans', sans-serif;
+  overflow: hidden;
+  height: 100vh;
+  display: flex;
+  flex-direction: row;
+  -webkit-font-smoothing: antialiased;
+}
+
+.vinto-ambient {
+  position: fixed;
+  top: 50%;
+  left: 25%;
+  transform: translate(-50%, -50%);
+  width: 800px;
+  height: 800px;
+  background: radial-gradient(circle, var(--vinto-pink-glow) 0%, transparent 60%);
+  filter: blur(100px);
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  transition: opacity 0.5s ease, background 1.2s ease;
+}
+
+.vinto-visualizer {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 38%;
+  width: 100%;
+  z-index: 2;
+  pointer-events: none;
+  mask-image: linear-gradient(to top, #000 30%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to top, #000 30%, transparent 100%);
+}
+
+@keyframes vinto-cover-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.015); }
+}
+
+.vinto-cover-wrap.playing .vinto-cover {
+  animation: vinto-cover-breathe 6s ease-in-out infinite;
+}
+
+.vinto-track-title {
+  --marquee-shift: 0px;
+}
+
+.vinto-track-title.overflowing > span {
+  display: inline-block;
+  animation: vinto-marquee 14s ease-in-out infinite;
+}
+
+@keyframes vinto-marquee {
+  0%, 12% { transform: translateX(0); }
+  48%, 60% { transform: translateX(var(--marquee-shift)); }
+  96%, 100% { transform: translateX(0); }
+}
+
+.vinto-app {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  flex: 1;
+  min-width: 0;
+}
+
+.vinto-guild-sidebar {
+  width: 76px;
+  height: 100%;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 0;
+  gap: 12px;
+  z-index: 10;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+
+.vinto-guild-sidebar::-webkit-scrollbar {
+  display: none;
+}
+
+.vinto-guild-item {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+a.vinto-guild-item {
+  color: inherit;
+  text-decoration: none;
+}
+
+.vinto-guild-icon {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  background: #2a2a30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display), 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--text-main);
+}
+
+.vinto-guild-item:hover .vinto-guild-icon,
+.vinto-guild-item.active .vinto-guild-icon {
+  border-radius: 16px;
+}
+
+.vinto-guild-item.active .vinto-guild-icon:not(img) {
+  background: var(--vinto-pink);
+}
+
+.vinto-guild-indicator {
+  position: absolute;
+  left: -14px;
+  width: 4px;
+  height: 8px;
+  background: var(--text-main);
+  border-radius: 0 4px 4px 0;
+  transition: all 0.3s ease;
+  opacity: 0;
+}
+
+.vinto-guild-item:hover .vinto-guild-indicator {
+  height: 20px;
+  opacity: 1;
+}
+
+.vinto-guild-item.active .vinto-guild-indicator {
+  height: 40px;
+  opacity: 1;
+  background: var(--vinto-pink);
+}
+
+.vinto-guild-separator {
+  width: 32px;
+  height: 2px;
+  background: var(--border-color);
+  border-radius: 2px;
+  margin: 4px 0;
+}
+
+.vinto-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px 40px;
+  height: 80px;
+  flex-shrink: 0;
+}
+
+.vinto-header-left {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.vinto-logo {
+  font-family: var(--font-display), 'Space Grotesk', sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  letter-spacing: -0.5px;
+}
+
+.vinto-logo img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.vinto-session-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-surface);
+  padding: 8px 16px;
+  border-radius: var(--radius-full);
+  font-size: 14px;
+  font-weight: 500;
+  border: 1px solid var(--border-color);
+}
+
+.vinto-session-separator {
+  color: var(--text-muted);
+}
+
+.vinto-vc-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--vinto-pink);
+}
+
+.vinto-header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.vinto-user-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-surface);
+  padding: 6px 16px 6px 6px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: background 0.2s;
+  color: var(--text-main);
+  font: inherit;
+}
+
+.vinto-user-profile:hover {
+  background: var(--bg-surface-hover);
+}
+
+.vinto-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  background: #2a2a30;
+  object-fit: cover;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.vinto-main {
+  display: flex;
+  flex: 1;
+  padding: 0 40px 40px;
+  gap: 40px;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.vinto-player-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  max-width: 56%;
+  min-width: 0;
+}
+
+.vinto-cover-wrap {
+  width: min(460px, 100%);
+  aspect-ratio: 1;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  margin-bottom: 40px;
+  position: relative;
+  background: var(--bg-surface);
+}
+
+.vinto-cover {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.5s ease, filter 0.3s ease;
+}
+
+.vinto-track-info {
+  text-align: center;
+  margin-bottom: 32px;
+  width: 100%;
+  max-width: 600px;
+}
+
+.vinto-track-title {
+  font-family: var(--font-display), 'Space Grotesk', sans-serif;
+  font-size: clamp(24px, 4vw, 36px);
+  font-weight: 700;
+  margin-bottom: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vinto-track-artist {
+  font-size: 18px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+
+.vinto-track-meta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.vinto-requester-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #2a2a30;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.vinto-requester {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.vinto-requester.compact {
+  gap: 4px;
+}
+
+.vinto-requester-avatar-img {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: #2a2a30;
+}
+
+.vinto-requester.compact .vinto-requester-avatar-img,
+.vinto-requester.compact .vinto-requester-avatar {
+  width: 16px;
+  height: 16px;
+  font-size: 8px;
+}
+
+.vinto-requester-name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vinto-source-badge {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.vinto-source-icon {
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+
+.vinto-playback {
+  width: 100%;
+  max-width: 600px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.vinto-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.vinto-progress-bar {
+  flex: 1;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  position: relative;
+}
+
+.vinto-progress-bar.read-only {
+  cursor: default;
+}
+
+.vinto-progress-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  background: var(--vinto-pink);
+  border-radius: var(--radius-full);
+  pointer-events: none;
+}
+
+.vinto-main-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  position: relative;
+  flex-wrap: wrap;
+}
+
+.vinto-control-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s, transform 0.1s;
+  font-size: 24px;
+  padding: 4px;
+}
+
+.vinto-control-btn:hover {
+  color: var(--text-main);
+  transform: scale(1.1);
+}
+
+.vinto-control-btn.active {
+  color: var(--vinto-pink);
+}
+
+.vinto-play-btn {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-full);
+  background: var(--text-main);
+  color: var(--text-dark);
+  font-size: 32px;
+}
+
+.vinto-play-btn:hover {
+  transform: scale(1.05);
+  background: var(--vinto-pink);
+  color: var(--text-main);
+}
+
+.vinto-volume-wrap {
+  position: static;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 110px;
+  flex: 0 0 110px;
+  margin-left: 4px;
+}
+
+.vinto-volume-track {
+  flex: 1;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  position: relative;
+}
+
+.vinto-volume-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  background: var(--vinto-pink);
+  border-radius: var(--radius-full);
+  pointer-events: none;
+}
+
+.vinto-volume-slider {
+  flex: 1;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  background: transparent;
+}
+
+.vinto-volume-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(
+    to right,
+    var(--vinto-pink) 0%,
+    var(--vinto-pink) var(--volume-pct, 50%),
+    rgba(255, 255, 255, 0.12) var(--volume-pct, 50%),
+    rgba(255, 255, 255, 0.12) 100%
+  );
+}
+
+.vinto-volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--vinto-pink);
+  margin-top: -4px;
+  box-shadow: 0 0 0 2px rgba(255, 45, 120, 0.35);
+}
+
+.vinto-volume-slider::-moz-range-track {
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.vinto-volume-slider::-moz-range-progress {
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: var(--vinto-pink);
+}
+
+.vinto-volume-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  background: var(--vinto-pink);
+}
+
+.vinto-sidebar {
+  width: min(520px, 42vw);
+  min-width: 360px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-glass);
+  backdrop-filter: blur(20px);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.vinto-sidebar-header {
+  padding: 24px 24px 16px;
+}
+
+.vinto-search-bar {
+  display: flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-md);
+  padding: 10px 16px;
+  gap: 12px;
+  border: 1px solid transparent;
+  transition: border-color 0.2s;
+  margin-bottom: 20px;
+}
+
+.vinto-search-bar:focus-within {
+  border-color: var(--vinto-pink);
+}
+
+.vinto-search-bar input {
+  background: transparent;
+  border: none;
+  color: var(--text-main);
+  font-size: 14px;
+  font-family: var(--font-body), 'IBM Plex Sans', sans-serif;
+  width: 100%;
+  outline: none;
+}
+
+.vinto-search-bar input::placeholder {
+  color: var(--text-muted);
+}
+
+.vinto-meta-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.vinto-meta-action:hover {
+  color: var(--vinto-pink);
+}
+
+.vinto-meta-action.active {
+  color: var(--vinto-pink);
+}
+
+.vinto-search-bar > button {
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--bg-surface-hover);
+  color: var(--text-main);
+  padding: 6px 10px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.vinto-search-results {
+  margin: -10px 0 16px;
+  padding: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.vinto-search-results-title {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 9px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.vinto-search-results-title button {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.vinto-tabs {
+  display: flex;
+  gap: 24px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.vinto-tab {
+  padding: 0 0 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--font-display), 'Space Grotesk', sans-serif;
+  cursor: pointer;
+  position: relative;
+}
+
+.vinto-tab.active {
+  color: var(--text-main);
+}
+
+.vinto-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: var(--vinto-pink);
+  border-radius: 2px 2px 0 0;
+}
+
+.vinto-tab-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 12px;
+  min-height: 0;
+}
+
+.vinto-tab-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.vinto-tab-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+.vinto-queue-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  gap: 12px;
+  transition: background 0.2s;
+}
+
+.vinto-queue-item:hover {
+  background: var(--bg-surface-hover);
+}
+
+.vinto-queue-cover {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  flex-shrink: 0;
+  background: #222;
+}
+
+.vinto-queue-info {
+  flex: 1;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.vinto-queue-title {
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+}
+
+.vinto-queue-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vinto-queue-actions {
+  display: flex;
+  gap: 8px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.vinto-queue-item:hover .vinto-queue-actions {
+  opacity: 1;
+}
+
+.vinto-action-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: var(--text-main);
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.vinto-action-btn:hover {
+  background: var(--vinto-pink);
+}
+
+.vinto-empty-msg {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 40px 20px;
+  font-family: var(--font-display), 'Space Grotesk', sans-serif;
+}
+
+.vinto-lyrics-panel {
+  padding: 16px 20px 24px;
+}
+
+.vinto-lyrics-source {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+
+.vinto-lyrics-badge {
+  padding: 2px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.vinto-lyrics-text {
+  white-space: pre-wrap;
+  font-family: var(--font-display), 'Space Grotesk', sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-main);
+  margin: 0;
+}
+
+.vinto-lyrics-panel.synced {
+  height: 100%;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.vinto-lyrics-panel.synced::-webkit-scrollbar {
+  display: none;
+}
+
+.vinto-lyrics-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 30% 4px 60%;
+}
+
+.vinto-lyric-line {
+  margin: 0;
+  font-family: var(--font-display), 'Space Grotesk', sans-serif;
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text-muted);
+  opacity: 0.45;
+  transition: opacity 0.3s ease, color 0.3s ease, transform 0.3s ease;
+  transform-origin: left center;
+}
+
+.vinto-lyric-line.past {
+  opacity: 0.25;
+}
+
+.vinto-lyric-line.active {
+  color: var(--text-main);
+  opacity: 1;
+  transform: scale(1.04);
+}
+
+.vinto-lyric-line.seekable {
+  cursor: pointer;
+}
+
+.vinto-lyric-line.seekable:hover {
+  opacity: 0.85;
+  color: var(--vinto-pink);
+}
+
+.vinto-history-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px 16px 20px;
+}
+
+.vinto-history-page-label {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.vinto-header-icon-btn {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 20px;
+  transition: background 0.2s, color 0.2s, transform 0.1s;
+}
+
+.vinto-header-icon-btn:hover {
+  background: var(--bg-surface-hover);
+  color: var(--vinto-pink);
+  transform: scale(1.05);
+}
+
+.vinto-gate {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+.vinto-gate-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 48px;
+  max-width: 400px;
+  width: 100%;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  align-items: center;
+}
+
+.vinto-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border-radius: var(--radius-full);
+  border: none;
+  font-family: var(--font-body), 'IBM Plex Sans', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.vinto-btn-primary {
+  background: var(--vinto-pink);
+  color: var(--text-dark);
+}
+
+.vinto-btn-primary:hover {
+  background: var(--vinto-pink-hover);
+  transform: scale(1.02);
+}
+
+.vinto-btn-ghost {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+}
+
+.vinto-btn-ghost:hover {
+  color: var(--text-main);
+  background: var(--bg-surface-hover);
+}
+
+.vinto-settings-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(18, 18, 20, 0.85);
+  backdrop-filter: blur(16px);
+  z-index: 200;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.vinto-settings-modal.show {
+  display: flex;
+  opacity: 1;
+}
+
+.vinto-settings-container {
+  width: min(860px, 96vw);
+  height: min(600px, 90vh);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  display: flex;
+  box-shadow: 0 40px 80px rgba(0, 0, 0, 0.6);
+  transform: translateY(20px);
+  transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  position: relative;
+  overflow: hidden;
+}
+
+.vinto-settings-modal.show .vinto-settings-container {
+  transform: translateY(0);
+}
+
+.vinto-settings-sidebar {
+  width: 250px;
+  background: rgba(0, 0, 0, 0.2);
+  border-right: 1px solid var(--border-color);
+  padding: 32px 0;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.vinto-settings-title {
+  font-family: var(--font-display), 'Space Grotesk', sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  padding: 0 24px;
+  margin-bottom: 32px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.vinto-settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 16px;
+}
+
+.vinto-settings-nav-item {
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: none;
+  background: transparent;
+  font-family: var(--font-body), 'IBM Plex Sans', sans-serif;
+  font-size: 14px;
+  width: 100%;
+  text-align: left;
+}
+
+.vinto-settings-nav-item:hover {
+  color: var(--text-main);
+  background: var(--bg-surface-hover);
+}
+
+.vinto-settings-nav-item.active {
+  color: var(--vinto-pink);
+  background: var(--vinto-pink-glow);
+}
+
+.vinto-settings-content {
+  flex: 1;
+  padding: 40px;
+  overflow-y: auto;
+  min-width: 0;
+}
+
+.vinto-settings-section {
+  display: none;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.vinto-settings-section.active {
+  display: flex;
+}
+
+.vinto-settings-section-title {
+  font-family: var(--font-display), 'Space Grotesk', sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.vinto-form-group {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+}
+
+.vinto-form-group.col {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.vinto-form-label {
+  font-weight: 600;
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+
+.vinto-form-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.vinto-form-control {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body), 'IBM Plex Sans', sans-serif;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+  min-width: 200px;
+}
+
+.vinto-form-control:focus {
+  border-color: var(--vinto-pink);
+}
+
+.vinto-form-control.small {
+  min-width: 80px;
+  width: 80px;
+  text-align: center;
+}
+
+.vinto-badge-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 45, 120, 0.1);
+  color: var(--vinto-pink);
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.vinto-close-settings {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  background: var(--bg-surface-hover);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  z-index: 10;
+}
+
+.vinto-close-settings:hover {
+  color: var(--text-main);
+  background: var(--vinto-pink);
+  border-color: var(--vinto-pink);
+}
+
+.vinto-toggle {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  appearance: none;
+  background: #333;
+  border-radius: 20px;
+  outline: none;
+  cursor: pointer;
+  transition: background 0.3s;
+  flex-shrink: 0;
+}
+
+.vinto-toggle:checked {
+  background: var(--vinto-pink);
+}
+
+.vinto-toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.3s;
+}
+
+.vinto-toggle:checked::after {
+  transform: translateX(16px);
+}
+
+.vinto-highlight-box {
+  padding: 16px;
+  background: rgba(255, 45, 120, 0.05);
+  border: 1px solid rgba(255, 45, 120, 0.2);
+  border-radius: var(--radius-md);
+  width: 100%;
+}
+
+.vinto-search-picker {
+  position: relative;
+  min-width: 220px;
+  flex: 1;
+}
+
+.vinto-search-picker-control {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.vinto-search-picker-control .vinto-form-control {
+  width: 100%;
+  padding-right: 38px;
+}
+
+.vinto-search-picker-control > svg,
+.vinto-search-picker-control > button {
+  position: absolute;
+  right: 12px;
+}
+
+.vinto-search-picker-control > button {
+  display: inline-flex;
+  padding: 2px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.vinto-search-picker-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+}
+
+.vinto-search-picker-menu button {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-main);
+  text-align: left;
+  cursor: pointer;
+}
+
+.vinto-search-picker-menu button:hover,
+.vinto-search-picker-menu button[aria-selected='true'] {
+  background: var(--bg-surface-hover);
+}
+
+.vinto-search-picker-menu small,
+.vinto-search-picker-empty {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.vinto-search-picker-empty {
+  display: block;
+  padding: 10px;
+}
+
+.vinto-number-field {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.vinto-number-field .vinto-form-control {
+  width: 100%;
+  min-width: 0;
+}
+
+.vinto-settings-content {
+  padding-bottom: 104px;
+}
+
+.vinto-settings-footer {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: calc(100% - 250px);
+  min-height: 76px;
+  padding: 14px 40px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  background: rgba(26, 26, 29, 0.96);
+  border-top: 1px solid var(--border-color);
+  backdrop-filter: blur(12px);
+}
+
+.vinto-save-status {
+  margin-right: auto;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.vinto-save-status.error {
+  color: #ff8da8;
+}
+
+.vinto-btn:disabled,
+.vinto-library-row button:disabled,
+.vinto-library-card:disabled,
+.vinto-feature-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none;
+}
+
+.vinto-view-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.vinto-view-nav button {
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-muted);
+  padding: 7px 11px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.vinto-view-nav button.active {
+  background: var(--bg-surface-hover);
+  color: var(--text-main);
+}
+
+.vinto-toast {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 400;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 13px 18px;
+  border: 1px solid rgba(67, 209, 139, 0.35);
+  border-radius: var(--radius-md);
+  background: #173229;
+  color: #d9ffed;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+
+.vinto-toast.error {
+  border-color: rgba(255, 102, 136, 0.4);
+  background: #381b24;
+  color: #ffdce4;
+}
+
+.vinto-panel-stack {
+  height: 100%;
+  overflow-y: auto;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.vinto-panel-stack h2,
+.vinto-panel-stack h3 {
+  font-family: var(--font-display), 'Space Grotesk', sans-serif;
+}
+
+.vinto-panel-stack h2 {
+  font-size: 24px;
+}
+
+.vinto-panel-stack h3 {
+  font-size: 14px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.vinto-panel-copy {
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.vinto-chip-grid,
+.vinto-card-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.vinto-inline-form {
+  display: flex;
+  gap: 8px;
+}
+
+.vinto-inline-form input {
+  min-width: 0;
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text-main);
+}
+
+.vinto-inline-form button {
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--vinto-pink);
+  color: var(--text-dark);
+  padding: 0 14px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.vinto-station-form {
+  flex-wrap: wrap;
+}
+
+.vinto-station-form input {
+  flex: 1 1 44%;
+  min-width: 130px;
+}
+
+.vinto-feature-chip {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  background: var(--bg-surface-hover);
+  color: var(--text-main);
+  padding: 8px 13px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+
+.vinto-feature-chip.static {
+  cursor: default;
+}
+
+.vinto-field-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.vinto-field-stack span {
+  display: flex;
+  justify-content: space-between;
+}
+
+.vinto-field-stack select {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text-main);
+}
+
+.vinto-field-stack input[type='range'] {
+  accent-color: var(--vinto-pink);
+}
+
+.vinto-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.vinto-stat-card,
+.vinto-community-card {
+  padding: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.vinto-party-score {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.vinto-party-score div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.vinto-party-score strong {
+  font-size: 28px;
+}
+
+.vinto-party-score small,
+.vinto-party-score > span {
+  color: var(--text-muted);
+}
+
+.vinto-stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.vinto-stat-card strong {
+  font-size: 22px;
+}
+
+.vinto-stat-card span,
+.vinto-library-row small,
+.vinto-library-card small {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.vinto-library-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 54px;
+  padding: 9px 10px;
+  border-radius: var(--radius-md);
+}
+
+.vinto-library-row:hover {
+  background: var(--bg-surface-hover);
+}
+
+.vinto-library-row > div {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.vinto-library-row > button,
+.vinto-inline-actions button {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--bg-surface-hover);
+  color: var(--text-main);
+  cursor: pointer;
+}
+
+.vinto-inline-actions {
+  flex: none !important;
+  flex-direction: row !important;
+}
+
+.vinto-lastfm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.vinto-lastfm-actions .vinto-btn,
+.vinto-lastfm-actions a {
+  width: auto;
+  height: auto;
+  border-radius: var(--radius-md);
+  text-decoration: none;
+}
+
+.vinto-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.vinto-rank {
+  width: 20px;
+  color: var(--text-muted);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.vinto-library-card {
+  min-width: 135px;
+  flex: 1 1 40%;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--text-main);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.vinto-library-card:not(.static):hover {
+  border-color: rgba(255, 45, 120, 0.35);
+  background: var(--vinto-pink-glow);
+}
+
+.vinto-community-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.vinto-vote-progress {
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.vinto-vote-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--vinto-pink);
+}
+
+.vinto-handoff-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 90px;
+  gap: 10px;
+}
+
+.vinto-handoff-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.vinto-handoff-form input {
+  min-width: 0;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text-main);
+}
+
+.vinto-queue-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px 10px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.vinto-queue-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: transparent;
+  color: #ff8da8;
+  cursor: pointer;
+}
+
+.vinto-palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 14vh 16px 16px;
+  background: rgba(10, 10, 12, 0.6);
+  backdrop-filter: blur(6px);
+}
+
+.vinto-palette {
+  width: min(620px, 100%);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+.vinto-palette-input {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-muted);
+}
+
+.vinto-palette-input input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-main);
+  font-family: var(--font-body), 'IBM Plex Sans', sans-serif;
+  font-size: 15px;
+}
+
+.vinto-palette-list {
+  max-height: 46vh;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.vinto-palette-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 12px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-main);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.vinto-palette-item.active {
+  background: var(--bg-surface-hover);
+}
+
+.vinto-palette-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.vinto-palette-group {
+  min-width: 74px;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.vinto-palette-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+
+.vinto-palette-hint {
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
+.vinto-palette-empty {
+  padding: 22px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.vinto-listener-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.vinto-listener-stack {
+  display: flex;
+  align-items: center;
+}
+
+.vinto-listener-stack > * + * {
+  margin-left: -8px;
+}
+
+.vinto-listener-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #2a2a30;
+  border: 2px solid var(--bg-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-main);
+  flex-shrink: 0;
+}
+
+.vinto-listener-avatar.more {
+  background: var(--bg-surface-hover);
+  color: var(--text-muted);
+}
+
+.vinto-btn-fluxer {
+  background: #4641d9;
+  color: #ffffff;
+  text-decoration: none;
+}
+
+.vinto-btn-fluxer:hover {
+  background: #3a35c4;
+  transform: scale(1.02);
+}
+
+.vinto-btn-fluxer img {
+  width: 20px;
+  height: 20px;
+}
+
+.vinto-gate-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.vinto-gate-brand span {
+  font-family: var(--font-display), 'Space Grotesk', sans-serif;
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: -1px;
+}
+
+.vinto-user-profile.active {
+  border-color: var(--vinto-pink);
+  box-shadow: 0 0 0 1px var(--vinto-pink);
+}
+
+.vinto-profile-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.vinto-profile-header > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.vinto-profile-meta {
+  display: flex;
+  gap: 16px;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.vinto-profile-meta strong {
+  color: var(--text-main);
+}
+
+.vinto-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.vinto-setting-row small {
+  display: block;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.vinto-alias-form {
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+}
+
+.vinto-alias-form button {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vinto-queue-item.drop-target {
+  box-shadow: inset 0 2px 0 var(--vinto-pink);
+}
+
+.vinto-queue-item[draggable='true'] {
+  cursor: grab;
+}
+
+.vinto-requester-row {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 10px !important;
+}
+
+:where(button, a, input, select, [role='slider']):focus-visible {
+  outline: 3px solid rgba(255, 114, 166, 0.72);
+  outline-offset: 3px;
+}
+
+body:not(.is-dj) .dj-only {
+  display: none !important;
+}
+
+.vinto-locked {
+  opacity: 0.4;
+  filter: saturate(0.35);
+  cursor: default;
+}
+
+.vinto-locked .vinto-control-btn:hover,
+.vinto-locked .vinto-play-btn:hover {
+  transform: none;
+  color: var(--text-muted);
+}
+
+.vinto-locked .vinto-play-btn:hover {
+  background: var(--text-main);
+  color: var(--text-dark);
+}
+
+.vinto-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 34px 20px;
+  text-align: center;
+  color: var(--text-muted);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.vinto-empty-state strong {
+  color: var(--text-main);
+  font-family: var(--font-display), 'Space Grotesk', sans-serif;
+  font-size: 15px;
+}
+
+.vinto-empty-state span {
+  font-size: 12.5px;
+  max-width: 34ch;
+  line-height: 1.5;
+}
+
+@keyframes vinto-skeleton-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.7; }
+}
+
+.vinto-skeleton-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px;
+}
+
+.vinto-skeleton {
+  height: 54px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.04));
+  animation: vinto-skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+.vinto-skeleton.tall {
+  height: 76px;
+}
+
+body.state-paused .vinto-cover {
+  filter: grayscale(50%) brightness(0.7);
+}
+
+body.state-loading .vinto-cover-wrap::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(18, 18, 20, 0.5);
+  backdrop-filter: blur(5px);
+}
+
+body.state-empty .vinto-player-section {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+body:not(.is-dj) .vinto-main-controls {
+  justify-content: center;
+}
+
+body:not(.is-dj) .admin-only {
+  display: none !important;
+}
+
+@media (max-width: 960px) {
+  body {
+    flex-direction: column;
+    overflow: auto;
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .vinto-guild-sidebar {
+    width: 100%;
+    height: auto;
+    flex-direction: row;
+    padding: 12px 16px;
+    overflow-x: auto;
+  }
+
+  .vinto-guild-indicator {
+    display: none;
+  }
+
+  .vinto-main {
+    flex-direction: column;
+    padding: 0 16px 24px;
+  }
+
+  .vinto-player-section {
+    max-width: 100%;
+  }
+
+  .vinto-sidebar {
+    width: 100%;
+    min-height: 360px;
+  }
+
+  .vinto-volume-wrap {
+    position: static;
+    width: 100%;
+    flex-basis: 100%;
+    margin-top: 8px;
+    margin-left: 0;
+  }
+
+  .vinto-main-controls {
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .vinto-settings-container {
+    flex-direction: column;
+    height: 92vh;
+  }
+
+  .vinto-settings-sidebar {
+    width: 100%;
+    padding: 16px 0;
+  }
+
+  .vinto-settings-nav {
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 0 12px;
+  }
+
+  .vinto-view-nav {
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .vinto-header {
+    height: auto;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 18px 16px;
+  }
+
+  .vinto-header-left {
+    min-width: 0;
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+  }
+
+  .vinto-settings-footer {
+    width: 100%;
+    padding: 12px 16px;
+  }
+}
+
+@media (max-width: 560px) {
+  body {
+    overscroll-behavior-y: contain;
+  }
+
+  .vinto-app {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .vinto-session-info,
+  .vinto-user-profile span {
+    display: none;
+  }
+
+  .vinto-listener-row span {
+    display: none;
+  }
+
+  .vinto-main-controls {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    margin: 0 -16px -8px;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    gap: 14px;
+    background: rgba(18, 18, 20, 0.92);
+    backdrop-filter: blur(14px);
+    border-top: 1px solid var(--border-color);
+  }
+
+  .vinto-volume-wrap {
+    order: 10;
+  }
+
+  .vinto-sidebar {
+    max-height: 68vh;
+  }
+
+  .vinto-palette-backdrop {
+    padding: 8vh 12px 12px;
+  }
+
+  .vinto-palette-list {
+    max-height: 54vh;
+  }
+
+  .vinto-palette-group {
+    min-width: 60px;
+  }
+
+  .vinto-lyric-line {
+    font-size: 17px;
+  }
+
+  .vinto-profile-header {
+    flex-wrap: wrap;
+  }
+
+  .vinto-visualizer {
+    height: 30%;
+  }
+
+  .vinto-view-nav button {
+    flex: 0 0 auto;
+  }
+
+  .vinto-main {
+    gap: 24px;
+  }
+
+  .vinto-cover-wrap {
+    width: min(72vw, 300px);
+    margin-bottom: 22px;
+  }
+
+  .vinto-track-info {
+    margin-bottom: 20px;
+  }
+
+  .vinto-track-title {
+    font-size: 23px;
+  }
+
+  .vinto-sidebar {
+    min-width: 0;
+    min-height: 440px;
+  }
+
+  .vinto-sidebar-header,
+  .vinto-panel-stack {
+    padding: 18px;
+  }
+
+  .vinto-queue-actions {
+    opacity: 1;
+  }
+
+  .vinto-settings-content {
+    padding: 24px 18px 112px;
+  }
+
+  .vinto-settings-footer {
+    flex-wrap: wrap;
+  }
+
+  .vinto-save-status {
+    width: 100%;
+  }
+
+  .vinto-form-group {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .vinto-form-control {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .vinto-stat-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
