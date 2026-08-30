@@ -250,12 +250,13 @@ Local web UI for session-scoped playback control. Disabled by default.
 | `DASHBOARD_API_ENABLED` | `0` | Start the dashboard HTTP and WebSocket server. |
 | `DASHBOARD_API_HOST` | `127.0.0.1` | Bind host. Keep on localhost unless you explicitly expose it. |
 | `DASHBOARD_API_PORT` | `9092` | Bind port. |
-| `DASHBOARD_API_SECRET` | empty | Shared secret for dashboard auth. Minimum 24 characters when enabled. |
+| `DASHBOARD_API_SECRET` | empty | Shared secret between the bot and the dashboard server. Minimum 24 characters when enabled. It stays server side: the browser authenticates with a short lived ticket the dashboard mints from it. |
+| `DASHBOARD_API_REQUIRE_TICKET` | `1` | Accept only signed tickets on the WebSocket and take the user id from the ticket instead of the client. Turning this off lets any holder of the secret act as any user, so keep it on outside local debugging. |
 | `DASHBOARD_API_ALLOWED_ORIGINS` | `http://localhost:3000` | Comma-separated browser origins for CORS. |
 | `NEXT_PUBLIC_VISUALIZER_LEAD_MS` | `600` | Dashboard-side delay before a spectrum frame is drawn. The analyzer taps the audio upstream of the voice buffer, so frames arrive before listeners hear them. Measured on this stack as a median lead of 613 ms, ranging from 362 to 856 ms as the buffer drains and refills. The `fluxer_bot_voice_queued_duration_ms` metric reports the current lead so it can be retuned per deployment. |
 | `DASHBOARD_API_PROGRESS_INTERVAL_MS` | `2000` | Now playing progress resync interval for WebSocket clients. The dashboard interpolates the position locally between resyncs, and every player action is broadcast immediately, so a low value only adds load. |
 
-The dashboard Next.js app uses separate `NEXT_PUBLIC_*` variables in `dashboard/.env.local`. See `dashboard/README.md`.
+The dashboard container reads `DASHBOARD_API_URL` to reach the bot API from inside the network, plus `DASHBOARD_API_SECRET` and the `FLUXER_OAUTH_*` values. None of these are exposed to the browser. See `dashboard/README.md`.
 
 ## Practical Presets
 
