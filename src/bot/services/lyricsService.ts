@@ -90,16 +90,27 @@ function scoreLyricsCandidate(item: unknown, search: { title?: unknown; artist?:
   return score;
 }
 
+const SYNCED_CANDIDATE_BONUS = 0.15;
+
 function pickBestLyricsCandidate(items: unknown[], search: { title?: unknown; artist?: unknown; query?: unknown }) {
-  let best: { score: number; item: unknown; lyrics: string } | null = null;
+  let best: {
+    score: number;
+    rank: number;
+    item: unknown;
+    lyrics: string;
+    synced: string | null;
+  } | null = null;
 
   for (const item of items) {
-    const lyrics = normalizeLyrics((item as { plainLyrics?: unknown } | null | undefined)?.plainLyrics);
+    const typed = item as { plainLyrics?: unknown; syncedLyrics?: unknown } | null | undefined;
+    const synced = normalizeLyrics(typed?.syncedLyrics);
+    const lyrics = normalizeLyrics(typed?.plainLyrics) ?? stripLrcTimestamps(synced);
     if (!lyrics) continue;
 
     const score = scoreLyricsCandidate(item, search);
-    if (!best || score > best.score) {
-      best = { score, item, lyrics };
+    const rank = score + (synced ? SYNCED_CANDIDATE_BONUS : 0);
+    if (!best || rank > best.rank) {
+      best = { score, rank, item, lyrics, synced };
     }
   }
 
@@ -113,6 +124,16 @@ function pickBestLyricsCandidate(items: unknown[], search: { title?: unknown; ar
 function normalizeLyrics(raw: unknown): string | null {
   if (!raw) return null;
   const text = String(raw).replace(/\r\n/g, '\n').trim();
+  return text || null;
+}
+
+function stripLrcTimestamps(raw: string | null): string | null {
+  if (!raw) return null;
+  const text = raw
+    .split('\n')
+    .map((line) => line.replace(/\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\]/g, '').trim())
+    .join('\n')
+    .trim();
   return text || null;
 }
 
@@ -141,6 +162,7 @@ async function fromLrcLib(query: string, artist: string, title: string): Promise
   return {
     source: 'lrclib.net',
     lyrics: best.lyrics,
+    ...(best.synced ? { syncedLyrics: best.synced } : {}),
   };
 }
 
@@ -170,6 +192,7 @@ import type { LoggerLike } from '../../types/core.ts';
 type LyricsLookupResult = {
   source: string;
   lyrics: string;
+  syncedLyrics?: string;
 };
 
 export class LyricsService {
@@ -191,6 +214,9 @@ export class LyricsService {
         return {
           ...fromLrc,
           lyrics: truncateLyrics(fromLrc.lyrics),
+          ...(fromLrc.syncedLyrics
+            ? { syncedLyrics: truncateLyrics(fromLrc.syncedLyrics, 12_000) }
+            : {}),
         };
       }
     } catch (err) {

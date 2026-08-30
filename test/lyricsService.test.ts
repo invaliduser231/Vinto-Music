@@ -88,3 +88,87 @@ test('lyrics service falls back to lyrics.ovh when lrclib has no match', async (
 
 
 
+
+test('lyrics service passes synced lyrics through when lrclib has them', async () => {
+  const originalFetch = global.fetch;
+  const service = new LyricsService({ debug() {} });
+
+  global.fetch = async () => jsonResponse([
+    {
+      trackName: 'Chaos',
+      artistName: 'Provinz',
+      plainLyrics: 'Zeile eins\nZeile zwei',
+      syncedLyrics: '[00:12.30]Zeile eins\n[00:18.90]Zeile zwei',
+    },
+  ]) as Response;
+
+  try {
+    const result = await service.search('Provinz - Chaos');
+    assert.equal(result?.source, 'lrclib.net');
+    assert.equal(result?.lyrics, 'Zeile eins\nZeile zwei');
+    assert.match(String(result?.syncedLyrics), /\[00:12\.30\]Zeile eins/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('lyrics service reports no synced lyrics when lrclib only has plain text', async () => {
+  const originalFetch = global.fetch;
+  const service = new LyricsService({ debug() {} });
+
+  global.fetch = async () => jsonResponse([
+    { trackName: 'Nur ein bisschen', artistName: 'Mayberg', plainLyrics: 'Ich glaub, du kennst das' },
+  ]) as Response;
+
+  try {
+    const result = await service.search('Mayberg - Nur ein bisschen');
+    assert.equal(result?.lyrics, 'Ich glaub, du kennst das');
+    assert.equal(result?.syncedLyrics, undefined);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('lyrics service prefers a timed candidate over an equally good plain one', async () => {
+  const originalFetch = global.fetch;
+  const service = new LyricsService({ debug() {} });
+
+  global.fetch = async () => jsonResponse([
+    { trackName: 'Chaos', artistName: 'Provinz', plainLyrics: 'nur text' },
+    {
+      trackName: 'Chaos',
+      artistName: 'Provinz',
+      plainLyrics: 'mit timing',
+      syncedLyrics: '[00:01.00]mit timing',
+    },
+  ]) as Response;
+
+  try {
+    const result = await service.search('Provinz - Chaos');
+    assert.equal(result?.lyrics, 'mit timing');
+    assert.match(String(result?.syncedLyrics), /\[00:01\.00\]/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('a timed but badly matching candidate does not pass the quality gate', async () => {
+  const originalFetch = global.fetch;
+  const service = new LyricsService({ debug() {} });
+
+  global.fetch = async () => jsonResponse([
+    {
+      trackName: 'Voellig anderer Song',
+      artistName: 'Fremder Interpret',
+      plainLyrics: 'falscher text',
+      syncedLyrics: '[00:01.00]falscher text',
+    },
+  ]) as Response;
+
+  try {
+    const result = await service.search('Provinz - Chaos');
+    assert.equal(result, null);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
