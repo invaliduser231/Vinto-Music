@@ -34,6 +34,16 @@ type SearchResultLike = Record<string, unknown> & {
   duration?: unknown;
 };
 
+const MIRROR_SEARCH_SOURCES: Record<string, string> = {
+  dzsearch: 'deezer',
+  tdsearch: 'tidal',
+  scsearch: 'soundcloud',
+  ytsearch: 'youtube',
+  ytmsearch: 'youtube',
+  amsearch: 'applemusic',
+  jssearch: 'jiosaavn',
+};
+
 function normalizeResolveLimit(limit: number | null | undefined, fallback: number) {
   const parsed = Number.parseInt(String(limit ?? ''), 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
@@ -116,20 +126,36 @@ export const resolverMethods: LooseMethodMap = {
     return Array.isArray(nodeLinkResolved) ? (nodeLinkResolved[0] ?? null) : null;
   },
 
-  async _resolveStartupMirrorFallbackTrack(track: Partial<Track> | null | undefined, requestedBy: string | null) {
-    if (!this.enableYtSearch || !this.enableYtPlayback) return null;
-
+  async _resolveStartupMirrorFallbackTrack(
+    track: Partial<Track> | null | undefined,
+    requestedBy: string | null,
+    exhaustedSources: string[] = [],
+  ) {
     const title = String(track?.title ?? '').trim();
     if (!title) return null;
 
     const artist = String(track?.artist ?? '').trim();
     const query = artist ? `${artist} - ${title}` : title;
+    const blocked = new Set(
+      [String(track?.source ?? ''), ...exhaustedSources]
+        .map((entry) => String(entry).trim().toLowerCase())
+        .filter(Boolean),
+    );
 
     if (this.nodeLinkEnabled && this.nodeLinkClient?.enabled) {
-      for (const searchIdentifier of ['ytsearch', 'ytmsearch']) {
+      const order = Array.isArray(this.nodeLinkMirrorSearchOrder) && this.nodeLinkMirrorSearchOrder.length
+        ? this.nodeLinkMirrorSearchOrder
+        : ['dzsearch', 'tdsearch', 'scsearch', 'ytsearch', 'ytmsearch'];
+
+      for (const searchIdentifier of order) {
+        const identifierSource = MIRROR_SEARCH_SOURCES[searchIdentifier];
+        if (identifierSource && blocked.has(identifierSource)) continue;
+        if (identifierSource === 'youtube' && (!this.enableYtSearch || !this.enableYtPlayback)) continue;
+        if (identifierSource && this._isMirrorSourceCooling?.(identifierSource)) continue;
+
         const nodeLinkMatches = await this._resolveNodeLinkTracks(query, requestedBy, 1, { searchIdentifier })
           .catch((err: unknown) => {
-            this.logger?.debug?.('NodeLink YouTube mirror search failed', {
+            this.logger?.debug?.('NodeLink mirror search failed', {
               query,
               searchIdentifier,
               error: err instanceof Error ? err.message : String(err),
@@ -137,9 +163,13 @@ export const resolverMethods: LooseMethodMap = {
             return [];
           });
         const match = Array.isArray(nodeLinkMatches) ? (nodeLinkMatches[0] ?? null) : null;
-        if (match) return match;
+        if (!match) continue;
+        if (blocked.has(String(match.source ?? '').trim().toLowerCase())) continue;
+        return match;
       }
     }
+
+    if (!this.enableYtSearch || !this.enableYtPlayback || blocked.has('youtube')) return null;
 
     const localMatches = await this._searchYouTubeTracks(query, 1, requestedBy).catch((err: unknown) => {
       this.logger?.debug?.('Local YouTube mirror search failed', {

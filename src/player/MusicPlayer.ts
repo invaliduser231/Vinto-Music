@@ -83,6 +83,9 @@ import type { PipelineProcess, Track, TrackInput } from '../types/domain.ts';
 const NORMALIZED_INPUT_URL_CACHE_MAX_SIZE = 500;
 const DEEZER_STREAM_META_CACHE_MAX_SIZE = 1_000;
 const STARTUP_FAILURE_STREAK_LIMIT = 3;
+const MIRROR_ATTEMPT_CEILING = 8;
+const MIRROR_SOURCE_COOLDOWN_FAILURES = 3;
+const MIRROR_SOURCE_COOLDOWN_MS = 10 * 60_000;
 const NEXT_TRACK_PREFETCH_TTL_MS = 10 * 60_000;
 const PUMP_RECOVERY_WINDOW_MS = 30_000;
 const PUMP_RECOVERY_MAX_ATTEMPTS = 3;
@@ -165,6 +168,7 @@ interface MusicPlayerOptions {
   nodeLinkBaseUrl?: string | null;
   nodeLinkPassword?: string | null;
   nodeLinkDefaultSearch?: string | null;
+  nodeLinkMirrorSearchOrder?: string | null;
   nodeLinkRoutingMode?: NodeLinkRoutingMode | string | null;
   nodeLinkRequestTimeoutMs?: number | null;
   nodeLinkStreamStartTimeoutMs?: number | null;
@@ -257,7 +261,12 @@ export class MusicPlayer extends EventEmitter {
     volumePercent: number;
     filterPreset: string;
     eqPreset: string;
+    tempoRatio: number;
+    pitchSemitones: number;
   };
+  declare _applyAudioEffectsLive: () => boolean;
+  declare setSpectrumEnabled: (enabled: boolean) => boolean;
+  spectrumEnabled = false;
   declare setLoopMode: (mode: string) => string;
   declare createTrackFromData: (track: TrackInput, requestedBy?: string | null) => Track;
   declare hydrateTrackMetadata: (
@@ -276,6 +285,7 @@ export class MusicPlayer extends EventEmitter {
   declare resume: () => boolean;
   declare seekTo: (seconds: number) => number;
   declare replayCurrentTrack: () => boolean;
+  declare moveQueueItem: (fromIndex: number, toIndex: number) => boolean;
   declare refreshCurrentTrackProcessing: () => boolean;
   declare queuePreviousTrack: () => Track | null;
   declare searchCandidates: (
@@ -294,7 +304,11 @@ export class MusicPlayer extends EventEmitter {
     options?: { searchIdentifier?: string | null; urlQuery?: boolean }
   ) => Promise<Track[]>;
   declare _resolveYouTubeTrackViaNodeLink: (track: Partial<Track> | null | undefined) => Promise<Track | null>;
-  declare _resolveStartupMirrorFallbackTrack: (track: Partial<Track> | null | undefined, requestedBy: string | null) => Promise<Track | null>;
+  declare _resolveStartupMirrorFallbackTrack: (
+    track: Partial<Track> | null | undefined,
+    requestedBy: string | null,
+    exhaustedSources?: string[],
+  ) => Promise<Track | null>;
   declare _isNodeLinkOnlyModeForSourceTrack: (track: Partial<Track> | null | undefined, trackUrl?: string | null) => boolean;
   declare _shouldUseDirectDeezerMirror: () => boolean;
   declare isNodeLinkStreamingEnabled: () => boolean;
@@ -413,6 +427,8 @@ export class MusicPlayer extends EventEmitter {
   enableTidalImport: boolean;
   nodeLinkEnabled: boolean;
   nodeLinkRoutingMode: NodeLinkRoutingMode;
+  nodeLinkMirrorSearchOrder: string[];
+  mirrorSourceCooldowns = new Map<string, { failures: number; until: number }>();
   nodeLinkClient: NodeLinkClient | null;
   _nodeLinkResolveCache: Map<string, { result: NodeLinkLoadResult; expiresAtMs: number }>;
   _isrcMirrorLookupMisses: number;
@@ -517,6 +533,14 @@ export class MusicPlayer extends EventEmitter {
     this.enableSpotifyImport = options.enableSpotifyImport !== false;
     this.enableDeezerImport = options.enableDeezerImport !== false;
     this.enableTidalImport = options.enableTidalImport !== false;
+    this.nodeLinkMirrorSearchOrder = String(
+      options.nodeLinkMirrorSearchOrder
+      ?? process.env.NODELINK_MIRROR_SEARCH_ORDER
+      ?? 'dzsearch,tdsearch,scsearch,ytsearch,ytmsearch',
+    )
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
     this.nodeLinkRoutingMode = normalizeNodeLinkRoutingMode(
       options.nodeLinkRoutingMode ?? process.env.NODELINK_ROUTING_MODE,
       'smart'
@@ -1092,6 +1116,7 @@ export class MusicPlayer extends EventEmitter {
       this.lastKnownTrack = track;
       this.lastKnownTrackAtMs = Date.now();
       this._scheduleNextTrackPrefetch();
+      this._noteMirrorSourceSuccess(track?.source);
       this.emit('trackStart', track);
       this.logger?.info?.('Playback started', {
         title: track.title,
@@ -1155,27 +1180,48 @@ export class MusicPlayer extends EventEmitter {
           && mirrorSourceLabel !== 'http-audio'
           && mirrorSourceLabel !== 'url'
         );
+        const exhaustedMirrorSources = Array.isArray(
+          (track as Track & { exhaustedMirrorSources?: string[] })?.exhaustedMirrorSources,
+        )
+          ? [...(track as Track & { exhaustedMirrorSources?: string[] }).exhaustedMirrorSources!]
+          : [];
+        if (mirrorSourceLabel) {
+          exhaustedMirrorSources.push(mirrorSourceLabel);
+          this._noteMirrorSourceFailure(mirrorSourceLabel);
+        }
+
         const shouldMirrorNonYouTubeStartup = (
           !retryStartupTrack
-          && !mirrorSourceLabel.startsWith('youtube')
           && !isYouTubeUrl(String(track?.url ?? ''))
           && isMirrorableSource
           && !normalizedMessage.includes('not connected')
-          && startupRetryAttempt < 1
-          && this.enableYtSearch
-          && this.enableYtPlayback
+          && startupRetryAttempt < Math.min(
+            MIRROR_ATTEMPT_CEILING,
+            Math.max(2, (this.nodeLinkMirrorSearchOrder?.length ?? 0) + 1),
+          )
         );
         if (shouldMirrorNonYouTubeStartup) {
           const requestedBy = String(track?.requestedBy ?? '').trim() || null;
-          const mirrorTrack = await this._resolveStartupMirrorFallbackTrack(track, requestedBy).catch(() => null);
+          const mirrorTrack = await this._resolveStartupMirrorFallbackTrack(
+            track,
+            requestedBy,
+            exhaustedMirrorSources,
+          ).catch(() => null);
           if (mirrorTrack) {
             retryStartupTrack = this._cloneTrack(mirrorTrack, { seekStartSec: track?.seekStartSec ?? 0 });
-            (retryStartupTrack as Track & { startupRetryCount?: number }).startupRetryCount = startupRetryAttempt + 1;
-            this.logger?.warn?.('Resolved YouTube/SoundCloud mirror after source stream failure', {
+            const typedRetry = retryStartupTrack as Track & {
+              startupRetryCount?: number;
+              exhaustedMirrorSources?: string[];
+            };
+            typedRetry.startupRetryCount = startupRetryAttempt + 1;
+            typedRetry.exhaustedMirrorSources = exhaustedMirrorSources;
+            this.logger?.warn?.('Resolved playback mirror after source stream failure', {
               title: track?.title ?? null,
               source: track?.source ?? null,
               mirrorSource: retryStartupTrack.source ?? null,
               mirrorUrl: retryStartupTrack.url ?? null,
+              attempt: startupRetryAttempt + 1,
+              exhausted: exhaustedMirrorSources,
             });
           }
         }
@@ -1569,6 +1615,38 @@ export class MusicPlayer extends EventEmitter {
     await this.nextTrackPrefetchPromise;
   }
 
+  _noteMirrorSourceFailure(source: unknown): void {
+    const key = String(source ?? '').trim().toLowerCase();
+    if (!key) return;
+    const entry = this.mirrorSourceCooldowns.get(key) ?? { failures: 0, until: 0 };
+    entry.failures += 1;
+    if (entry.failures >= MIRROR_SOURCE_COOLDOWN_FAILURES) {
+      entry.until = Date.now() + MIRROR_SOURCE_COOLDOWN_MS;
+      entry.failures = 0;
+      this.logger?.warn?.('Pausing mirror source after repeated stream failures', {
+        source: key,
+        cooldownMs: MIRROR_SOURCE_COOLDOWN_MS,
+      });
+    }
+    this.mirrorSourceCooldowns.set(key, entry);
+  }
+
+  _noteMirrorSourceSuccess(source: unknown): void {
+    const key = String(source ?? '').trim().toLowerCase();
+    if (!key) return;
+    this.mirrorSourceCooldowns.delete(key);
+  }
+
+  _isMirrorSourceCooling(source: unknown): boolean {
+    const key = String(source ?? '').trim().toLowerCase();
+    if (!key) return false;
+    const entry = this.mirrorSourceCooldowns.get(key);
+    if (!entry?.until) return false;
+    if (entry.until > Date.now()) return true;
+    this.mirrorSourceCooldowns.delete(key);
+    return false;
+  }
+
   _clearPipelineState() {
     clearPipelineState(this);
   }
@@ -1639,6 +1717,7 @@ export class MusicPlayer extends EventEmitter {
     this.lastKnownTrack = track;
     this.lastKnownTrackAtMs = Date.now();
     this._scheduleNextTrackPrefetch();
+    this._noteMirrorSourceSuccess(track?.source);
     this.emit('trackStart', track);
     this.logger?.info?.('Playback started', {
       title: track.title,
@@ -1674,7 +1753,6 @@ Object.assign(
   pipelineMethods,
   sourceMethods
 );
-
 
 
 
