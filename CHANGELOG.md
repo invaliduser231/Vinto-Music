@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.10.1] - 2026-08-30
+
+- Security:
+  - moved the dashboard API secret behind the Next.js server. The browser now calls the dashboard, which attaches the secret and the signed-in user id from the session cookie, so the secret is no longer part of the client bundle
+  - replaced the shared secret on the WebSocket with short-lived signed tickets. The user id comes from the ticket instead of a client field, so a connection can no longer act on behalf of another member
+  - stopped falling back to client-supplied role ids when role resolution fails
+- Fixes:
+  - pointed the dashboard container at the bot API over the container network, which the browser-facing address never reached
+  - removed the design playground routes
+
 ## [0.10.0] - 2026-08-30
 
 - Dashboard:
