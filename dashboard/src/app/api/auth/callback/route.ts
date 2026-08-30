@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import { NextResponse } from 'next/server';
 import {
   AUTH_SESSION_COOKIE,
   OAUTH_STATE_COOKIE,
@@ -8,11 +9,13 @@ import {
 import { createAuthSessionFromCode } from '@/lib/auth-server';
 import { readOAuthConfig } from '@/lib/oauth-config';
 
+function redirectHome(): NextResponse {
+  return new NextResponse(null, { status: 302, headers: { location: '/' } });
+}
+
 export async function GET(request: Request) {
   const config = readOAuthConfig();
-  if (!config) {
-    return Response.redirect(new URL('/', request.url));
-  }
+  if (!config) return redirectHome();
 
   const url = new URL(request.url);
   const code = String(url.searchParams.get('code') ?? '').trim();
@@ -23,14 +26,13 @@ export async function GET(request: Request) {
   store.delete(OAUTH_STATE_COOKIE);
 
   if (!code || !state || !expectedState || state !== expectedState) {
-    return Response.redirect(new URL('/', request.url));
+    return redirectHome();
   }
 
   try {
     const session = await createAuthSessionFromCode(code);
-    if (!session) {
-      return Response.redirect(new URL('/', request.url));
-    }
+    if (!session) return redirectHome();
+
     store.set(AUTH_SESSION_COOKIE, sealAuthSession(session, config.cookieSecret), {
       httpOnly: true,
       sameSite: 'lax',
@@ -38,8 +40,8 @@ export async function GET(request: Request) {
       path: '/',
       maxAge: 60 * 60 * 24 * 30,
     });
-    return Response.redirect(new URL('/', request.url));
+    return redirectHome();
   } catch {
-    return Response.redirect(new URL('/', request.url));
+    return redirectHome();
   }
 }
