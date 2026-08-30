@@ -49,6 +49,7 @@ export type TrackInput = Partial<Track> & Record<string, unknown>;
 
 export interface VoiceProfileSettings {
   stayInVoiceEnabled: boolean | null;
+  autoplayEnabled: boolean | null;
 }
 
 export interface SessionSettings {
@@ -78,6 +79,7 @@ export interface GuildConfig {
     voteSkipMinVotes?: number;
     djRoleIds?: string[];
     musicLogChannelId?: ChannelId;
+    language?: string | null;
   };
   createdAt?: Date | null;
   updatedAt?: Date | null;
@@ -188,6 +190,10 @@ export interface MusicPlayerLike {
     [string, { requestedBy?: string | null; limit?: number }],
     Promise<unknown[]>
   >;
+  searchCandidates?: BivariantCallback<
+    [string, number?, { requestedBy?: string | null }?],
+    Promise<unknown[]>
+  >;
 }
 
 export interface Session {
@@ -253,6 +259,7 @@ export interface GuildConfigStoreLike {
 
 export interface VoiceProfileDocument {
   stayInVoiceEnabled?: boolean | null;
+  autoplayEnabled?: boolean | null;
   [key: string]: unknown;
 }
 

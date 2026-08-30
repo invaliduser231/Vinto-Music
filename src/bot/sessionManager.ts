@@ -72,6 +72,7 @@ type SessionManagerMemoryTelemetry = {
   idleTimersActive: number;
   playerListenerEntries: number;
   pendingTracksTotal: number;
+  voiceQueuedDurationMsMax: number;
 };
 
 function readProcessMemoryTelemetry(): ProcessMemoryTelemetry {
@@ -163,6 +164,7 @@ export class SessionManager extends EventEmitter {
     let diagnosticsActive = 0;
     let idleTimersActive = 0;
     let pendingTracksTotal = 0;
+    let voiceQueuedDurationMsMax = 0;
 
     for (const session of this.sessions.values()) {
       if (session?.connection?.connected) voiceConnectionsConnected += 1;
@@ -170,6 +172,18 @@ export class SessionManager extends EventEmitter {
       if (session?.snapshot?.dirty) snapshotDirty += 1;
       if (session?.diagnostics?.timer) diagnosticsActive += 1;
       if (session?.idleTimer) idleTimersActive += 1;
+
+      const connection = session?.connection as {
+        audioSource?: { queuedDuration?: unknown };
+        _pumpStats?: { pendingBufferBytes?: unknown };
+      } | undefined;
+      const queuedDurationMs = Number(connection?.audioSource?.queuedDuration);
+      const pendingBytes = Number(connection?._pumpStats?.pendingBufferBytes);
+      const pendingMs = Number.isFinite(pendingBytes) ? (pendingBytes / 192) : 0;
+      const totalLeadMs = (Number.isFinite(queuedDurationMs) ? queuedDurationMs : 0) + pendingMs;
+      if (totalLeadMs > 0) {
+        voiceQueuedDurationMsMax = Math.max(voiceQueuedDurationMsMax, totalLeadMs);
+      }
 
       const queuePendingSize = Number.parseInt(String(session?.player?.queue?.pendingSize ?? ''), 10);
       if (Number.isFinite(queuePendingSize) && queuePendingSize > 0) {
@@ -189,6 +203,7 @@ export class SessionManager extends EventEmitter {
       idleTimersActive,
       playerListenerEntries: this.playerSessionListeners.size,
       pendingTracksTotal,
+      voiceQueuedDurationMsMax,
     };
   }
 
@@ -557,6 +572,7 @@ export class SessionManager extends EventEmitter {
       ...(this.config.nodeLinkBaseUrl != null ? { nodeLinkBaseUrl: this.config.nodeLinkBaseUrl } : {}),
       ...(this.config.nodeLinkPassword != null ? { nodeLinkPassword: this.config.nodeLinkPassword } : {}),
       ...(this.config.nodeLinkDefaultSearch != null ? { nodeLinkDefaultSearch: this.config.nodeLinkDefaultSearch } : {}),
+      ...(this.config.nodeLinkMirrorSearchOrder != null ? { nodeLinkMirrorSearchOrder: this.config.nodeLinkMirrorSearchOrder } : {}),
       ...(this.config.nodeLinkRoutingMode != null ? { nodeLinkRoutingMode: this.config.nodeLinkRoutingMode } : {}),
       ...(this.config.nodeLinkRequestTimeoutMs != null ? { nodeLinkRequestTimeoutMs: this.config.nodeLinkRequestTimeoutMs } : {}),
       ...(this.config.nodeLinkStreamStartTimeoutMs != null ? { nodeLinkStreamStartTimeoutMs: this.config.nodeLinkStreamStartTimeoutMs } : {}),

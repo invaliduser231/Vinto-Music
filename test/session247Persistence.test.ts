@@ -702,7 +702,7 @@ test('enabling voice-channel 24/7 on an already connected session persists the v
   manager.sessions.set('121212:343434', {
     ...session,
     sessionId: '121212:343434',
-    voiceProfileSettings: { stayInVoiceEnabled: null },
+    voiceProfileSettings: { stayInVoiceEnabled: null, autoplayEnabled: null },
   });
 
   await manager.refreshVoiceProfileSettings('121212', { voiceChannelId: '343434' });

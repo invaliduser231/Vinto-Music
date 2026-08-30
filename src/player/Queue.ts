@@ -55,6 +55,17 @@ export class Queue<T = QueueItem> {
     return (this.tracks.splice(index - 1, 1)[0] ?? null) as T;
   }
 
+  move(fromIndex: number, toIndex: number): boolean {
+    if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex)) return false;
+    if (fromIndex < 1 || fromIndex > this.tracks.length) return false;
+    if (toIndex < 1 || toIndex > this.tracks.length) return false;
+    if (fromIndex === toIndex) return true;
+    const [track] = this.tracks.splice(fromIndex - 1, 1);
+    if (!track) return false;
+    this.tracks.splice(toIndex - 1, 0, track);
+    return true;
+  }
+
   clear() {
     this.tracks = [] as T[] & { [index: number]: T };
     this._current = null;

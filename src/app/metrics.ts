@@ -14,6 +14,7 @@ type SessionMemoryTelemetry = {
   idleTimersActive: number;
   playerListenerEntries: number;
   pendingTracksTotal: number;
+  voiceQueuedDurationMsMax?: number;
 };
 type GatewayLike = {
   on: (event: string, listener: BivariantCallback<unknown[], void>) => void;
@@ -60,6 +61,7 @@ export function createAppMetrics() {
     sessionsIdleTimersActive: registry.gauge('sessions_idle_timers_active', 'Sessions currently holding idle timers'),
     sessionPlayerListenerEntries: registry.gauge('session_player_listener_entries', 'Tracked player listener sets in SessionManager'),
     sessionPendingTracks: registry.gauge('session_pending_tracks', 'Total pending tracks across all sessions'),
+    voiceQueuedDurationMs: registry.gauge('voice_queued_duration_ms', 'Deepest outbound voice buffer across sessions in milliseconds'),
     lastfmScrobblesTotal: registry.counter('lastfm_scrobbles_total', 'Tracks scrobbled to Last.fm'),
     lastfmScrobbleFailuresTotal: registry.counter('lastfm_scrobble_failures_total', 'Failed Last.fm scrobble submissions'),
     lastfmNowPlayingTotal: registry.counter('lastfm_now_playing_total', 'Last.fm now playing updates sent'),
@@ -117,6 +119,7 @@ export function bindSessionMetrics(sessions: SessionsLike, metricSet: AppMetricS
   metricSet.sessionsIdleTimersActive.set(0);
   metricSet.sessionPlayerListenerEntries.set(0);
   metricSet.sessionPendingTracks.set(0);
+  metricSet.voiceQueuedDurationMs.set(0);
   metricSet.processHeapUsedBytes.set(0);
   metricSet.processHeapTotalBytes.set(0);
   metricSet.processRssBytes.set(0);
@@ -153,6 +156,7 @@ export function bindSessionMetrics(sessions: SessionsLike, metricSet: AppMetricS
     metricSet.sessionsIdleTimersActive.set(telemetry.idleTimersActive);
     metricSet.sessionPlayerListenerEntries.set(telemetry.playerListenerEntries);
     metricSet.sessionPendingTracks.set(telemetry.pendingTracksTotal);
+    metricSet.voiceQueuedDurationMs.set(Number(telemetry.voiceQueuedDurationMsMax ?? 0));
   };
 
   sessions.on('trackStart', onTrackStart);

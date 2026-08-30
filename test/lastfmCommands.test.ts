@@ -393,26 +393,49 @@ test('compare needs a second person', async () => {
   await assert.rejects(() => Promise.resolve(execute(self.context)), ValidationError);
 });
 
-test('autoplay reports and changes the guild setting', async () => {
+test('autoplay reports and changes the current voice channel setting', async () => {
   const execute = resolveExecute('autoplay');
   const patches: unknown[] = [];
+  const profiles = new Map<string, { autoplayEnabled: boolean }>();
+  const guildConfigs = {
+    async get() {
+      return show.context.guildConfig;
+    },
+    async update(_guildId: string, patch: unknown) {
+      patches.push(patch);
+      return show.context.guildConfig;
+    },
+  };
+  const library = {
+    async getVoiceProfile(_guildId: string, channelId: string) {
+      return profiles.get(channelId) ?? null;
+    },
+    async setVoiceProfile(_guildId: string, channelId: string, patch: { autoplayEnabled: boolean }) {
+      patches.push({ channelId, patch });
+      profiles.set(channelId, patch);
+      return patch;
+    },
+  };
 
   const show = createContext({
     args: [],
-    guildConfigs: {
-      async get() {
-        return show.context.guildConfig;
-      },
-      async update(_guildId: string, patch: unknown) {
-        patches.push(patch);
-        return show.context.guildConfig;
-      },
-    },
+    library,
+    guildConfigs,
   });
 
   await execute(show.context);
-  assert.ok(show.replyCalls[0]?.startsWith('info:Autoplay is currently **off**.'));
+  assert.ok(show.replyCalls[0]?.startsWith('info:Autoplay in <#voice-1> is currently **off**.'));
   assert.equal(patches.length, 0);
+
+  const change = createContext({
+    args: ['on'],
+    library,
+    guildConfigs,
+    message: { guild_id: GUILD_ID, author: { id: AUTHOR_ID }, member: { permissions: '32' } },
+  });
+  await execute(change.context);
+  assert.deepEqual(patches, [{ channelId: 'voice-1', patch: { autoplayEnabled: true } }]);
+  assert.ok(change.replyCalls[0]?.startsWith('success:Autoplay in <#voice-1> is now **on**.'));
 });
 
 test('love marks the playing track and unlove clears it', async () => {

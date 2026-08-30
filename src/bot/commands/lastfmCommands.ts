@@ -7,9 +7,10 @@ import {
   resolveQueueGuard,
   getSessionOrThrow,
   getGuildConfigOrThrow,
-  updateGuildConfig,
   ensureManageGuildAccess,
   parseOnOff,
+  requireLibrary,
+  resolveActiveVoiceChannelOrThrow,
   trackLabel,
 } from './commandHelpers.ts';
 import { buildInfoPayload } from './responseUtils.ts';
@@ -355,11 +356,17 @@ export function registerLastFmCommands(registry: RegistryLike) {
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
       requireLastFm(ctx);
+      const library = requireLibrary(ctx);
       const guildConfig = await getGuildConfigOrThrow(ctx);
+      const voiceChannelId = await resolveActiveVoiceChannelOrThrow(ctx, { fallbackCommand: 'autoplay' });
+      const profile = await library.getVoiceProfile(ctx.guildId, voiceChannelId).catch(() => null);
+      const current = typeof profile?.autoplayEnabled === 'boolean'
+        ? profile.autoplayEnabled
+        : Boolean(guildConfig.settings.autoplayEnabled);
 
       if (!ctx.args.length) {
-        const state = ctx.t(guildConfig.settings.autoplayEnabled ? 'common.on' : 'common.off');
-        await ctx.reply.info(ctx.t('autoplay.current', { state }));
+        const state = ctx.t(current ? 'common.on' : 'common.off');
+        await ctx.reply.info(ctx.t('autoplay.current', { channel: `<#${voiceChannelId}>`, state }));
         return;
       }
 
@@ -367,8 +374,12 @@ export function registerLastFmCommands(registry: RegistryLike) {
       const value = parseOnOff(ctx.args[0], null);
       if (value == null) throw new ValidationError(ctx.t('config.useOnOff'));
 
-      await updateGuildConfig(ctx, { settings: { autoplayEnabled: value } });
-      await ctx.reply.success(ctx.t('autoplay.set', { state: ctx.t(value ? 'common.on' : 'common.off') }));
+      await library.setVoiceProfile(ctx.guildId, voiceChannelId, { autoplayEnabled: value });
+      await ctx.sessions.refreshVoiceProfileSettings?.(ctx.guildId, { voiceChannelId });
+      await ctx.reply.success(ctx.t('autoplay.set', {
+        channel: `<#${voiceChannelId}>`,
+        state: ctx.t(value ? 'common.on' : 'common.off'),
+      }));
     },
   }));
 }

@@ -169,13 +169,17 @@ export function normalizeVoiceProfileSettings(profile: unknown): VoiceProfileSet
   if (!profile || typeof profile !== 'object') {
     return {
       stayInVoiceEnabled: null,
+      autoplayEnabled: null,
     };
   }
 
-  const typedProfile = profile as { stayInVoiceEnabled?: unknown };
+  const typedProfile = profile as { stayInVoiceEnabled?: unknown; autoplayEnabled?: unknown };
   return {
     stayInVoiceEnabled: typeof typedProfile.stayInVoiceEnabled === 'boolean'
       ? typedProfile.stayInVoiceEnabled
+      : null,
+    autoplayEnabled: typeof typedProfile.autoplayEnabled === 'boolean'
+      ? typedProfile.autoplayEnabled
       : null,
   };
 }
@@ -202,7 +206,9 @@ export function settingsFromGuildConfig(
       : toBool(source.stayInVoiceEnabled, fallbackStayInVoiceEnabled),
     earrapeProtectionEnabled: toBool(source.earrapeProtectionEnabled, fallbackEarrapeProtectionEnabled),
     minimalMode: toBool(source.minimalMode, defaults.minimalMode ?? false),
-    autoplayEnabled: toBool(source.autoplayEnabled, defaults.autoplayEnabled ?? false),
+    autoplayEnabled: typeof profile.autoplayEnabled === 'boolean'
+      ? profile.autoplayEnabled
+      : toBool(source.autoplayEnabled, defaults.autoplayEnabled ?? false),
     volumePercent: toVolumePercent(source.volumePercent, fallbackVolumePercent),
     voteSkipRatio: toRatio(source.voteSkipRatio, fallbackVoteSkipRatio),
     voteSkipMinVotes: toPositiveInt(source.voteSkipMinVotes, fallbackVoteSkipMinVotes),

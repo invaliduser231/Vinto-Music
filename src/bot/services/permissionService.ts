@@ -6,6 +6,7 @@ import {
 } from '../permissions/flags.ts';
 import {
   checkResolution,
+  memberRoleIds,
   resolveMemberPermissions,
   unknownResolution,
   type ChannelPayload,
@@ -96,6 +97,14 @@ export class PermissionService {
   async resolveBotPermissions(guildId: unknown, channelId: unknown): Promise<PermissionResolution> {
     if (!this.botUserId) return unknownResolution('no_user');
     return this.resolveMemberPermissions(guildId, channelId, this.botUserId);
+  }
+
+  async getMemberRoleIds(guildId: unknown, userId: unknown): Promise<string[]> {
+    const safeGuildId = String(guildId ?? '').trim();
+    const safeUserId = String(userId ?? '').trim();
+    if (!safeGuildId || !safeUserId || !this.rest) return [];
+    const member = await this._getGuildMember(safeGuildId, safeUserId);
+    return memberRoleIds(member as MemberPayload);
   }
 
   async resolveMemberPermissions(

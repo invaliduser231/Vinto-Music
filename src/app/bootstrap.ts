@@ -18,6 +18,7 @@ import { VoteService } from '../bot/services/voteService.ts';
 import { GuildStateCache } from '../bot/services/guildStateCache.ts';
 import { EarrapeProfileStore } from '../bot/services/earrapeProfileStore.ts';
 import { MonitoringServer } from '../monitoring/server.ts';
+import { DashboardServer } from '../monitoring/dashboardServer.ts';
 import { initializeSentry } from '../monitoring/sentry.ts';
 import { NodeLinkClient } from '../player/musicPlayer/NodeLinkClient.ts';
 import { LastFmClient } from '../integrations/lastfm/LastFmClient.ts';
@@ -649,6 +650,92 @@ export async function startApp() {
     });
   });
 
+  const dashboardServer = new DashboardServer({
+    enabled: config.dashboardApiEnabled,
+    host: config.dashboardApiHost,
+    port: config.dashboardApiPort,
+    secret: config.dashboardApiSecret,
+    allowedOrigins: config.dashboardApiAllowedOrigins,
+    progressIntervalMs: config.dashboardApiProgressIntervalMs,
+    logger: logger.child('dashboard'),
+    sessions,
+    voiceStateStore,
+    botUserId: me?.id ?? null,
+    resolveMemberRoleIds: (guildId, userId) => permissions.getMemberRoleIds(guildId, userId),
+    guildConfigs,
+    library: musicLibrary,
+    lastfm: lastfmClient && lastfmAccounts
+      ? { client: lastfmClient, accounts: lastfmAccounts }
+      : null,
+    guildStateCache,
+    resolveChannelName: async (channelId) => {
+      try {
+        const channel = await rest.getChannel(channelId) as { name?: string } | null;
+        return String(channel?.name ?? '').trim() || null;
+      } catch {
+        return null;
+      }
+    },
+    resolveGuildName: async (guildId) => {
+      try {
+        const guild = await rest.getGuild(guildId) as { name?: string } | null;
+        return String(guild?.name ?? '').trim() || null;
+      } catch {
+        return null;
+      }
+    },
+    getGuildMember: (guildId, userId) => rest.getGuildMember(guildId, userId),
+    listGuildRoles: (guildId) => rest.listGuildRoles(guildId),
+    listGuildChannels: (guildId) => rest.listGuildChannels(guildId),
+    listGuildMembers: (guildId, options) => rest.listGuildMembers(guildId, options),
+    lyrics,
+    listBotGuildIds: async () => {
+      const ids = new Set<string>();
+      for (const guildId of guildStateCache.guilds.keys()) {
+        const safe = String(guildId ?? '').trim();
+        if (safe) ids.add(safe);
+      }
+
+      let after: string | undefined;
+      for (let page = 0; page < 20; page += 1) {
+        const chunk = await rest.listCurrentUserGuilds({
+          limit: 200,
+          ...(after ? { after } : {}),
+        }).catch(() => null) as Array<{ id?: string }> | null;
+        if (!Array.isArray(chunk) || chunk.length === 0) break;
+
+        for (const guild of chunk) {
+          const id = String(guild?.id ?? '').trim();
+          if (id) ids.add(id);
+        }
+
+        if (chunk.length < 200) break;
+        const lastId = String(chunk[chunk.length - 1]?.id ?? '').trim();
+        if (!lastId) break;
+        after = lastId;
+      }
+
+      return [...ids];
+    },
+    isBotInGuild: async (guildId) => {
+      const safeGuildId = String(guildId ?? '').trim();
+      if (!safeGuildId) return false;
+      if (guildStateCache.guilds.has(safeGuildId)) return true;
+      if (!me?.id) return false;
+      try {
+        await rest.getGuildMember(safeGuildId, me.id);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  });
+  await dashboardServer.start().catch((err) => {
+    logger.warn('Dashboard API failed to start', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
+
   const getRuntimeHealth = () => ({
     ok: !shuttingDown && (gatewayConnected || Date.now() - startedAt < 60_000),
     gatewayConnected,
@@ -763,6 +850,11 @@ export async function startApp() {
     gateway.disconnect();
     await monitoringServer.stop().catch((err) => {
       logger.error('Monitoring server shutdown failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+    await dashboardServer.stop().catch((err) => {
+      logger.error('Dashboard API shutdown failed', {
         error: err instanceof Error ? err.message : String(err),
       });
     });

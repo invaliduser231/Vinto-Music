@@ -237,6 +237,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     nodeLinkBaseUrl: normalizeNodeLinkBaseUrl(env.NODELINK_BASE_URL),
     nodeLinkPassword: env.NODELINK_PASSWORD?.trim() || null,
     nodeLinkDefaultSearch: env.NODELINK_DEFAULT_SEARCH?.trim() || 'search',
+    nodeLinkMirrorSearchOrder: env.NODELINK_MIRROR_SEARCH_ORDER?.trim()
+      || 'dzsearch,tdsearch,scsearch,ytsearch,ytmsearch',
     nodeLinkRoutingMode: normalizeNodeLinkRoutingMode(env.NODELINK_ROUTING_MODE),
     nodeLinkRequestTimeoutMs: parsePositiveInt(env.NODELINK_REQUEST_TIMEOUT_MS, 15_000),
     nodeLinkStreamStartTimeoutMs: parsePositiveInt(env.NODELINK_STREAM_START_TIMEOUT_MS, 10_000),
@@ -273,6 +275,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     monitoringEnabled: parseBool(env.MONITORING_ENABLED, true),
     monitoringHost: (env.MONITORING_HOST ?? '0.0.0.0').trim() || '0.0.0.0',
     monitoringPort: parsePositiveInt(env.MONITORING_PORT, 9091),
+    dashboardApiEnabled: parseBool(env.DASHBOARD_API_ENABLED, false),
+    dashboardApiHost: (env.DASHBOARD_API_HOST ?? '127.0.0.1').trim() || '127.0.0.1',
+    dashboardApiPort: parsePositiveInt(env.DASHBOARD_API_PORT, 9092),
+    dashboardApiSecret: env.DASHBOARD_API_SECRET?.trim() || null,
+    dashboardApiAllowedOrigins: String(env.DASHBOARD_API_ALLOWED_ORIGINS ?? 'http://localhost:3000')
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean),
+    dashboardApiProgressIntervalMs: parsePositiveInt(env.DASHBOARD_API_PROGRESS_INTERVAL_MS, 2000),
     unhealthyExitEnabled: parseBool(env.UNHEALTHY_EXIT_ENABLED, true),
     unhealthyExitAfterMs: parsePositiveInt(env.UNHEALTHY_EXIT_AFTER_MS, 180_000),
     unhealthyCheckIntervalMs: parsePositiveInt(env.UNHEALTHY_CHECK_INTERVAL_MS, 5_000),
@@ -315,6 +326,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     if (!config.lastfmEncryptionKey) {
       throw new ConfigurationError('LASTFM_ENCRYPTION_KEY is required when LASTFM_ENABLED=1');
     }
+  }
+
+  if (config.dashboardApiEnabled && !config.dashboardApiSecret) {
+    throw new ConfigurationError('DASHBOARD_API_SECRET is required when DASHBOARD_API_ENABLED=1');
+  }
+
+  if (config.dashboardApiEnabled && config.dashboardApiSecret && config.dashboardApiSecret.length < 24) {
+    throw new ConfigurationError('DASHBOARD_API_SECRET must be at least 24 characters when DASHBOARD_API_ENABLED=1');
   }
 
   return Object.freeze(config);

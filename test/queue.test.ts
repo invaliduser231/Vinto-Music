@@ -55,6 +55,18 @@ test('queue requeue current front/back', () => {
   assert.equal(queue.tracks[0].id, 1);
 });
 
+test('queue move reorders pending tracks with one-based indexes', () => {
+  const queue = new Queue<{ title: string }>();
+  queue.add({ title: 'A' });
+  queue.add({ title: 'B' });
+  queue.add({ title: 'C' });
+
+  assert.equal(queue.move(3, 1), true);
+  assert.deepEqual(queue.tracks.map((track) => track.title), ['C', 'A', 'B']);
+  assert.equal(queue.move(0, 2), false);
+  assert.equal(queue.move(1, 4), false);
+});
+
 
 
 
