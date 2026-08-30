@@ -21,6 +21,7 @@ const BYTES_PER_FRAME = SAMPLES_PER_FRAME * BYTES_PER_SAMPLE;
 const STATS_TIMEOUT_MS = 750;
 const TARGET_QUEUE_MS = 600;
 const MAX_QUEUE_MS = 1200;
+const QUEUE_REFILL_HEADROOM_MS = 120;
 const STARTUP_PREFILL_MS = 240;
 const CONCEALMENT_MAX_FRAMES = 12;
 const PUMP_IDLE_WAIT_MS = 5;
@@ -1648,7 +1649,15 @@ export class VoiceConnection {
 
           if (source.queuedDuration > TARGET_QUEUE_MS) {
             stats.backpressureWaits += 1;
-            await this._awaitPumpOperation(() => source.waitForPlayout(), token);
+            const excessMs = Number(source.queuedDuration) - TARGET_QUEUE_MS;
+            const waitMs = Math.min(
+              MAX_QUEUE_MS,
+              Math.max(1, Math.round(excessMs + QUEUE_REFILL_HEADROOM_MS)),
+            );
+            await this._awaitPumpOperation(
+              () => new Promise<void>((resolve) => { setTimeout(resolve, waitMs); }),
+              token,
+            );
           }
           if (Number.isFinite(source.queuedDuration)) {
             stats.maxQueuedDurationMs = Math.max(stats.maxQueuedDurationMs, Number(source.queuedDuration));

@@ -78,7 +78,36 @@ test('_pumpPcmStream applies input backpressure when pending PCM grows too large
 
   assert.ok(stream.pauseCalls >= 1);
   assert.ok(stream.resumeCalls >= 1);
-  assert.ok(source.waitForPlayoutCalls >= 1);
   assert.ok(source.capturedFrames >= 2);
   assert.equal(connection.currentAudioStream, null);
+});
+
+test('a full playout queue is throttled instead of drained to empty', async () => {
+  const connection = new VoiceConnection(createGateway(), 'guild-1', { logger: null });
+  const stream = new ControlledPcmStream([Buffer.alloc(FRAME_BYTES * 3)]);
+  const queuedAtCapture: number[] = [];
+  const source = {
+    queuedDuration: 700,
+    waitForPlayoutCalls: 0,
+    capturedFrames: 0,
+    async waitForPlayout() {
+      this.waitForPlayoutCalls += 1;
+      this.queuedDuration = 0;
+    },
+    async captureFrame() {
+      this.capturedFrames += 1;
+      queuedAtCapture.push(this.queuedDuration);
+    },
+  };
+
+  connection.audioPumpToken = 1;
+  connection.currentAudioStream = stream;
+  await connection._pumpPcmStream(stream, source as never, 1);
+
+  assert.equal(source.waitForPlayoutCalls, 0);
+  assert.ok(source.capturedFrames >= 3);
+  assert.ok(
+    Math.min(...queuedAtCapture) > 0,
+    `queue must never be drained to empty, saw ${Math.min(...queuedAtCapture)}`,
+  );
 });
