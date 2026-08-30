@@ -784,8 +784,8 @@ export const en = {
   'lastfm.milestoneScrobbles': '{user} passed **{count}** scrobbles.',
   'lastfm.milestoneStreak': '{user} is on a **{count}** day streak.',
 
-  'autoplay.current': 'Autoplay is currently **{state}**.',
-  'autoplay.set': 'Autoplay is now **{state}**.',
+  'autoplay.current': 'Autoplay in {channel} is currently **{state}**.',
+  'autoplay.set': 'Autoplay in {channel} is now **{state}**.',
   'autoplay.queued': 'Autoplay added **{track}**.',
 
   'cmd.lastfm.description': 'Link your Last.fm account and browse your listening data.',

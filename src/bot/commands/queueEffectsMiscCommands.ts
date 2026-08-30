@@ -746,15 +746,8 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
         return;
       }
 
-      const previousFilter = String(session.player.filterPreset ?? 'off');
       const filter = session.player.setFilterPreset(String(ctx.args[0] ?? 'off'));
-      const restarted = session.player.playing
-        && (!session.player.isLiveFilterPresetSupported(previousFilter) || !session.player.isLiveFilterPresetSupported(filter))
-        ? session.player.refreshCurrentTrackProcessing()
-        : false;
-      await ctx.reply.success(
-        ctx.t('filter.set', { preset: filter }) + (restarted ? ` ${ctx.t('effects.reapplying')}` : '')
-      );
+      await ctx.reply.success(ctx.t('filter.set', { preset: filter }));
     },
   }));
 
@@ -800,10 +793,7 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
         throw new ValidationError(ctx.t('tempo.invalid'));
       }
       const tempo = session.player.setTempoRatio(tempoArg);
-      const restarted = session.player.refreshCurrentTrackProcessing();
-      await ctx.reply.success(
-        ctx.t('tempo.set', { value: tempo.toFixed(2) }) + (restarted ? ` ${ctx.t('effects.reapplying')}` : '')
-      );
+      await ctx.reply.success(ctx.t('tempo.set', { value: tempo.toFixed(2) }));
     },
   }));
 
@@ -818,11 +808,8 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
 
       const pitchArg = parseRequiredInteger(ctx.args[0], 'field.pitch', ctx.t);
       const pitch = session.player.setPitchSemitones(pitchArg);
-      const restarted = session.player.refreshCurrentTrackProcessing();
       const signed = pitch >= 0 ? `+${pitch}` : String(pitch);
-      await ctx.reply.success(
-        ctx.t('pitch.set', { value: signed }) + (restarted ? ` ${ctx.t('effects.reapplying')}` : '')
-      );
+      await ctx.reply.success(ctx.t('pitch.set', { value: signed }));
     },
   }));
 

@@ -2,17 +2,12 @@ import { ValidationError } from '../../core/errors.ts';
 import { createTranslator, type Translator } from '../../i18n/index.ts';
 import { buildSingleFieldInfoPayload } from './responseUtils.ts';
 import type { CommandContextLike, CommandHelperBundle, SessionLike, TrackDataLike } from './helpers/types.ts';
+import { partyStateStore, type PartyTeam } from '../services/partyStateStore.ts';
 
 const USER_MENTION_PATTERN = /^<@!?(\d+)>$/;
 const CHANNEL_MENTION_PATTERN = /^<#(\d+)>$/;
 type AnyTrack = { id?: string | null; title?: string | null; duration?: string | null; source?: string | null };
 type MoodPreset = { filter: string; eq: string; tempo: number; pitch: number };
-type PartyState = {
-  startedAt: number;
-  teams: { a: Set<string>; b: Set<string> };
-  scores: { a: number; b: number };
-  votes: Set<string>;
-};
 type PendingImportState = {
   templateName: string;
   tracks: TrackDataLike[];
@@ -34,9 +29,7 @@ type AdvancedCommandHelpers = Pick<
   | 'parseTextChannelId'
   | 'requireLibrary'
 >;
-const partyStates = new Map<string, PartyState>();
 const pendingImports = new Map<string, PendingImportState>();
-const PARTY_STATE_TTL_MS = 12 * 60 * 60 * 1000;
 const PENDING_IMPORT_TTL_MS = 15 * 60 * 1000;
 const EPHEMERAL_STATE_PRUNE_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -76,7 +69,6 @@ function applyMoodPreset(player: SessionLike['player'], presetName: unknown, t?:
   player.setEqPreset(preset.eq);
   player.setTempoRatio(preset.tempo);
   player.setPitchSemitones(preset.pitch);
-  player.refreshCurrentTrackProcessing();
   return preset;
 }
 
@@ -89,11 +81,7 @@ function pendingImportKey(ctx: Pick<CommandContextLike, 'guildId' | 'authorId'>)
 }
 
 function pruneEphemeralState(now: number = Date.now()) {
-  for (const [key, state] of partyStates.entries()) {
-    if ((now - state.startedAt) > PARTY_STATE_TTL_MS) {
-      partyStates.delete(key);
-    }
-  }
+  partyStateStore.prune(now);
 
   for (const [key, state] of pendingImports.entries()) {
     if ((now - state.createdAt) > PENDING_IMPORT_TTL_MS) {
@@ -578,56 +566,40 @@ export function registerAdvancedCommands(registry: RegistryLike, h: AdvancedComm
       pruneEphemeralState();
       const action = String(ctx.args[0] ?? 'status').toLowerCase();
       const guildId = String(ctx.guildId);
-      const state = partyStates.get(guildId) ?? {
-        startedAt: Date.now(),
-        teams: { a: new Set(), b: new Set() },
-        scores: { a: 0, b: 0 },
-        votes: new Set(),
-      };
+      const state = partyStateStore.get(guildId);
 
       if (action === 'start') {
-        partyStates.set(guildId, {
-          startedAt: Date.now(),
-          teams: { a: new Set(), b: new Set() },
-          scores: { a: 0, b: 0 },
-          votes: new Set(),
-        });
+        partyStateStore.start(guildId);
         await ctx.reply.success(ctx.t('party.started'));
         return;
       }
 
       if (action === 'end') {
-        partyStates.delete(guildId);
+        partyStateStore.end(guildId);
         await ctx.reply.success(ctx.t('party.ended'));
         return;
       }
 
-      if (!partyStates.has(guildId)) {
+      if (!state) {
         throw new ValidationError(ctx.t('party.notActive'));
       }
 
       if (action === 'join') {
-        const team = String(ctx.args[1] ?? '').toLowerCase() as 'a' | 'b';
+        const team = String(ctx.args[1] ?? '').toLowerCase() as PartyTeam;
         if (!['a', 'b'].includes(team)) throw new ValidationError(ctx.t('party.invalidTeam'));
-        state.teams.a.delete(String(ctx.authorId));
-        state.teams.b.delete(String(ctx.authorId));
-        state.teams[team].add(String(ctx.authorId));
-        partyStates.set(guildId, state);
+        partyStateStore.join(guildId, String(ctx.authorId), team);
         await ctx.reply.success(ctx.t('party.joined', { team: team.toUpperCase() }));
         return;
       }
 
       if (action === 'vote') {
-        const team = String(ctx.args[1] ?? '').toLowerCase() as 'a' | 'b';
+        const team = String(ctx.args[1] ?? '').toLowerCase() as PartyTeam;
         if (!['a', 'b'].includes(team)) throw new ValidationError(ctx.t('party.invalidTeam'));
-        const voteKey = `${ctx.authorId}:${new Date().toISOString().slice(0, 10)}`;
-        if (state.votes.has(voteKey)) {
+        const vote = partyStateStore.vote(guildId, String(ctx.authorId), team);
+        if (vote.alreadyVoted) {
           await ctx.reply.warning(ctx.t('party.alreadyVoted'));
           return;
         }
-        state.votes.add(voteKey);
-        state.scores[team] += 1;
-        partyStates.set(guildId, state);
         await ctx.reply.success(ctx.t('party.voteCounted', { team: team.toUpperCase() }));
         return;
       }
@@ -636,8 +608,8 @@ export function registerAdvancedCommands(registry: RegistryLike, h: AdvancedComm
         await ctx.reply.info(ctx.t('party.statusTitle'), [
           { name: ctx.t('party.teamA'), value: ctx.t('party.points', { count: state.scores.a }), inline: true },
           { name: ctx.t('party.teamB'), value: ctx.t('party.points', { count: state.scores.b }), inline: true },
-          { name: ctx.t('party.membersA'), value: `${state.teams.a.size}`, inline: true },
-          { name: ctx.t('party.membersB'), value: `${state.teams.b.size}`, inline: true },
+          { name: ctx.t('party.membersA'), value: `${state.teams.a}`, inline: true },
+          { name: ctx.t('party.membersB'), value: `${state.teams.b}`, inline: true },
         ]);
         return;
       }

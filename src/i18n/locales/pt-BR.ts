@@ -786,8 +786,8 @@ export const ptBR: Catalog = {
   'lastfm.milestoneScrobbles': '{user} passou de **{count}** envios.',
   'lastfm.milestoneStreak': '{user} está em **{count}** dias seguidos.',
 
-  'autoplay.current': 'A reprodução automática está **{state}**.',
-  'autoplay.set': 'A reprodução automática agora está **{state}**.',
+  'autoplay.current': 'A reprodução automática em {channel} está **{state}**.',
+  'autoplay.set': 'A reprodução automática em {channel} agora está **{state}**.',
   'autoplay.queued': 'A reprodução automática adicionou **{track}**.',
 
   'cmd.lastfm.description': 'Vincular sua conta do Last.fm e ver seus dados de audição.',

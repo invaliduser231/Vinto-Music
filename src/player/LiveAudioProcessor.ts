@@ -1,4 +1,5 @@
 import { Transform } from 'node:stream';
+import { PitchTempoShifter } from './audio/PitchTempoShifter.ts';
 
 const SAMPLE_RATE = 48_000;
 const CHANNELS = 2;
@@ -6,6 +7,17 @@ const BYTES_PER_SAMPLE = 2;
 const BYTES_PER_STEREO_SAMPLE = CHANNELS * BYTES_PER_SAMPLE;
 const TRANSITION_MS = 35;
 const VOLUME_SMOOTHING = 0.0025;
+
+const KARAOKE_LOW_CROSSOVER_HZ = 220;
+const KARAOKE_HIGH_CROSSOVER_HZ = 5200;
+const KARAOKE_MAKEUP_GAIN = 1.25;
+const SHIFTER_DRAIN_FRAMES = 2048;
+
+const HEADROOM_PROBE_HZ = [30, 60, 90, 120, 180, 250, 350, 500, 700, 1000, 1500, 2000, 3000, 4000, 6000, 8000, 12000, 16000];
+const HEADROOM_ALLOWANCE = 1.1885;
+const LIMITER_THRESHOLD = 31500;
+const LIMITER_ATTACK = 0.5;
+const LIMITER_RELEASE = 0.00014;
 
 const EQ_PRESETS = {
   flat: [0, 0, 0, 0, 0],
@@ -28,12 +40,15 @@ type FilterPresetDefinition = {
   stages: FilterStage[];
   panHz?: number;
   karaoke?: boolean;
+  tempoScale?: number;
+  pitchOffset?: number;
 };
 
 type FilterProgram = {
-  karaoke: boolean;
+  karaoke: KaraokeStage | null;
   panHz: number;
   filters: BiquadFilter[];
+  pregain: number;
 };
 
 type ProgramTransition = {
@@ -47,6 +62,8 @@ type LiveAudioProcessorOptions = {
   volumePercent?: number;
   filterPreset?: string;
   eqPreset?: string;
+  tempoRatio?: number;
+  pitchSemitones?: number;
 };
 
 const LIVE_FILTER_PRESETS: Record<string, FilterPresetDefinition> = {
@@ -76,6 +93,18 @@ const LIVE_FILTER_PRESETS: Record<string, FilterPresetDefinition> = {
       { type: 'lowpass', frequency: 3500, q: 0.707 },
     ],
   },
+  nightcore: {
+    stages: [],
+    tempoScale: 1.26,
+    pitchOffset: 3.16,
+  },
+  vaporwave: {
+    stages: [
+      { type: 'lowpass', frequency: 3200, q: 0.707 },
+    ],
+    tempoScale: 0.76,
+    pitchOffset: -3.86,
+  },
 };
 
 LIVE_FILTER_PRESETS.karoake = LIVE_FILTER_PRESETS.karaoke!;
@@ -99,8 +128,23 @@ function toVolumeGain(volumePercent: unknown, fallback: number = 100) {
   return clamp(normalized / 100, 0, 4);
 }
 
+function growFloat(buffer: Float32Array<ArrayBuffer>, required: number): Float32Array<ArrayBuffer> {
+  if (buffer.length >= required) return buffer;
+  let size = Math.max(1024, buffer.length || 1024);
+  while (size < required) size *= 2;
+  return new Float32Array(size);
+}
+
 export function isLiveFilterPresetSupported(name: unknown) {
   return Boolean(LIVE_FILTER_PRESETS[normalizePresetName(name)]);
+}
+
+export function getLiveFilterPresetShift(name: unknown) {
+  const preset = LIVE_FILTER_PRESETS[normalizePresetName(name)];
+  return {
+    tempoScale: isFiniteNumber(preset?.tempoScale) ? (preset?.tempoScale ?? 1) : 1,
+    pitchOffset: isFiniteNumber(preset?.pitchOffset) ? (preset?.pitchOffset ?? 0) : 0,
+  };
 }
 
 class BiquadFilter {
@@ -220,6 +264,28 @@ class BiquadFilter {
     this.a2 = a2 / a0;
   }
 
+  magnitudeAt(frequency: number) {
+    const omega = (2 * Math.PI * frequency) / this.sampleRate;
+    const cos1 = Math.cos(omega);
+    const cos2 = Math.cos(2 * omega);
+    const numerator = (this.b0 * this.b0) + (this.b1 * this.b1) + (this.b2 * this.b2)
+      + (2 * ((this.b0 * this.b1) + (this.b1 * this.b2)) * cos1)
+      + (2 * this.b0 * this.b2 * cos2);
+    const denominator = 1 + (this.a1 * this.a1) + (this.a2 * this.a2)
+      + (2 * (this.a1 + (this.a1 * this.a2)) * cos1)
+      + (2 * this.a2 * cos2);
+    return Math.sqrt(Math.max(1e-12, numerator) / Math.max(1e-12, denominator));
+  }
+
+  processMono(input: number) {
+    const output = (this.b0 * input) + (this.b1 * this.x1L) + (this.b2 * this.x2L) - (this.a1 * this.y1L) - (this.a2 * this.y2L);
+    this.x2L = this.x1L;
+    this.x1L = input;
+    this.y2L = this.y1L;
+    this.y1L = output;
+    return output;
+  }
+
   process(left: number, right: number) {
     const outL = (this.b0 * left) + (this.b1 * this.x1L) + (this.b2 * this.x2L) - (this.a1 * this.y1L) - (this.a2 * this.y2L);
     this.x2L = this.x1L;
@@ -237,6 +303,22 @@ class BiquadFilter {
   }
 }
 
+class KaraokeStage {
+  private lowA = new BiquadFilter({ type: 'lowpass', frequency: KARAOKE_LOW_CROSSOVER_HZ, q: 0.7071 });
+  private lowB = new BiquadFilter({ type: 'lowpass', frequency: KARAOKE_LOW_CROSSOVER_HZ, q: 0.7071 });
+  private highA = new BiquadFilter({ type: 'highpass', frequency: KARAOKE_HIGH_CROSSOVER_HZ, q: 0.7071 });
+  private highB = new BiquadFilter({ type: 'highpass', frequency: KARAOKE_HIGH_CROSSOVER_HZ, q: 0.7071 });
+
+  process(left: number, right: number): [number, number] {
+    const mid = (left + right) * 0.5;
+    const side = (left - right) * 0.5;
+    const low = this.lowB.processMono(this.lowA.processMono(mid));
+    const high = this.highB.processMono(this.highA.processMono(mid));
+    const keptMid = (low + high) * KARAOKE_MAKEUP_GAIN;
+    return [keptMid + side, keptMid - side];
+  }
+}
+
 function buildProgram(filterPreset: unknown, eqPreset: unknown): FilterProgram {
   const normalizedFilter = normalizePresetName(filterPreset);
   const normalizedEq = normalizePresetName(eqPreset, 'flat');
@@ -248,14 +330,26 @@ function buildProgram(filterPreset: unknown, eqPreset: unknown): FilterProgram {
     ...EQ_BANDS.flatMap((frequency, index) => {
       const gainDb = eqGains[index] ?? 0;
       if (!gainDb) return [];
-      return [new BiquadFilter({ type: 'peaking', frequency, gainDb, q: 1.0 })];
+      return [new BiquadFilter({ type: 'peaking', frequency, gainDb, q: 0.9 })];
     }),
   ];
 
+  let maxGain = 1;
+  for (const frequency of HEADROOM_PROBE_HZ) {
+    let gain = 1;
+    for (const filter of filters) {
+      gain *= filter.magnitudeAt(frequency);
+    }
+    if (gain > maxGain) maxGain = gain;
+  }
+  if (filterDef.karaoke === true) maxGain *= KARAOKE_MAKEUP_GAIN;
+  const pregain = maxGain > HEADROOM_ALLOWANCE ? HEADROOM_ALLOWANCE / maxGain : 1;
+
   return {
-    karaoke: filterDef.karaoke === true,
+    karaoke: filterDef.karaoke === true ? new KaraokeStage() : null,
     panHz: isFiniteNumber(filterDef.panHz) ? (filterDef.panHz ?? 0) : 0,
     filters,
+    pregain,
   };
 }
 
@@ -264,10 +358,7 @@ function processWithProgram(program: FilterProgram, left: number, right: number,
   let outR = right;
 
   if (program?.karaoke) {
-    const nextL = 0.5 * (outL - outR);
-    const nextR = 0.5 * (outR - outL);
-    outL = nextL;
-    outR = nextR;
+    [outL, outR] = program.karaoke.process(outL, outR);
   }
 
   if (Array.isArray(program?.filters)) {
@@ -287,7 +378,23 @@ function processWithProgram(program: FilterProgram, left: number, right: number,
     outR *= rightGain;
   }
 
-  return [outL, outR];
+  return [outL * program.pregain, outR * program.pregain];
+}
+
+class PeakLimiter {
+  private envelope = 0;
+
+  process(left: number, right: number): [number, number] {
+    const peak = Math.max(Math.abs(left), Math.abs(right));
+    if (peak > this.envelope) {
+      this.envelope += (peak - this.envelope) * LIMITER_ATTACK;
+    } else {
+      this.envelope += (peak - this.envelope) * LIMITER_RELEASE;
+    }
+    if (this.envelope <= LIMITER_THRESHOLD) return [left, right];
+    const gain = LIMITER_THRESHOLD / this.envelope;
+    return [left * gain, right * gain];
+  }
 }
 
 export class LiveAudioProcessor extends Transform {
@@ -298,6 +405,13 @@ export class LiveAudioProcessor extends Transform {
   targetGain: number;
   program: FilterProgram;
   transition: ProgramTransition | null;
+  shifter: PitchTempoShifter;
+  limiter: PeakLimiter;
+  tempoRatio: number;
+  pitchSemitones: number;
+  private decodedLeft = new Float32Array(0);
+  private decodedRight = new Float32Array(0);
+
   constructor(options: LiveAudioProcessorOptions = {}) {
     super();
     this.pending = Buffer.alloc(0);
@@ -305,12 +419,26 @@ export class LiveAudioProcessor extends Transform {
 
     this.currentGain = toVolumeGain(options.volumePercent);
     this.targetGain = this.currentGain;
+    this.tempoRatio = Number(options.tempoRatio ?? 1) || 1;
+    this.pitchSemitones = Number(options.pitchSemitones ?? 0) || 0;
     this.program = buildProgram(options.filterPreset, options.eqPreset);
     this.transition = null;
+    this.shifter = new PitchTempoShifter();
+    this.limiter = new PeakLimiter();
+    this._applyShift(options.filterPreset);
+  }
+
+  _applyShift(filterPreset: unknown) {
+    const { tempoScale, pitchOffset } = getLiveFilterPresetShift(filterPreset);
+    this.shifter.setRatios(this.tempoRatio * tempoScale, this.pitchSemitones + pitchOffset);
   }
 
   updateSettings(options: LiveAudioProcessorOptions = {}) {
     this.targetGain = toVolumeGain(options.volumePercent, this.targetGain * 100);
+    if (options.tempoRatio != null) this.tempoRatio = Number(options.tempoRatio) || 1;
+    if (options.pitchSemitones != null) this.pitchSemitones = Number(options.pitchSemitones) || 0;
+    this._applyShift(options.filterPreset);
+
     const nextProgram = buildProgram(options.filterPreset, options.eqPreset);
     this.transition = {
       from: this.program,
@@ -343,10 +471,10 @@ export class LiveAudioProcessor extends Transform {
         return;
       }
 
-      const output = Buffer.from(this.pending.subarray(0, completeBytes));
-      this.pending = this.pending.subarray(completeBytes);
-      this._processBuffer(output);
-      this.push(output);
+      const input = this.pending.subarray(0, completeBytes);
+      this.pending = Buffer.from(this.pending.subarray(completeBytes));
+      const output = this._processBuffer(input);
+      if (output.length) this.push(output);
       callback();
     } catch (err) {
       callback(err instanceof Error ? err : new Error(String(err)));
@@ -357,11 +485,15 @@ export class LiveAudioProcessor extends Transform {
     try {
       if (this.pending.length > 0) {
         const paddedLength = this.pending.length + ((BYTES_PER_STEREO_SAMPLE - (this.pending.length % BYTES_PER_STEREO_SAMPLE)) % BYTES_PER_STEREO_SAMPLE);
-        const output = Buffer.alloc(paddedLength);
-        this.pending.copy(output);
-        this._processBuffer(output);
-        this.push(output);
+        const padded = Buffer.alloc(paddedLength);
+        this.pending.copy(padded);
         this.pending = Buffer.alloc(0);
+        const output = this._processBuffer(padded);
+        if (output.length) this.push(output);
+      }
+      if (!this.shifter.isNeutral) {
+        const tail = this._processBuffer(Buffer.alloc(SHIFTER_DRAIN_FRAMES * BYTES_PER_STEREO_SAMPLE));
+        if (tail.length) this.push(tail);
       }
       callback();
     } catch (err) {
@@ -369,10 +501,29 @@ export class LiveAudioProcessor extends Transform {
     }
   }
 
-  _processBuffer(buffer: Buffer) {
-    for (let offset = 0; offset < buffer.length; offset += BYTES_PER_STEREO_SAMPLE) {
-      const inL = buffer.readInt16LE(offset);
-      const inR = buffer.readInt16LE(offset + BYTES_PER_SAMPLE);
+  _processBuffer(input: Buffer) {
+    const frames = Math.floor(input.length / BYTES_PER_STEREO_SAMPLE);
+    if (frames <= 0) return Buffer.alloc(0);
+
+    this.decodedLeft = growFloat(this.decodedLeft, frames);
+    this.decodedRight = growFloat(this.decodedRight, frames);
+    for (let i = 0; i < frames; i += 1) {
+      const offset = i * BYTES_PER_STEREO_SAMPLE;
+      this.decodedLeft[i] = input.readInt16LE(offset);
+      this.decodedRight[i] = input.readInt16LE(offset + BYTES_PER_SAMPLE);
+    }
+
+    const shifted = this.shifter.process(this.decodedLeft, this.decodedRight, frames);
+    const count = shifted.count;
+    if (count <= 0) return Buffer.alloc(0);
+
+    const left = shifted.left;
+    const right = shifted.right;
+    const output = Buffer.allocUnsafe(count * BYTES_PER_STEREO_SAMPLE);
+
+    for (let i = 0; i < count; i += 1) {
+      const inL = left[i] ?? 0;
+      const inR = right[i] ?? 0;
 
       let outL = inL;
       let outR = inR;
@@ -395,14 +546,14 @@ export class LiveAudioProcessor extends Transform {
       this.currentGain += (this.targetGain - this.currentGain) * VOLUME_SMOOTHING;
       outL *= this.currentGain;
       outR *= this.currentGain;
+      [outL, outR] = this.limiter.process(outL, outR);
 
-      buffer.writeInt16LE(clamp(Math.round(outL), -32768, 32767), offset);
-      buffer.writeInt16LE(clamp(Math.round(outR), -32768, 32767), offset + BYTES_PER_SAMPLE);
+      const offset = i * BYTES_PER_STEREO_SAMPLE;
+      output.writeInt16LE(clamp(Math.round(outL), -32768, 32767), offset);
+      output.writeInt16LE(clamp(Math.round(outR), -32768, 32767), offset + BYTES_PER_SAMPLE);
       this.sampleCursor += 1;
     }
+
+    return output;
   }
 }
-
-
-
-

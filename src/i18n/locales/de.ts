@@ -786,8 +786,8 @@ export const de: Catalog = {
   'lastfm.milestoneScrobbles': '{user} hat **{count}** Scrobbles geknackt.',
   'lastfm.milestoneStreak': '{user} ist bei **{count}** Tagen am Stück.',
 
-  'autoplay.current': 'Autoplay ist derzeit **{state}**.',
-  'autoplay.set': 'Autoplay ist jetzt **{state}**.',
+  'autoplay.current': 'Autoplay in {channel} ist derzeit **{state}**.',
+  'autoplay.set': 'Autoplay in {channel} ist jetzt **{state}**.',
   'autoplay.queued': 'Autoplay hat **{track}** nachgelegt.',
 
   'cmd.lastfm.description': 'Last.fm-Konto verknüpfen und eigene Hördaten ansehen.',

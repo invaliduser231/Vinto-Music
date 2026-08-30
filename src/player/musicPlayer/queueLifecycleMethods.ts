@@ -10,6 +10,7 @@ type QueueLifecycleMethods = {
   clearQueue(): number;
   shuffleQueue(): number;
   removeFromQueue(index: number): unknown;
+  moveQueueItem(fromIndex: number, toIndex: number): boolean;
   getLastHistoryTrack(): Track | null;
   replayCurrentTrack(): boolean;
   refreshCurrentTrackProcessing(): boolean;
@@ -69,6 +70,12 @@ export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecy
     const removed = this.queue.remove(index);
     this._scheduleNextTrackPrefetch();
     return removed;
+  },
+
+  moveQueueItem(this: QueueLifecycleRuntime, fromIndex, toIndex) {
+    const moved = this.queue.move(fromIndex, toIndex);
+    if (moved) this._scheduleNextTrackPrefetch();
+    return moved;
   },
 
   getLastHistoryTrack(this: QueueLifecycleRuntime) {

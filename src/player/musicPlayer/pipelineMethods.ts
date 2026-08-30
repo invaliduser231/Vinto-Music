@@ -2,6 +2,7 @@ import { spawn } from 'child_process';
 import { PassThrough } from 'node:stream';
 import playdl from 'play-dl';
 import { LiveAudioProcessor, isLiveFilterPresetSupported } from '../LiveAudioProcessor.ts';
+import { SpectrumAnalyzer } from '../audio/SpectrumAnalyzer.ts';
 import { ValidationError } from '../../core/errors.ts';
 import { FILTER_PRESETS } from './constants.ts';
 import { isRetryableYtDlpProxyError, isRetryableYtDlpStartupError } from './errorUtils.ts';
@@ -369,18 +370,7 @@ export const pipelineMethods: LooseMethodMap = {
   },
 
   _buildTranscodeFilterChain() {
-    const filters = [];
-
-    if (this.pitchSemitones !== 0) {
-      const rateFactor = 2 ** (this.pitchSemitones / 12);
-      filters.push(`asetrate=48000*${rateFactor.toFixed(6)}`);
-      filters.push('aresample=48000');
-    }
-
-    if (this.tempoRatio !== 1) {
-      filters.push(`atempo=${this.tempoRatio.toFixed(3)}`);
-    }
-
+    const filters: string[] = [];
     const presetFilters = FILTER_PRESETS[this.filterPreset] ?? FILTER_PRESETS.off ?? [];
     if (!isLiveFilterPresetSupported(this.filterPreset)) {
       filters.push(...presetFilters);
@@ -400,6 +390,8 @@ export const pipelineMethods: LooseMethodMap = {
       volumePercent: clamp(relative, this.minVolumePercent, this.maxVolumePercent),
       filterPreset: this.isLiveFilterPresetSupported(this.filterPreset) ? this.filterPreset : 'off',
       eqPreset: this.eqPreset,
+      tempoRatio: Number(this.tempoRatio) || 1,
+      pitchSemitones: Number(this.pitchSemitones) || 0,
     };
   },
 
@@ -408,10 +400,55 @@ export const pipelineMethods: LooseMethodMap = {
   },
 
   _createPlaybackOutputStream() {
-    const output = new PassThrough();
+    const output = new SpectrumAnalyzer();
+    output.enabled = this.spectrumEnabled === true;
+    output.onFrame = (bands: Uint8Array) => {
+      this._reportSpectrumLead(output);
+      this.emit('spectrum', bands);
+    };
     this._bindPipelineErrorHandler(output, 'playbackOutputStream');
     this.playbackOutputStream = output;
     return output;
+  },
+
+  _reportSpectrumLead(analyzer: { analyzedSamples?: number }) {
+    const now = Date.now();
+    const sinceLast = now - (this._lastSpectrumFrameAtMs ?? now);
+    this._lastSpectrumFrameAtMs = now;
+    this._spectrumFrameCount = (this._spectrumFrameCount ?? 0) + 1;
+    this._spectrumMaxGapMs = Math.max(this._spectrumMaxGapMs ?? 0, sinceLast);
+    if (now - (this._lastSpectrumLeadLogAtMs ?? 0) < 5_000) return;
+    const windowMs = now - (this._lastSpectrumLeadLogAtMs ?? now);
+    const framesPerSec = windowMs > 0
+      ? Math.round((this._spectrumFrameCount / windowMs) * 1000 * 10) / 10
+      : 0;
+    const maxGapMs = Math.round(this._spectrumMaxGapMs ?? 0);
+    this._spectrumFrameCount = 0;
+    this._spectrumMaxGapMs = 0;
+    this._lastSpectrumLeadLogAtMs = now;
+    const analyzedSec = Number(analyzer?.analyzedSamples ?? 0) / 48_000;
+    const playbackSec = typeof this.getProgressSeconds === 'function' ? this.getProgressSeconds() : 0;
+    if (this._spectrumBaselineSec == null) {
+      this._spectrumBaselineSec = playbackSec - analyzedSec;
+      return;
+    }
+    const leadMs = Math.round((analyzedSec + this._spectrumBaselineSec - playbackSec) * 1000);
+    this.logger?.debug?.('Spectrum analyzer lead', { leadMs, framesPerSec, maxGapMs });
+  },
+
+  setSpectrumEnabled(enabled: unknown) {
+    const next = Boolean(enabled);
+    this.spectrumEnabled = next;
+    const stream = this.playbackOutputStream as { enabled?: boolean; reset?: () => void } | null;
+    if (stream && typeof stream.enabled === 'boolean') {
+      if (next && !stream.enabled) {
+        stream.reset?.();
+        this._spectrumBaselineSec = null;
+        this._lastSpectrumLeadLogAtMs = 0;
+      }
+      stream.enabled = next;
+    }
+    return next;
   },
 
   _shouldUseLiveAudioProcessor() {
@@ -420,7 +457,18 @@ export const pipelineMethods: LooseMethodMap = {
       state.volumePercent !== 100
       || state.filterPreset !== 'off'
       || state.eqPreset !== 'flat'
+      || state.tempoRatio !== 1
+      || state.pitchSemitones !== 0
     );
+  },
+
+  _applyAudioEffectsLive() {
+    const hadLiveProcessor = Boolean(this.liveAudioProcessor);
+    this._syncLiveAudioProcessor();
+    if (!this.playing) return false;
+    if (hadLiveProcessor || !this._shouldUseLiveAudioProcessor()) return false;
+    if (this._enableLiveAudioProcessorDuringPlayback()) return false;
+    return this.refreshCurrentTrackProcessing();
   },
 
   _canDelegateVolumeToStream() {

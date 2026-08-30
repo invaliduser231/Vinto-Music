@@ -35,9 +35,7 @@ type PlaybackStateMethods = {
   getAvailableEqPresets(): string[];
 };
 type PlaybackStateRuntime = MusicPlayer & PlaybackStateMethods & {
-  _syncLiveAudioProcessor: () => void;
-  _shouldUseLiveAudioProcessor: () => boolean;
-  _enableLiveAudioProcessorDuringPlayback: () => boolean;
+  _applyAudioEffectsLive: () => boolean;
   refreshCurrentTrackProcessing: () => boolean;
   liveAudioProcessor?: unknown;
 };
@@ -90,15 +88,8 @@ export const playbackStateMethods: PlaybackStateMethods & ThisType<PlaybackState
       throw new ValidationError(`Volume must be between ${this.minVolumePercent} and ${this.maxVolumePercent}.`);
     }
 
-    const hadLiveProcessor = Boolean(this.liveAudioProcessor);
     this.volumePercent = next;
-    this._syncLiveAudioProcessor();
-    if (this.playing && !hadLiveProcessor && this._shouldUseLiveAudioProcessor()) {
-      const enabledLive = this._enableLiveAudioProcessorDuringPlayback();
-      if (!enabledLive) {
-        this.refreshCurrentTrackProcessing();
-      }
-    }
+    this._applyAudioEffectsLive();
     return this.volumePercent;
   },
 
@@ -109,7 +100,7 @@ export const playbackStateMethods: PlaybackStateMethods & ThisType<PlaybackState
     }
 
     this.filterPreset = normalized;
-    this._syncLiveAudioProcessor();
+    this._applyAudioEffectsLive();
     return this.filterPreset;
   },
 
@@ -120,7 +111,7 @@ export const playbackStateMethods: PlaybackStateMethods & ThisType<PlaybackState
     }
 
     this.eqPreset = normalized as EqPresetName;
-    this._syncLiveAudioProcessor();
+    this._applyAudioEffectsLive();
     return this.eqPreset;
   },
 
@@ -131,6 +122,7 @@ export const playbackStateMethods: PlaybackStateMethods & ThisType<PlaybackState
     }
 
     this.tempoRatio = parsed;
+    this._applyAudioEffectsLive();
     return this.tempoRatio;
   },
 
@@ -141,6 +133,7 @@ export const playbackStateMethods: PlaybackStateMethods & ThisType<PlaybackState
     }
 
     this.pitchSemitones = parsed;
+    this._applyAudioEffectsLive();
     return this.pitchSemitones;
   },
 
