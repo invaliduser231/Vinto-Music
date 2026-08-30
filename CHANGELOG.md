@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.10.3] - 2026-08-30
+
+- Fixes:
+  - stopped the voice buffer from running dry between refills. Once the playout queue passed its target the pump waited for the entire queue to finish, so the buffer sawtoothed between 600 ms and nothing and dropped audio whenever a refill arrived late. It now waits only for the excess and keeps roughly half a second in reserve
+- Performance:
+  - made the spectrum analyzer 4.4 times cheaper by precomputing the FFT twiddle factors and filling its ring buffer with native copies instead of reading every sample individually
+
 ## [0.10.2] - 2026-08-30
 
 - Fixes:
