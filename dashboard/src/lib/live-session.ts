@@ -1,11 +1,9 @@
 import type { DashboardSession } from '@/types/session';
+import { requestBotTicket, resolveWebSocketUrl } from '@/lib/bot-client';
 
 const STORAGE_KEY = 'vinto-dashboard-dev';
 
 export type DevConnectSettings = {
-  apiUrl: string;
-  wsUrl: string;
-  secret: string;
   guildId: string;
   voiceChannelId: string;
   userId: string;
@@ -13,9 +11,6 @@ export type DevConnectSettings = {
 };
 
 export const defaultDevConnectSettings = (): DevConnectSettings => ({
-  apiUrl: String(process.env.NEXT_PUBLIC_DASHBOARD_API_URL ?? 'http://127.0.0.1:9092').trim(),
-  wsUrl: String(process.env.NEXT_PUBLIC_DASHBOARD_WS_URL ?? 'ws://127.0.0.1:9092').trim(),
-  secret: String(process.env.NEXT_PUBLIC_DASHBOARD_API_SECRET ?? 'change-me-locally').trim(),
   guildId: '',
   voiceChannelId: '',
   userId: '',
@@ -147,10 +142,6 @@ export class LiveSessionClient {
       this.onError?.('not_connected');
       return;
     }
-    const roleIds = this.settings.roleIds
-      .split(',')
-      .map((entry) => entry.trim())
-      .filter(Boolean);
     this.socket.send(JSON.stringify({
       op: 'action',
       action,
@@ -158,34 +149,40 @@ export class LiveSessionClient {
       ...payload,
       guildId: this.settings.guildId,
       voiceChannelId: this.settings.voiceChannelId,
-      userId: this.settings.userId,
-      roleIds,
     }));
   }
 
   private openSocket(): void {
-    const { wsUrl, secret, guildId, voiceChannelId, userId, roleIds } = this.settings;
-    if (!wsUrl || !secret || !guildId || !voiceChannelId || !userId) {
+    void this.openSocketWithTicket();
+  }
+
+  private async openSocketWithTicket(): Promise<void> {
+    const { guildId, voiceChannelId } = this.settings;
+    const wsUrl = resolveWebSocketUrl();
+    if (!wsUrl || !guildId || !voiceChannelId) {
       this.onStatus('error');
       return;
     }
 
     this.onStatus('connecting');
+    const credentials = await requestBotTicket();
+    if (this.closedByUser) return;
+    if (!credentials) {
+      this.onStatus('error');
+      this.scheduleReconnect();
+      return;
+    }
+
     const socket = new WebSocket(wsUrl);
     this.socket = socket;
 
     socket.addEventListener('open', () => {
       this.onStatus('open');
-      socket.send(JSON.stringify({ op: 'auth', secret }));
+      socket.send(JSON.stringify({ op: 'auth', ticket: credentials.ticket }));
       socket.send(JSON.stringify({
         op: 'subscribe',
         guildId,
         voiceChannelId,
-        userId,
-        roleIds: roleIds
-          .split(',')
-          .map((entry) => entry.trim())
-          .filter(Boolean),
       }));
     });
 
@@ -228,11 +225,17 @@ export class LiveSessionClient {
         return;
       }
       this.onStatus('error');
-      this.reconnectTimer = setTimeout(() => this.openSocket(), 800);
+      this.scheduleReconnect();
     });
 
     socket.addEventListener('error', () => {
       this.onStatus('error');
     });
+  }
+
+  private scheduleReconnect(): void {
+    if (this.closedByUser) return;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = setTimeout(() => this.openSocket(), 800);
   }
 }

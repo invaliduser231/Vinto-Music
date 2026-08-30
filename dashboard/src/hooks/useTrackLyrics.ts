@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { DevConnectSettings } from '@/lib/live-session';
+import { botApiPath } from '@/lib/bot-client';
 
 export type TrackLyrics = {
   query: string;
@@ -29,9 +30,7 @@ export function useTrackLyrics(
 
     const guildId = settings.guildId.trim();
     const voiceChannelId = settings.voiceChannelId.trim();
-    const userId = settings.userId.trim();
-    const secret = settings.secret.trim();
-    if (!guildId || !voiceChannelId || !userId || !secret) {
+    if (!guildId || !voiceChannelId) {
       setLyrics(null);
       return undefined;
     }
@@ -39,16 +38,8 @@ export function useTrackLyrics(
     setLoading(true);
     setError(null);
 
-    const url = new URL('/api/v1/track/lyrics', settings.apiUrl);
-    url.searchParams.set('guildId', guildId);
-    url.searchParams.set('voiceChannelId', voiceChannelId);
-
     const controller = new AbortController();
-    void fetch(url.toString(), {
-      headers: {
-        Authorization: `Bearer ${secret}`,
-        'X-User-Id': userId,
-      },
+    void fetch(botApiPath('track/lyrics', { guildId, voiceChannelId }), {
       signal: controller.signal,
     })
       .then(async (response) => {
@@ -74,11 +65,8 @@ export function useTrackLyrics(
     return () => controller.abort();
   }, [
     enabled,
-    settings.apiUrl,
     settings.guildId,
     settings.voiceChannelId,
-    settings.userId,
-    settings.secret,
     trackKey,
   ]);
 

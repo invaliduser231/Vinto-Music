@@ -84,7 +84,6 @@ export function VintoApp() {
   const guilds = useOAuthGuilds(oauthEnabled, Boolean(user));
   const oauthGuildIds = useMemo(() => guilds.map((guild) => guild.id), [guilds]);
   const { guildIds: botGuildIds, loaded: botGuildsLoaded } = useBotGuildIds(
-    devSettings,
     oauthGuildIds,
     oauthEnabled && Boolean(user) && !mockEnabled,
   );
@@ -95,7 +94,6 @@ export function VintoApp() {
     return guilds.filter((guild) => botGuildSet.has(guild.id));
   }, [guilds, oauthEnabled, mockEnabled, botGuildsLoaded, botGuildIds]);
   const voiceDiscovery = useUserVoiceDiscovery(
-    devSettings,
     oauthGuildIds,
     !mockEnabled && oauthEnabled && Boolean(user),
   );
@@ -111,7 +109,6 @@ export function VintoApp() {
   );
   const guildOverview = useGuildOverview(devSettings, !mockEnabled && guildAllowed);
   const guildSettingsHook = useGuildSettings(
-    devSettings,
     devSettings.guildId,
     !mockEnabled && guildAllowed && Boolean(devSettings.guildId),
   );

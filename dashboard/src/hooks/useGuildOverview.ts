@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { DevConnectSettings } from '@/lib/live-session';
+import { botApiPath } from '@/lib/bot-client';
 import type { VoiceChannelOption } from '@/types/session';
 
 export type GuildOverview = {
@@ -27,22 +28,13 @@ export function useGuildOverview(settings: DevConnectSettings, enabled: boolean)
     }
 
     const guildId = settings.guildId.trim();
-    const userId = settings.userId.trim();
-    const secret = settings.secret.trim();
-    if (!guildId || !userId || !secret) {
+    if (!guildId) {
       setOverview(null);
       return undefined;
     }
 
-    const url = new URL('/api/v1/guild', settings.apiUrl);
-    url.searchParams.set('guildId', guildId);
-
     const controller = new AbortController();
-    void fetch(url.toString(), {
-      headers: {
-        Authorization: `Bearer ${secret}`,
-        'X-User-Id': userId,
-      },
+    void fetch(botApiPath('guild', { guildId }), {
       signal: controller.signal,
     })
       .then(async (response) => {
@@ -60,7 +52,7 @@ export function useGuildOverview(settings: DevConnectSettings, enabled: boolean)
       });
 
     return () => controller.abort();
-  }, [enabled, settings.apiUrl, settings.guildId, settings.userId, settings.secret]);
+  }, [enabled, settings.guildId]);
 
   return overview;
 }

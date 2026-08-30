@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { DevConnectSettings } from '@/lib/live-session';
+import { botApiPath } from '@/lib/bot-client';
 import type { QueueTrack } from '@/types/session';
 
 export type GuildHistoryState = {
@@ -37,21 +38,11 @@ async function fetchGuildHistory(
 ): Promise<GuildHistoryState | null> {
   const guildId = settings.guildId.trim();
   const voiceChannelId = settings.voiceChannelId.trim();
-  const userId = settings.userId.trim();
-  const secret = settings.secret.trim();
 
-  const url = new URL('/api/v1/guild/history', settings.apiUrl);
-  url.searchParams.set('guildId', guildId);
-  url.searchParams.set('voiceChannelId', voiceChannelId);
-  url.searchParams.set('page', String(page));
-
-  const response = await fetch(url.toString(), {
-    headers: {
-      Authorization: `Bearer ${secret}`,
-      'X-User-Id': userId,
-    },
-    signal,
-  });
+  const response = await fetch(
+    botApiPath('guild/history', { guildId, voiceChannelId, page }),
+    { signal },
+  );
 
   if (!response.ok) {
     const payload = await response.json().catch(() => null) as { error?: string } | null;
@@ -86,9 +77,7 @@ export function useGuildHistory(
 
     const guildId = settings.guildId.trim();
     const voiceChannelId = settings.voiceChannelId.trim();
-    const userId = settings.userId.trim();
-    const secret = settings.secret.trim();
-    if (!guildId || !voiceChannelId || !userId || !secret) {
+    if (!guildId || !voiceChannelId) {
       setHistory(null);
       setError(null);
       setLoading(false);
@@ -117,11 +106,8 @@ export function useGuildHistory(
     };
   }, [
     enabled,
-    settings.apiUrl,
     settings.guildId,
     settings.voiceChannelId,
-    settings.userId,
-    settings.secret,
     page,
   ]);
 

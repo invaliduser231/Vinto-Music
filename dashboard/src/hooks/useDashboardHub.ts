@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DevConnectSettings } from '@/lib/live-session';
+import { botApiPath } from '@/lib/bot-client';
 import type { DashboardHubData } from '@/types/dashboard-hub';
 
 export function useDashboardHub(connect: DevConnectSettings, enabled: boolean, refreshKey = 0) {
@@ -12,8 +13,7 @@ export function useDashboardHub(connect: DevConnectSettings, enabled: boolean, r
 
   const load = useCallback(async () => {
     const guildId = connect.guildId.trim();
-    const userId = connect.userId.trim();
-    if (!enabled || !guildId || !userId || !connect.secret.trim()) return;
+    if (!enabled || !guildId) return;
 
     controllerRef.current?.abort();
     const controller = new AbortController();
@@ -22,13 +22,7 @@ export function useDashboardHub(connect: DevConnectSettings, enabled: boolean, r
     setLoading(true);
     setError(null);
     try {
-      const url = new URL('/api/v1/dashboard/hub', connect.apiUrl);
-      url.searchParams.set('guildId', guildId);
-      const response = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${connect.secret}`,
-          'X-User-Id': userId,
-        },
+      const response = await fetch(botApiPath('dashboard/hub', { guildId }), {
         signal: controller.signal,
       });
       const payload = await response.json().catch(() => null) as {
@@ -45,7 +39,7 @@ export function useDashboardHub(connect: DevConnectSettings, enabled: boolean, r
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
-  }, [connect.apiUrl, connect.guildId, connect.secret, connect.userId, enabled, refreshKey]);
+  }, [connect.guildId, enabled, refreshKey]);
 
   useEffect(() => {
     void load();

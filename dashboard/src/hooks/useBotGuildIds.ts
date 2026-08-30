@@ -1,10 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { DevConnectSettings } from '@/lib/live-session';
+import { botApiPath } from '@/lib/bot-client';
 
 export function useBotGuildIds(
-  settings: DevConnectSettings,
   oauthGuildIds: string[],
   enabled: boolean,
 ) {
@@ -18,20 +17,15 @@ export function useBotGuildIds(
       return undefined;
     }
 
-    const secret = settings.secret.trim();
-    if (!secret || oauthGuildIds.length === 0) {
+    if (oauthGuildIds.length === 0) {
       setGuildIds([]);
       setLoaded(true);
       return undefined;
     }
 
     setLoaded(false);
-    const url = new URL('/api/v1/bot/guilds', settings.apiUrl);
-    url.searchParams.set('guildIds', oauthGuildIds.join(','));
-
     const controller = new AbortController();
-    void fetch(url.toString(), {
-      headers: { Authorization: `Bearer ${secret}` },
+    void fetch(botApiPath('bot/guilds', { guildIds: oauthGuildIds.join(',') }), {
       signal: controller.signal,
     })
       .then(async (response) => {
@@ -53,7 +47,7 @@ export function useBotGuildIds(
       });
 
     return () => controller.abort();
-  }, [enabled, settings.apiUrl, settings.secret, oauthGuildIds]);
+  }, [enabled, oauthGuildIds]);
 
   return { guildIds, loaded };
 }

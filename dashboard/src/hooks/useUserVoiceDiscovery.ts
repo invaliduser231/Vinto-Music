@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { DevConnectSettings } from '@/lib/live-session';
+import { botApiPath } from '@/lib/bot-client';
 
 export type UserVoiceBinding = {
   guildId: string;
@@ -9,7 +9,6 @@ export type UserVoiceBinding = {
 };
 
 export function useUserVoiceDiscovery(
-  connect: DevConnectSettings,
   guildIds: string[],
   enabled: boolean,
   pollMs = 2500,
@@ -22,9 +21,7 @@ export function useUserVoiceDiscovery(
       return undefined;
     }
 
-    const userId = connect.userId.trim();
-    const secret = connect.secret.trim();
-    if (!userId || !secret || guildIds.length === 0) {
+    if (guildIds.length === 0) {
       setBinding(null);
       return undefined;
     }
@@ -34,13 +31,7 @@ export function useUserVoiceDiscovery(
     const load = async () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       try {
-        const url = new URL('/api/v1/user/voice', connect.apiUrl);
-        url.searchParams.set('guildIds', guildIds.join(','));
-        const response = await fetch(url.toString(), {
-          headers: {
-            Authorization: `Bearer ${secret}`,
-            'X-User-Id': userId,
-          },
+        const response = await fetch(botApiPath('user/voice', { guildIds: guildIds.join(',') }), {
           signal: controller.signal,
         });
         if (!response.ok) return;
@@ -64,7 +55,7 @@ export function useUserVoiceDiscovery(
       clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [connect.apiUrl, connect.secret, connect.userId, enabled, guildIds, pollMs]);
+  }, [enabled, guildIds, pollMs]);
 
   return binding;
 }
