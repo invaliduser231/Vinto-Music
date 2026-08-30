@@ -2,6 +2,39 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.10.0] - 2026-08-30
+
+- Dashboard:
+  - added a web dashboard for Fluxer sign-in, with permission-aware playback, search, queue reordering by drag and drop, and CSV export
+  - grouped favorites, playlists, radio stations, queue templates, history, lyrics, recaps and taste insights into focused views
+  - added a profile view behind the header avatar with reputation, taste, favorites including rename and remove, and the full Last.fm block for connecting an account, scrobbling preferences, love controls, recent tracks and weekly charts
+  - added library management for guild playlists, queue templates and custom radio stations
+  - added time-synced lyrics that follow playback line by line and let you jump to any line, with a plain-text fallback marked as untimed
+  - added a live spectrum visualizer fed from the outbound audio, active only while a dashboard client is watching
+  - added vote skip, temporary DJ handoff and a party battle shared with the bot command
+  - added a command palette on Cmd+K, keyboard shortcuts for pause and seek, and a mobile layout with sticky transport controls
+  - tinted the ambient glow and visualizer with the dominant colour of the current cover art
+  - showed who is listening as a live avatar row, and top requesters with names and avatars in insights
+  - showed listeners the transport dimmed and inert rather than hidden, so the player does not look broken without DJ access
+- Audio:
+  - applied filter, equalizer, tempo and pitch to the running stream instead of restarting the track, which also stops non-seekable tracks from jumping back to the start
+  - moved tempo, pitch, nightcore and vaporwave into the live audio processor, so they also take effect on the NodeLink backend, which never passes through ffmpeg
+  - rebuilt karaoke around a mid/side split that drops only the vocal band and keeps both channels in phase, instead of cancelling mono material into silence
+  - pre-attenuated each filter program by its maximum boost and added a peak limiter before quantization, so bassboost, equalizer boosts and volume above 100 percent no longer clip
+- Architecture:
+  - added an authenticated dashboard API with permission-checked WebSocket actions and a hub endpoint
+  - moved party battle state into a shared service used by commands and the dashboard
+  - exposed the outbound voice buffer depth as a metric
+- Fixes:
+  - stopped mirroring every unstreamable track to YouTube: the search only ever tried `ytsearch` and `ytmsearch`, so Spotify tracks landed on YouTube even where Deezer had the song. It now walks `NODELINK_MIRROR_SEARCH_ORDER`, defaulting to Deezer, Tidal, SoundCloud and only then YouTube
+  - kept trying further mirrors when one fails to stream, remembering which sources are spent, instead of giving up after a single attempt
+  - paused a mirror source for ten minutes after three consecutive failures, so an expired credential does not cost a failed round trip on every track
+  - stopped gating the whole mirror path on YouTube being enabled
+  - capped and expired the guild name, channel name and member profile caches, which grew without bound and never picked up renames
+  - stopped suggesting port 3000 for a host-published NodeLink, which the dashboard already occupies
+- Tests:
+  - covered dashboard payloads, actions and access control, party state, the audio processor, the spectrum analyzer, mirror ordering and synced lyrics
+
 ## [0.9.2] - 2026-08-29
 
 - Fixes:
