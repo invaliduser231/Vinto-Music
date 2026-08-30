@@ -10,6 +10,7 @@ import {
   buildLyricsSearchQuery,
 } from '../dashboard/historyLyrics.ts';
 import { runDashboardAction, type DashboardAction } from '../dashboard/actions.ts';
+import { verifyDashboardTicket } from '../dashboard/ticket.ts';
 import {
   applyGuildSettingsPatch,
   buildGuildSettingsPayload,
@@ -44,6 +45,7 @@ type DashboardServerOptions = {
   host?: string;
   port?: number;
   secret?: string | null;
+  requireTicket?: boolean;
   allowedOrigins?: string[];
   progressIntervalMs?: number;
   logger?: LoggerLike | undefined;
@@ -76,6 +78,7 @@ type ClientSubscription = {
 type DashboardClient = {
   socket: WebSocket;
   authenticated: boolean;
+  identityUserId: string | null;
   subscription: ClientSubscription | null;
 };
 
@@ -149,6 +152,7 @@ export class DashboardServer {
   host: string;
   port: number;
   secret: string | null;
+  requireTicket: boolean;
   allowedOrigins: Set<string>;
   progressIntervalMs: number;
   logger: LoggerLike | undefined;
@@ -186,6 +190,7 @@ export class DashboardServer {
     this.host = options.host ?? '127.0.0.1';
     this.port = options.port ?? 9092;
     this.secret = options.secret ?? null;
+    this.requireTicket = options.requireTicket === true;
     this.allowedOrigins = new Set(options.allowedOrigins ?? ['http://localhost:3000']);
     this.progressIntervalMs = Math.max(250, Number(options.progressIntervalMs ?? 2000));
     this.logger = options.logger ?? undefined;
@@ -1614,6 +1619,7 @@ export class DashboardServer {
     const client: DashboardClient = {
       socket,
       authenticated: false,
+      identityUserId: null,
       subscription: null,
     };
     this.clients.add(client);
@@ -1627,8 +1633,19 @@ export class DashboardServer {
 
       const op = String(payload.op ?? '').trim().toLowerCase();
       if (op === 'auth') {
-        const secret = String(payload.secret ?? '').trim();
-        client.authenticated = isAuthorized(this.secret ?? '', secret);
+        const ticket = String(payload.ticket ?? '').trim();
+        if (ticket) {
+          const verified = verifyDashboardTicket(ticket, this.secret ?? '');
+          client.authenticated = verified !== null;
+          client.identityUserId = verified?.userId ?? null;
+        } else if (this.requireTicket) {
+          client.authenticated = false;
+          client.identityUserId = null;
+        } else {
+          client.authenticated = isAuthorized(this.secret ?? '', String(payload.secret ?? '').trim());
+          client.identityUserId = null;
+        }
+        if (!client.authenticated) client.subscription = null;
         this._sendSocket(client, { op: client.authenticated ? 'auth_ok' : 'auth_fail' });
         return;
       }
@@ -1777,7 +1794,7 @@ export class DashboardServer {
   async _handleSubscribe(client: DashboardClient, payload: Record<string, unknown>): Promise<void> {
     const guildId = String(payload.guildId ?? '').trim();
     const voiceChannelId = String(payload.voiceChannelId ?? '').trim();
-    const userId = String(payload.userId ?? '').trim();
+    const userId = client.identityUserId ?? String(payload.userId ?? '').trim();
     if (!guildId || !voiceChannelId || !userId) {
       this._sendSocket(client, { op: 'error', message: 'missing subscribe fields' });
       return;
@@ -1793,7 +1810,8 @@ export class DashboardServer {
       return;
     }
 
-    const roleIds = await this._resolveRoleIds(guildId, userId, parseRoleIds(payload.roleIds));
+    const claimedRoleIds = client.identityUserId ? [] : parseRoleIds(payload.roleIds);
+    const roleIds = await this._resolveRoleIds(guildId, userId, claimedRoleIds);
     client.subscription = { guildId, voiceChannelId, userId, roleIds };
     this._syncSpectrumTaps();
     await this._pushSession(client);
@@ -1861,7 +1879,8 @@ export class DashboardServer {
     userId: string,
     clientRoleIds: string[],
   ): Promise<string[]> {
-    if (!this.resolveMemberRoleIds) return clientRoleIds;
+    const fallback = this.requireTicket ? [] : clientRoleIds;
+    if (!this.resolveMemberRoleIds) return fallback;
     try {
       return await this.resolveMemberRoleIds(guildId, userId);
     } catch (err) {
@@ -1870,7 +1889,7 @@ export class DashboardServer {
         userId,
         error: err instanceof Error ? err.message : String(err),
       });
-      return clientRoleIds;
+      return fallback;
     }
   }
 

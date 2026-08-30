@@ -655,6 +655,7 @@ export async function startApp() {
     host: config.dashboardApiHost,
     port: config.dashboardApiPort,
     secret: config.dashboardApiSecret,
+    requireTicket: config.dashboardApiRequireTicket,
     allowedOrigins: config.dashboardApiAllowedOrigins,
     progressIntervalMs: config.dashboardApiProgressIntervalMs,
     logger: logger.child('dashboard'),

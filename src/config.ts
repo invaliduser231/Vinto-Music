@@ -279,6 +279,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     dashboardApiHost: (env.DASHBOARD_API_HOST ?? '127.0.0.1').trim() || '127.0.0.1',
     dashboardApiPort: parsePositiveInt(env.DASHBOARD_API_PORT, 9092),
     dashboardApiSecret: env.DASHBOARD_API_SECRET?.trim() || null,
+    dashboardApiRequireTicket: parseBool(env.DASHBOARD_API_REQUIRE_TICKET, true),
     dashboardApiAllowedOrigins: String(env.DASHBOARD_API_ALLOWED_ORIGINS ?? 'http://localhost:3000')
       .split(',')
       .map((entry) => entry.trim())
