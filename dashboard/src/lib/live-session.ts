@@ -98,6 +98,7 @@ export class LiveSessionClient {
   private onSpectrum: LiveSessionClientOptions['onSpectrum'];
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private closedByUser = false;
+  private generation = 0;
 
   constructor(options: LiveSessionClientOptions) {
     this.settings = options.settings;
@@ -120,6 +121,7 @@ export class LiveSessionClient {
 
   disconnect(): void {
     this.closedByUser = true;
+    this.generation += 1;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -153,10 +155,15 @@ export class LiveSessionClient {
   }
 
   private openSocket(): void {
-    void this.openSocketWithTicket();
+    const generation = (this.generation += 1);
+    void this.openSocketWithTicket(generation);
   }
 
-  private async openSocketWithTicket(): Promise<void> {
+  private isCurrent(generation: number): boolean {
+    return !this.closedByUser && generation === this.generation;
+  }
+
+  private async openSocketWithTicket(generation: number): Promise<void> {
     const { guildId, voiceChannelId } = this.settings;
     const wsUrl = resolveWebSocketUrl();
     if (!wsUrl || !guildId || !voiceChannelId) {
@@ -166,7 +173,7 @@ export class LiveSessionClient {
 
     this.onStatus('connecting');
     const credentials = await requestBotTicket();
-    if (this.closedByUser) return;
+    if (!this.isCurrent(generation)) return;
     if (!credentials) {
       this.onStatus('error');
       this.scheduleReconnect();
@@ -177,6 +184,10 @@ export class LiveSessionClient {
     this.socket = socket;
 
     socket.addEventListener('open', () => {
+      if (!this.isCurrent(generation)) {
+        socket.close();
+        return;
+      }
       this.onStatus('open');
       socket.send(JSON.stringify({ op: 'auth', ticket: credentials.ticket }));
       socket.send(JSON.stringify({
@@ -187,6 +198,7 @@ export class LiveSessionClient {
     });
 
     socket.addEventListener('message', (event) => {
+      if (!this.isCurrent(generation)) return;
       try {
         const payload = JSON.parse(String(event.data ?? '')) as {
           op?: string;
@@ -219,6 +231,7 @@ export class LiveSessionClient {
     });
 
     socket.addEventListener('close', () => {
+      if (generation !== this.generation) return;
       this.socket = null;
       if (this.closedByUser) {
         this.onStatus('closed');
@@ -229,6 +242,7 @@ export class LiveSessionClient {
     });
 
     socket.addEventListener('error', () => {
+      if (!this.isCurrent(generation)) return;
       this.onStatus('error');
     });
   }
