@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.10.4] - 2026-08-31
+
+- Fixes:
+  - stopped the dashboard from opening a second live connection when a reconnect happened while the previous one was still fetching its ticket. The stale attempt overwrote the new socket, which the browser reported as "WebSocket is closed before the connection is established"
+
 ## [0.10.3] - 2026-08-30
 
 - Fixes:
