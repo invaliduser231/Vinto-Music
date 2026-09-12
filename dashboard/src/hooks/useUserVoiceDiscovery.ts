@@ -11,7 +11,7 @@ export type UserVoiceBinding = {
 export function useUserVoiceDiscovery(
   guildIds: string[],
   enabled: boolean,
-  pollMs = 2500,
+  pollMs = 6000,
 ) {
   const [binding, setBinding] = useState<UserVoiceBinding | null>(null);
 
