@@ -16,17 +16,22 @@ export function botApiPath(
 export type BotTicket = {
   ticket: string;
   userId: string;
+  wsUrl: string | null;
 };
 
 export async function requestBotTicket(): Promise<BotTicket | null> {
   try {
     const response = await fetch('/api/bot/ticket', { method: 'POST' });
     if (!response.ok) return null;
-    const payload = await response.json() as { ticket?: unknown; userId?: unknown };
+    const payload = await response.json() as {
+      ticket?: unknown;
+      userId?: unknown;
+      wsUrl?: unknown;
+    };
     const ticket = String(payload.ticket ?? '').trim();
     const userId = String(payload.userId ?? '').trim();
     if (!ticket || !userId) return null;
-    return { ticket, userId };
+    return { ticket, userId, wsUrl: String(payload.wsUrl ?? '').trim() || null };
   } catch {
     return null;
   }

@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getAuthSession } from '@/lib/auth-server';
-import { readBotApiConfig, signBotTicket, TICKET_LIFETIME_MS } from '@/lib/bot-api';
+import {
+  readBotApiConfig,
+  readConfiguredWebSocketUrl,
+  signBotTicket,
+  TICKET_LIFETIME_MS,
+} from '@/lib/bot-api';
 
 export async function POST() {
   const config = readBotApiConfig();
@@ -14,11 +19,13 @@ export async function POST() {
   }
 
   const expiresAt = Date.now() + TICKET_LIFETIME_MS;
+  const wsUrl = readConfiguredWebSocketUrl();
   return NextResponse.json(
     {
       ticket: signBotTicket(session.userId, expiresAt, config.secret),
       userId: session.userId,
       expiresAt,
+      ...(wsUrl ? { wsUrl } : {}),
     },
     { headers: { 'cache-control': 'no-store' } },
   );

@@ -165,8 +165,7 @@ export class LiveSessionClient {
 
   private async openSocketWithTicket(generation: number): Promise<void> {
     const { guildId, voiceChannelId } = this.settings;
-    const wsUrl = resolveWebSocketUrl();
-    if (!wsUrl || !guildId || !voiceChannelId) {
+    if (!guildId || !voiceChannelId) {
       this.onStatus('error');
       return;
     }
@@ -177,6 +176,12 @@ export class LiveSessionClient {
     if (!credentials) {
       this.onStatus('error');
       this.scheduleReconnect();
+      return;
+    }
+
+    const wsUrl = credentials.wsUrl ?? resolveWebSocketUrl();
+    if (!wsUrl) {
+      this.onStatus('error');
       return;
     }
 

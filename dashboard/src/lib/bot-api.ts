@@ -28,6 +28,13 @@ export function readBotApiConfig(): BotApiConfig | null {
   return { baseUrl, secret };
 }
 
+export function readConfiguredWebSocketUrl(): string | null {
+  const raw = String(process.env.DASHBOARD_WS_URL ?? '').trim();
+  if (!raw) return null;
+  if (!/^wss?:\/\//i.test(raw)) return null;
+  return raw.replace(/\/+$/, '');
+}
+
 export function signBotTicket(userId: string, expiresAt: number, secret: string): string {
   const body = Buffer.from(JSON.stringify({ userId, exp: expiresAt }), 'utf8').toString('base64url');
   const signature = createHmac('sha256', secret).update(body).digest('base64url');
