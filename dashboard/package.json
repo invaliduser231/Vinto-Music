@@ -9,7 +9,7 @@
     "build": "next build",
     "start": "next start --port 3000",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test test/*.test.ts"
+    "test": "node --experimental-test-module-mocks --import tsx --test test/*.test.ts"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",

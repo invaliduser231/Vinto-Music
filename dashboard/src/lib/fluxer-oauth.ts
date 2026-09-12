@@ -32,6 +32,20 @@ export function buildAuthorizeUrl(config: OAuthConfig, state: string): string {
   return `${config.authorizeUrl}?${params.toString()}`;
 }
 
+export class OAuthTokenError extends Error {
+  status: number;
+
+  constructor(status: number) {
+    super(`token exchange failed: ${status}`);
+    this.name = 'OAuthTokenError';
+    this.status = status;
+  }
+
+  get isPermanent(): boolean {
+    return this.status >= 400 && this.status < 500;
+  }
+}
+
 async function postToken(config: OAuthConfig, body: Record<string, string>): Promise<OAuthTokenResponse> {
   const params = new URLSearchParams(body);
   const response = await fetch(config.tokenUrl, {
@@ -40,7 +54,7 @@ async function postToken(config: OAuthConfig, body: Record<string, string>): Pro
     body: params.toString(),
   });
   if (!response.ok) {
-    throw new Error(`token exchange failed: ${response.status}`);
+    throw new OAuthTokenError(response.status);
   }
   return await response.json() as OAuthTokenResponse;
 }
