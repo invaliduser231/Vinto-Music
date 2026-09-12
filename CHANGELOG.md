@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.11.1] - 2026-09-12
+
+- Added:
+  - `DASHBOARD_WS_URL` points the browser at the live connection directly. It is read at runtime, so self-hosted setups can change it without rebuilding the image, which the `NEXT_PUBLIC_*` variables require
+- Documentation:
+  - documented that a reverse proxy has to forward `/ws` to the bot API port while everything else goes to the dashboard, with Caddy and nginx examples. Forwarding the whole hostname to the dashboard leaves the page working but without a session, so the player stays on "Bring Vinto here" and the browser reports that it cannot connect to `wss://<host>/ws`
+
 ## [0.11.0] - 2026-09-12
 
 - Fixes:
