@@ -187,3 +187,29 @@ test('a source in cooldown is skipped', async () => {
   assert.equal(match?.source, 'youtube');
   assert.equal(runtime.attempts.includes('dzsearch'), false);
 });
+
+test('mirror search stops once the total time budget is spent', async () => {
+  const runtime = createRuntime({
+    order: ['dzsearch', 'tdsearch', 'scsearch', 'ytsearch', 'ytmsearch'],
+    hits: {},
+  });
+
+  runtime._resolveNodeLinkTracks = async (_query, _requestedBy, _limit, opts) => {
+    runtime.attempts.push(String(opts?.searchIdentifier ?? ''));
+    await new Promise((resolve) => setTimeout(resolve, 9_000));
+    return [];
+  };
+
+  const started = Date.now();
+  await resolveMirror.call(runtime, { title: 'Nowhere Song', source: 'spotify' }, null);
+  const elapsed = Date.now() - started;
+
+  assert.ok(
+    runtime.attempts.filter((entry) => entry !== 'local-youtube').length < 5,
+    `the chain must not walk all sources when each one stalls, got ${runtime.attempts.join(', ')}`,
+  );
+  assert.ok(
+    elapsed < 30_000,
+    `a stalling chain must be cut short, took ${elapsed} ms`,
+  );
+});

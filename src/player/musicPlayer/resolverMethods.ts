@@ -34,6 +34,8 @@ type SearchResultLike = Record<string, unknown> & {
   duration?: unknown;
 };
 
+const MIRROR_TOTAL_BUDGET_MS = 20_000;
+
 const MIRROR_SEARCH_SOURCES: Record<string, string> = {
   dzsearch: 'deezer',
   tdsearch: 'tidal',
@@ -147,11 +149,20 @@ export const resolverMethods: LooseMethodMap = {
         ? this.nodeLinkMirrorSearchOrder
         : ['dzsearch', 'tdsearch', 'scsearch', 'ytsearch', 'ytmsearch'];
 
+      const deadline = Date.now() + MIRROR_TOTAL_BUDGET_MS;
+
       for (const searchIdentifier of order) {
         const identifierSource = MIRROR_SEARCH_SOURCES[searchIdentifier];
         if (identifierSource && blocked.has(identifierSource)) continue;
         if (identifierSource === 'youtube' && (!this.enableYtSearch || !this.enableYtPlayback)) continue;
         if (identifierSource && this._isMirrorSourceCooling?.(identifierSource)) continue;
+        if (Date.now() >= deadline) {
+          this.logger?.debug?.('Mirror search budget exhausted', {
+            query,
+            skippedFrom: searchIdentifier,
+          });
+          break;
+        }
 
         const nodeLinkMatches = await this._resolveNodeLinkTracks(query, requestedBy, 1, { searchIdentifier })
           .catch((err: unknown) => {
