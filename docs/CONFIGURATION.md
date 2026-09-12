@@ -332,6 +332,32 @@ This still allows direct YouTube/SoundCloud/Audius/radio playback and URL import
 
 ## Runtime Notes
 
+### Voice on a self-hosted Fluxer instance
+
+`API_BASE` and `GATEWAY_URL` are enough for commands and the gateway, but **not**
+for voice. When the bot joins a channel, the instance answers with the address
+of its media server, and the bot connects there directly. That address comes
+from the instance, not from any setting in this project.
+
+If it is an internal or otherwise unresolvable name, joining fails with:
+
+```
+engine: signal failure: transport connection error: IO error:
+failed to lookup address information: Name or service not known
+```
+
+The gateway and REST checks still pass, because only the media connection is
+affected. Since 0.11.2 the log names the host that failed. Check it from inside
+the container, which is where it has to work:
+
+```bash
+docker compose exec app getent hosts <host from the log>
+```
+
+No output means the container cannot resolve it. Fix it on the instance so it
+hands out an address that is reachable from outside its own network, or make the
+name resolvable for the bot, for example via `extra_hosts` in the compose file.
+
 - 24/7 is voice-channel-scoped. The `247` command writes to the active voice channel profile, not to a guild-wide switch.
 - Active non-24/7 sessions still write restart-recovery snapshots so playback can come back after a bot restart.
 - Empty non-24/7 sessions are not persisted across restarts.
