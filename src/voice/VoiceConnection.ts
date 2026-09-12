@@ -395,7 +395,7 @@ export class VoiceConnection {
       await this._ensureAudioTrack();
     } catch (err) {
       await this._cleanupFailedConnect(room);
-      throw err;
+      throw this._describeConnectFailure(err, endpoint, roomUrl);
     }
 
     const wasConnectedBefore = this._hasConnectedBefore;
@@ -431,6 +431,39 @@ export class VoiceConnection {
 
     this.room = null;
     this.channelId = null;
+  }
+
+  _describeConnectFailure(err: unknown, endpoint: string, roomUrl: string): Error {
+    const message = err instanceof Error ? err.message : String(err);
+    let host = roomUrl;
+    try {
+      host = new URL(roomUrl).host || roomUrl;
+    } catch {
+      host = roomUrl;
+    }
+
+    const unresolved = /failed to lookup address information|name or service not known|getaddrinfo/i
+      .test(message);
+
+    this.logger?.error?.('Voice connection failed', {
+      guildId: this.guildId,
+      endpoint,
+      host,
+      unresolvedHost: unresolved,
+      error: message,
+    });
+
+    if (!unresolved) return err instanceof Error ? err : new Error(message);
+
+    const hint = `Voice endpoint "${host}" could not be resolved. `
+      + 'The media host is chosen by the Fluxer instance, not by this bot, so it has to be '
+      + 'resolvable and reachable from inside this container. On a self-hosted instance this is '
+      + 'usually an internal or unroutable hostname; check the voice server configuration there '
+      + 'and verify with: docker compose exec app getent hosts '
+      + host.replace(/:\d+$/, '');
+    const wrapped = new Error(`${hint} (${message})`);
+    (wrapped as Error & { cause?: unknown }).cause = err;
+    return wrapped;
   }
 
   async _cleanupFailedConnect(room: Room) {
