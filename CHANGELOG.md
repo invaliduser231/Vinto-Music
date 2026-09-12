@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.11.3] - 2026-09-12
+
+- Fixes:
+  - lined the dashboard playback position up with what listeners actually hear. It was measured from the moment audio entered the voice buffer, so it ran roughly half a second ahead, and it was rounded to whole seconds, which added up to another second of error. Synced lyrics therefore moved to the next line early
+  - the position is now reported with sub-second precision and compensated for the current buffer depth
+
 ## [0.11.2] - 2026-09-12
 
 - Changes:
