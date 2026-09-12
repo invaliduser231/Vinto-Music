@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.11.0] - 2026-09-12
+
+- Fixes:
+  - stopped the dashboard from retrying a rejected OAuth refresh token on every single request. A session whose refresh token was no longer accepted kept its cookie, so each incoming request produced another token call; combined with the live polling this sent hundreds of rejected requests per hour. A refusal now ends the session, a server-side outage is retried on a cooldown instead
+  - kept the rotated refresh token when the profile lookup after a successful refresh fails. The new token used to be discarded and the already consumed one retried, which could never succeed
+  - capped the mirror search at 20 seconds in total. Sources are tried in sequence, so a per-request timeout multiplied by the number of sources: five stalling sources could keep a play command waiting for minutes
+- Changes:
+  - lowered the default NodeLink request timeout to 8 seconds and documented that it multiplies across the mirror chain
+  - relaxed the dashboard voice-channel poll from 2.5 to 6 seconds
+
 ## [0.10.4] - 2026-08-31
 
 - Fixes:
