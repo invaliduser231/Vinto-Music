@@ -19,6 +19,7 @@ function createRouter(options: {
   const seeds: string[] = [];
   const previewCalls: PreviewCall[] = [];
   const enqueued: unknown[] = [];
+  const inFlight = { current: 0, max: 0 };
 
   const player = {
     playing: false,
@@ -29,13 +30,19 @@ function createRouter(options: {
         throw new TypeError('previewTracks lost its player binding');
       }
       previewCalls.push({ query, startedAt: Date.now() });
-      if (options.slowQueries?.includes(query)) {
-        await new Promise((resolve) => setTimeout(resolve, options.slowDelayMs ?? 5_000).unref?.());
+      inFlight.current += 1;
+      inFlight.max = Math.max(inFlight.max, inFlight.current);
+      try {
+        if (options.slowQueries?.includes(query)) {
+          await new Promise((resolve) => setTimeout(resolve, options.slowDelayMs ?? 5_000).unref?.());
+        }
+        if (options.previewDelayMs) {
+          await new Promise((resolve) => setTimeout(resolve, options.previewDelayMs));
+        }
+        return options.resolve ? options.resolve(query) : [{ title: query, duration: '3:00', source: 'deezer' }];
+      } finally {
+        inFlight.current -= 1;
       }
-      if (options.previewDelayMs) {
-        await new Promise((resolve) => setTimeout(resolve, options.previewDelayMs));
-      }
-      return options.resolve ? options.resolve(query) : [{ title: query, duration: '3:00', source: 'deezer' }];
     },
     enqueueResolvedTracks(tracks: unknown[]) {
       enqueued.push(...tracks);
@@ -87,13 +94,13 @@ function createRouter(options: {
     },
   } as unknown as ConstructorParameters<typeof CommandRouter>[0]);
 
-  return { router, session, previewCalls, enqueued, seeds };
+  return { router, session, previewCalls, enqueued, seeds, inFlight };
 }
 
 const AMY = { title: 'Back To Black', artist: 'Amy Winehouse', duration: '4:00' };
 
 test('autoplay resolves its candidates concurrently instead of one after another', async () => {
-  const { router, session, previewCalls } = createRouter({
+  const { router, session, previewCalls, inFlight } = createRouter({
     similar: [
       { artist: 'Amy Winehouse', track: 'Rehab', match: 1 },
       { artist: 'Amy Winehouse', track: 'Valerie', match: 0.9 },
@@ -106,13 +113,15 @@ test('autoplay resolves its candidates concurrently instead of one after another
 
   router.lastPlayedTracks.set('session-1', AMY);
 
-  const startedAt = Date.now();
   const title = await router._tryAutoplay(session as never);
-  const elapsed = Date.now() - startedAt;
 
   assert.equal(title, 'Adele - Rolling in the Deep');
   assert.equal(previewCalls.length, 4, 'all candidates are looked up in one round');
-  assert.ok(elapsed < 200, `four lookups took ${elapsed}ms, so they did not run in sequence`);
+  assert.equal(
+    inFlight.max,
+    4,
+    `all four lookups must overlap, but at most ${inFlight.max} ran at the same time`,
+  );
 });
 
 test('a hanging lookup is cut off by the deadline instead of stalling autoplay', async () => {
