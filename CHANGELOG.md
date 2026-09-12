@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.11.2] - 2026-09-12
+
+- Changes:
+  - named the media host in the log when a voice connection fails, and explained the cause when it cannot be resolved. The underlying engine only reported "failed to lookup address information" without saying which name it tried, which left the actual problem invisible
+- Documentation:
+  - described why voice can fail on a self-hosted Fluxer instance even though the gateway and REST checks pass: the media address is handed out by the instance, so it has to be resolvable from inside the bot container
+
 ## [0.11.1] - 2026-09-12
 
 - Added:
