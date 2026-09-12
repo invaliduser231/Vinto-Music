@@ -23,6 +23,17 @@ Without OAuth, set guild, channel, and API credentials in the connect panel manu
 
 Voice channels with active bot sessions are listed automatically once you are in a channel.
 
+## Behind a reverse proxy
+
+Two upstreams share one hostname: `/ws` belongs to the bot API (port 9092),
+everything else to this app (port 3000). Sending the whole hostname to port 3000
+loads the page and signs you in, but no session ever arrives, so the player
+stays on "Bring Vinto here" and the console repeats
+`can't establish a connection to the server at wss://<host>/ws`.
+
+Working Caddy and nginx snippets, plus the `DASHBOARD_WS_URL` alternative, are
+in `docs/CONFIGURATION.md` under "Reverse proxy".
+
 ## Fluxer OAuth
 
 Optional. Set `FLUXER_OAUTH_CLIENT_ID`, `FLUXER_OAUTH_CLIENT_SECRET`, and `AUTH_COOKIE_SECRET` in `.env.local`.

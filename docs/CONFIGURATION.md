@@ -252,11 +252,71 @@ Local web UI for session-scoped playback control. Disabled by default.
 | `DASHBOARD_API_PORT` | `9092` | Bind port. |
 | `DASHBOARD_API_SECRET` | empty | Shared secret between the bot and the dashboard server. Minimum 24 characters when enabled. It stays server side: the browser authenticates with a short lived ticket the dashboard mints from it. |
 | `DASHBOARD_API_REQUIRE_TICKET` | `1` | Accept only signed tickets on the WebSocket and take the user id from the ticket instead of the client. Turning this off lets any holder of the secret act as any user, so keep it on outside local debugging. |
-| `DASHBOARD_API_ALLOWED_ORIGINS` | `http://localhost:3000` | Comma-separated browser origins for CORS. |
+| `DASHBOARD_API_ALLOWED_ORIGINS` | `http://localhost:3000` | Comma-separated browser origins for CORS. Behind a reverse proxy this is the public origin, for example `https://vinto.example.com`. |
+| `DASHBOARD_WS_URL` | empty | Dashboard container only. Address the browser uses for the live connection. Empty means `wss://<dashboard host>/ws`, which requires the reverse proxy route below. Read at runtime, so unlike `NEXT_PUBLIC_*` it works with the prebuilt image. |
 | `NEXT_PUBLIC_VISUALIZER_LEAD_MS` | `600` | Dashboard-side delay before a spectrum frame is drawn. The analyzer taps the audio upstream of the voice buffer, so frames arrive before listeners hear them. Measured on this stack as a median lead of 613 ms, ranging from 362 to 856 ms as the buffer drains and refills. The `fluxer_bot_voice_queued_duration_ms` metric reports the current lead so it can be retuned per deployment. |
 | `DASHBOARD_API_PROGRESS_INTERVAL_MS` | `2000` | Now playing progress resync interval for WebSocket clients. The dashboard interpolates the position locally between resyncs, and every player action is broadcast immediately, so a low value only adds load. |
 
 The dashboard container reads `DASHBOARD_API_URL` to reach the bot API from inside the network, plus `DASHBOARD_API_SECRET` and the `FLUXER_OAUTH_*` values. None of these are exposed to the browser. See `dashboard/README.md`.
+
+### Reverse proxy
+
+The dashboard needs **two** upstreams behind one hostname, because the page and
+the live connection are served by different processes:
+
+| Path | Upstream | Served by |
+| --- | --- | --- |
+| `/ws` | `DASHBOARD_API_PORT` (9092) | the bot |
+| everything else | `DASHBOARD_PORT` (3000) | the dashboard |
+
+Forwarding the whole hostname to the dashboard port is the common mistake. The
+page then loads and login works, but no session ever appears: the player stays
+on "Bring Vinto here", that button does nothing, and the browser console repeats
+`can't establish a connection to the server at wss://<host>/ws`. Vinto looks
+absent because the only channel that reports its state never opens.
+
+Caddy:
+
+```
+vinto.example.com {
+	handle /ws {
+		reverse_proxy 192.168.1.18:9092
+	}
+	handle {
+		reverse_proxy 192.168.1.18:3000
+	}
+}
+```
+
+nginx:
+
+```
+location /ws {
+	proxy_pass http://192.168.1.18:9092;
+	proxy_http_version 1.1;
+	proxy_set_header Upgrade $http_upgrade;
+	proxy_set_header Connection "upgrade";
+	proxy_read_timeout 3600s;
+}
+
+location / {
+	proxy_pass http://192.168.1.18:3000;
+}
+```
+
+Two things to keep in mind:
+
+- The WebSocket upgrade only exists in HTTP/1.1. Testing with `curl` over HTTP/2
+  returns `404` even on a correct setup; add `--http1.1` to see the real
+  `101 Switching Protocols`.
+- Add the public origin to `DASHBOARD_API_ALLOWED_ORIGINS`, for example
+  `https://vinto.example.com`.
+
+If adding the `/ws` route is not an option, point the browser straight at the
+bot with `DASHBOARD_WS_URL` instead, for example
+`DASHBOARD_WS_URL=wss://vinto-bot.example.com`. That variable is read at runtime,
+so it also works with the prebuilt image, unlike the `NEXT_PUBLIC_*` values
+which are fixed when the image is built.
 
 ## Practical Presets
 
