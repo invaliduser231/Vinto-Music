@@ -70,6 +70,7 @@ type SessionLike = Session & {
 };
 
 type PlayerLike = Session['player'] & {
+  getProgressMs?: () => number;
   getProgressSeconds?: () => number;
   canSeekCurrentTrack?: () => boolean;
   removeFromQueue?: (index: number) => Track | null;
@@ -78,6 +79,28 @@ type PlayerLike = Session['player'] & {
   tempoRatio?: number;
   pitchSemitones?: number;
 };
+
+export function resolveListenerProgressSec(
+  session: SessionLike,
+  player: PlayerLike,
+): number {
+  const preciseMs = typeof player.getProgressMs === 'function'
+    ? Number(player.getProgressMs())
+    : Number.NaN;
+
+  if (!Number.isFinite(preciseMs)) {
+    const seconds = typeof player.getProgressSeconds === 'function'
+      ? Number(player.getProgressSeconds())
+      : 0;
+    return Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+  }
+
+  const connection = session.connection as { playoutDelayMs?: unknown } | null | undefined;
+  const delayRaw = Number(connection?.playoutDelayMs);
+  const delayMs = Number.isFinite(delayRaw) ? Math.max(0, delayRaw) : 0;
+
+  return Math.max(0, Math.round(preciseMs - delayMs) / 1000);
+}
 
 function voteSkipRequired(session: Session, listenerCount: number): number {
   const ratio = Math.max(0.1, Math.min(1, Number(session.settings?.voteSkipRatio ?? 0.5)));
@@ -159,9 +182,7 @@ export function buildDashboardSessionPayload(options: {
   const player = options.session.player as PlayerLike;
   const currentTrack = player.currentTrack as Track | null | undefined;
   const pendingTracks = (player.pendingTracks ?? []) as Track[];
-  const progressSec = typeof player.getProgressSeconds === 'function'
-    ? Math.max(0, Math.floor(player.getProgressSeconds()))
-    : 0;
+  const progressSec = resolveListenerProgressSec(options.session as SessionLike, player);
 
   const nowPlaying = currentTrack
     ? {

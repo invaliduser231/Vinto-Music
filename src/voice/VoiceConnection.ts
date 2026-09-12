@@ -1340,6 +1340,12 @@ export class VoiceConnection {
     return true;
   }
 
+  get playoutDelayMs(): number {
+    const queued = Number(this.audioSource?.queuedDuration);
+    if (!Number.isFinite(queued) || queued <= 0) return 0;
+    return Math.min(MAX_QUEUE_MS, queued);
+  }
+
   async getDiagnostics() {
     const base = {
       connected: this.connected,

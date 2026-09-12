@@ -18,6 +18,7 @@ type PlaybackStateMethods = {
     tempoRatio: number;
     pitchSemitones: number;
   };
+  getProgressMs(): number;
   getProgressSeconds(): number;
   setLoopMode(mode: unknown): string;
   setVolumePercent(value: string | number): number;
@@ -58,15 +59,18 @@ export const playbackStateMethods: PlaybackStateMethods & ThisType<PlaybackState
     };
   },
 
-  getProgressSeconds(this: PlaybackStateRuntime) {
+  getProgressMs(this: PlaybackStateRuntime) {
     if (!this.currentTrack) return 0;
-    if (!this.playing || !this.trackStartedAtMs) {
-      return Math.max(0, this.currentTrackOffsetSec);
-    }
+    const offsetMs = Math.max(0, this.currentTrackOffsetSec) * 1000;
+    if (!this.playing || !this.trackStartedAtMs) return offsetMs;
 
     const now = this.paused && this.pauseStartedAtMs ? this.pauseStartedAtMs : Date.now();
     const elapsedMs = Math.max(0, now - this.trackStartedAtMs - this.totalPausedMs);
-    return Math.max(0, this.currentTrackOffsetSec + Math.floor(elapsedMs / 1000));
+    return offsetMs + elapsedMs;
+  },
+
+  getProgressSeconds(this: PlaybackStateRuntime) {
+    return Math.floor(this.getProgressMs() / 1000);
   },
 
   setLoopMode(this: PlaybackStateRuntime, mode) {

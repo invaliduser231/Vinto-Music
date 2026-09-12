@@ -180,6 +180,7 @@ export interface MusicPlayerLike {
   clearQueue?: () => unknown;
   setVolumePercent?: (value: number) => unknown;
   setLoopMode?: (value: string) => unknown;
+  getProgressMs?: () => number;
   getProgressSeconds?: () => number;
   canSeekCurrentTrack?: () => boolean;
   getDiagnostics?: () => unknown;
