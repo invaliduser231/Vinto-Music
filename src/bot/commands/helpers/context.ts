@@ -199,6 +199,37 @@ export async function prepareSessionConnection(
   };
 }
 
+const VOICE_CONNECT_ATTEMPTS = 3;
+const VOICE_CONNECT_RETRY_DELAY_MS = 1_200;
+
+export function isRetryableVoiceConnectFailure(error: unknown): boolean {
+  const message = String((error as { message?: unknown } | null | undefined)?.message ?? '')
+    .toLowerCase();
+  return message.includes('timeout waiting for voice_server_update');
+}
+
+async function connectWithRetry(
+  session: SessionLike,
+  resolvedVoice: string,
+): Promise<void> {
+  let lastError: unknown = null;
+
+  for (let attempt = 1; attempt <= VOICE_CONNECT_ATTEMPTS; attempt += 1) {
+    try {
+      await session.connection.connect?.(resolvedVoice);
+      return;
+    } catch (err) {
+      lastError = err;
+      if (attempt >= VOICE_CONNECT_ATTEMPTS || !isRetryableVoiceConnectFailure(err)) break;
+      await new Promise((resolve) => {
+        setTimeout(resolve, VOICE_CONNECT_RETRY_DELAY_MS * attempt);
+      });
+    }
+  }
+
+  throw lastError;
+}
+
 export async function connectPreparedSession(
   ctx: CommandContextLike,
   prepared: PreparedSessionConnection,
@@ -208,7 +239,7 @@ export async function connectPreparedSession(
   if (session.connection.connected && hasUsablePlayer) return session;
 
   try {
-    await session.connection.connect?.(resolvedVoice);
+    await connectWithRetry(session, resolvedVoice);
     ctx.sessions.adoptVoiceChannel?.(session, resolvedVoice);
     await ctx.sessions.syncPersistentVoiceState?.(ctx.guildId);
   } catch (err: unknown) {
