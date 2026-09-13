@@ -42,6 +42,7 @@ type NodeLinkClientOptions = {
   baseUrl?: string | null;
   password?: string | null;
   requestTimeoutMs?: number | null;
+  linkTimeoutMs?: number | null;
   streamStartTimeoutMs?: number | null;
   defaultSearchIdentifier?: string | null;
 };
@@ -85,6 +86,7 @@ export class NodeLinkClient {
   baseUrl: string | null;
   password: string | null;
   requestTimeoutMs: number;
+  linkTimeoutMs: number;
   streamStartTimeoutMs: number;
   defaultSearchIdentifier: string;
   lastRequestAtMs: number;
@@ -98,6 +100,10 @@ export class NodeLinkClient {
     this.requestTimeoutMs = parsePositiveInt(
       options.requestTimeoutMs ?? process.env.NODELINK_REQUEST_TIMEOUT_MS,
       15_000
+    );
+    this.linkTimeoutMs = parsePositiveInt(
+      options.linkTimeoutMs ?? process.env.NODELINK_LINK_TIMEOUT_MS,
+      30_000
     );
     this.streamStartTimeoutMs = parsePositiveInt(
       options.streamStartTimeoutMs ?? process.env.NODELINK_STREAM_START_TIMEOUT_MS,
@@ -150,6 +156,11 @@ export class NodeLinkClient {
     return `${searchIdentifier}:${raw}`;
   }
 
+  timeoutForIdentifier(identifier: string): number {
+    const isLink = /^https?:\/\//i.test(String(identifier ?? '').trim());
+    return isLink ? Math.max(this.requestTimeoutMs, this.linkTimeoutMs) : this.requestTimeoutMs;
+  }
+
   async loadTracks(query: string, options: LoadTracksOptions = {}): Promise<NodeLinkLoadResult> {
     if (!this.baseUrl) {
       throw new ValidationError('NodeLink is not configured.');
@@ -157,13 +168,14 @@ export class NodeLinkClient {
 
     this.lastRequestAtMs = Date.now();
     this.lastRequestType = 'loadtracks';
+    const identifier = this.buildIdentifier(query, options);
     const endpoint = new URL('/v4/loadtracks', this.baseUrl);
-    endpoint.searchParams.set('identifier', this.buildIdentifier(query, options));
+    endpoint.searchParams.set('identifier', identifier);
 
     const response = await fetch(endpoint, {
       method: 'GET',
       headers: this.headers({ accept: 'application/json' }),
-      signal: AbortSignal.timeout(this.requestTimeoutMs),
+      signal: AbortSignal.timeout(this.timeoutForIdentifier(identifier)),
     }).catch((err) => {
       this.lastError = `NodeLink load failed: ${getErrorMessage(err)}`;
       throw new ValidationError(`NodeLink load failed: ${getErrorMessage(err)}`);
