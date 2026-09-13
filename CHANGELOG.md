@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.11.6] - 2026-09-13
+
+- Fixes:
+  - gave a pasted link its own time budget. Lowering the request timeout to keep the mirror chain short also applied to playlists and albums, which legitimately take longer, so a playlist could be cut off with "the operation was aborted due to timeout". Searches keep the short budget, links get `NODELINK_LINK_TIMEOUT_MS`
+
 ## [0.11.5] - 2026-09-13
 
 - Fixes:
