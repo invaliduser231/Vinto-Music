@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.11.10] - 2026-09-13
+
+- Fixes:
+  - a link to an unsupported site now says so instead of being queued as a live stream. Both probes already recognised the page as something other than audio, but the result was discarded and the address was handed to the player anyway, which reported a raw transport error mid-playback. Stations that answer probes oddly are still accepted, since only a positively identified web page is refused
+
 ## [0.11.9] - 2026-09-13
 
 - Fixes:
