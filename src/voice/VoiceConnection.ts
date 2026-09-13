@@ -22,8 +22,6 @@ const STATS_TIMEOUT_MS = 750;
 const TARGET_QUEUE_MS = 600;
 const MAX_QUEUE_MS = 1200;
 const QUEUE_REFILL_HEADROOM_MS = 120;
-const STARTUP_PREFILL_MS = 240;
-const CONCEALMENT_MAX_FRAMES = 12;
 const PUMP_IDLE_WAIT_MS = 5;
 const CAPTURE_FRAME_MAX_RETRIES = 12;
 const CAPTURE_FRAME_RETRY_DELAY_MS = 20;
@@ -969,16 +967,6 @@ export class VoiceConnection {
     const alpha = state.baselineFrames < 60 ? 0.14 : EARRAPE_BASELINE_ALPHA;
     state.baselineRms = (state.baselineRms * (1 - alpha)) + (rms * alpha);
     state.baselineFrames += 1;
-  }
-
-  _ingestParticipantPeak(participantId: string, peak: number, nowMs = Date.now()): boolean {
-    const metrics: EarrapeFrameMetrics = {
-      peak,
-      rms: peak,
-      clippedSampleRatio: peak >= 0.985 ? 1 : 0,
-      crestFactor: 1,
-    };
-    return Boolean(this._ingestParticipantFrame(participantId, metrics, nowMs));
   }
 
   _ingestParticipantFrame(

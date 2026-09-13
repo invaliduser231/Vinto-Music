@@ -119,10 +119,6 @@ export class VoiceStateStore {
     return this.waitForMemberVoiceChannel(guildId, userId, timeoutMs);
   }
 
-  getGuildVoiceStateCount(guildId: string) {
-    return this.guildVoiceStates.get(guildId)?.size ?? 0;
-  }
-
   getUsersInChannel(guildId: string, channelId: string) {
     if (!guildId || !channelId) return [];
 

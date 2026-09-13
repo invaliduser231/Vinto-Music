@@ -1,5 +1,4 @@
 import { spawn } from 'child_process';
-import { PassThrough } from 'node:stream';
 import playdl from 'play-dl';
 import { LiveAudioProcessor, isLiveFilterPresetSupported } from '../LiveAudioProcessor.ts';
 import { SpectrumAnalyzer } from '../audio/SpectrumAnalyzer.ts';

@@ -1,7 +1,6 @@
 import {
   ALL_PERMISSIONS,
   PERMISSION_FLAGS,
-  hasPermission,
   type PermissionFlag,
 } from '../permissions/flags.ts';
 import {
@@ -81,16 +80,6 @@ export class PermissionService {
     required: readonly PermissionFlag[]
   ): Promise<PermissionCheck> {
     const resolution = await this.resolveBotPermissions(guildId, channelId);
-    return checkResolution(resolution, required);
-  }
-
-  async checkMemberPermissions(
-    guildId: unknown,
-    channelId: unknown,
-    userId: unknown,
-    required: readonly PermissionFlag[]
-  ): Promise<PermissionCheck> {
-    const resolution = await this.resolveMemberPermissions(guildId, channelId, userId);
     return checkResolution(resolution, required);
   }
 
@@ -213,26 +202,6 @@ export class PermissionService {
     const check = await this.checkBotPermissions(guildId, channelId, required);
     if (!check.known) return null;
     return check.ok;
-  }
-
-  async getBotChannelPermissions(guildId: unknown, channelId: unknown) {
-    const resolution = await this.resolveBotPermissions(guildId, channelId);
-    const bits = resolution.bits ?? 0n;
-    const admin = resolution.isAdministrator;
-    const canViewChannel = resolution.known && (admin || hasPermission(bits, 'VIEW_CHANNEL'));
-    const has = (flag: PermissionFlag) => canViewChannel && (admin || hasPermission(bits, flag));
-
-    return {
-      known: resolution.known,
-      bits: resolution.bits,
-      reason: resolution.reason,
-      canViewChannel,
-      canSendMessages: has('SEND_MESSAGES'),
-      canEmbedLinks: has('EMBED_LINKS'),
-      canConnect: has('CONNECT'),
-      canSpeak: has('SPEAK'),
-      canMoveMembers: has('MOVE_MEMBERS'),
-    };
   }
 
   _getCached<T>(map: Map<string, CachedEntry<T>>, key: string): T | null {

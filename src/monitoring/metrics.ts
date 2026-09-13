@@ -70,9 +70,6 @@ export class GaugeMetric {
     this.samples.set(key, prev);
   }
 
-  dec(value = 1, labels: Labels = {}) {
-    this.inc(-value, labels);
-  }
 }
 
 export class MetricsRegistry {

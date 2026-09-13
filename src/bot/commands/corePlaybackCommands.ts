@@ -1415,10 +1415,6 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
             { name: ctx.t('now.queued'), value: String(pendingTracks.length), inline: true },
           ];
 
-      const pendingDurationSec = pendingTracks.reduce((sum, track) => {
-        const parsed = parseDurationToSeconds(track?.duration);
-        return parsed != null ? sum + parsed : sum;
-      }, 0);
       const sessionFooter = isRadio
         ? RADIO_RECOGNITION_SUPPORT_FOOTER
         : [

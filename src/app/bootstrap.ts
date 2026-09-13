@@ -48,7 +48,6 @@ type GuildListRest = {
   listCurrentUserGuilds?: RestClient['listCurrentUserGuilds'];
 };
 type ConnectivityRest = Parameters<typeof resolveGatewayUrl>[0]['rest'];
-type SessionManagerCtorOptions = ConstructorParameters<typeof SessionManager>[0];
 type CommandRouterCtorOptions = ConstructorParameters<typeof CommandRouter>[0];
 type PermissionServiceCtorOptions = ConstructorParameters<typeof PermissionService>[0];
 type MongoServiceCtorOptions = ConstructorParameters<typeof MongoService>[0];

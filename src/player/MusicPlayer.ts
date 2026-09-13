@@ -1,5 +1,4 @@
 import { EventEmitter } from 'events';
-import type { Writable } from 'node:stream';
 import { copyFileSync, existsSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -22,56 +21,22 @@ import { Queue } from './Queue.ts';
 import { LiveAudioProcessor } from './LiveAudioProcessor.ts';
 import { ValidationError } from '../core/errors.ts';
 import {
-  EQ_PRESETS,
-  LOOP_MODES,
   LOOP_OFF,
-  LOOP_QUEUE,
-  LOOP_TRACK,
 } from './musicPlayer/constants.ts';
 import {
-  buildDeezerLegacyDownloadUrl,
-  DeezerBfStripeDecryptTransform,
-  DEEZER_MEDIA_QUALITY_MAP,
-  DEEZER_SESSION_TOKEN_TTL_MS,
-  DEEZER_STREAM_BASE_BACKOFF_MS,
-  DEEZER_STREAM_HIGH_WATER_MARK,
-  DEEZER_STREAM_MAX_BACKOFF_MS,
-  DEEZER_STREAM_RETRY_LIMIT,
-  isRetryableDeezerStreamError,
-  parseContentRangeStart,
-} from './musicPlayer/deezer.ts';
-import {
-  isPlayDlBrowseFailure,
-  isSoundCloudAuthorizationError,
   normalizeDeezerTrackFormats,
   normalizeYouTubePlaylistResolver,
   normalizeYtDlpArgs,
   parseCsvArgs,
-  soundCloudAuthorizationHelp,
 } from './musicPlayer/errorUtils.ts';
 import {
-  buildYouTubeThumbnailFromUrl,
-  extractDeezerTrackId,
-  getYouTubePlaylistId,
   isDeezerUrl,
   isHttpUrl,
-  isSpotifyUrl,
   isYouTubeUrl,
-  normalizeThumbnailUrl,
-  pickArtistName,
-  sanitizeUrlToSearchQuery,
-  toAudiusDurationLabel,
-  toCanonicalYouTubePlaylistUrl,
-  toDeezerDurationLabel,
-  toDurationLabel,
-  toSoundCloudDurationLabel,
 } from './musicPlayer/trackUtils.ts';
 import {
   bindPipelineErrorHandler,
   cleanupProcesses,
-  clearPipelineErrorHandlers,
-  clearPipelineState,
-  isExpectedPipeError,
   normalizePlaybackError,
   resetPlaybackClock,
   startPlaybackClock,
@@ -204,19 +169,6 @@ interface EnqueueOptions {
   playNext?: boolean;
   dedupe?: boolean;
   queueGuard?: QueueGuardOption | null;
-}
-
-interface SearchOptions {
-  requestedBy?: string | null;
-}
-
-interface PreviewOptions extends SearchOptions {
-  limit?: number;
-}
-
-interface PlaylistResolveOptions {
-  fallbackWatchUrl?: string | null;
-  limit?: number | null;
 }
 
 type PipelineStreamLike = NonNullable<PipelineProcess['stdout']>;
@@ -1646,24 +1598,12 @@ export class MusicPlayer extends EventEmitter {
     return false;
   }
 
-  _clearPipelineState() {
-    clearPipelineState(this);
-  }
-
   _stopVoiceStream() {
     stopVoiceStream(this);
   }
 
-  _clearPipelineErrorHandlers() {
-    clearPipelineErrorHandlers(this);
-  }
-
   _bindPipelineErrorHandler(stream: unknown, label: string) {
     bindPipelineErrorHandler(this, stream, label);
-  }
-
-  _isExpectedPipeError(err: unknown) {
-    return isExpectedPipeError(err);
   }
 
   async _startNodeLinkStream(track: Track, startupToken: number, playbackToken: number): Promise<void> {

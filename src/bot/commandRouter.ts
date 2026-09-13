@@ -21,7 +21,6 @@ import {
 } from './commandRouterUtils.ts';
 import {
   applySearchReactionSelection,
-  handleUnknownGuildForChannel,
   registerHelpPagination,
   registerSearchReactionSelection,
   runWeeklyRecapSweep,
@@ -965,21 +964,6 @@ export class CommandRouter {
     return session?.settings?.musicLogChannelId ?? session?.textChannelId ?? null;
   }
 
-  _computeVoteSkipRequirement(guildId: string | null, session: SessionLookup | null | undefined) {
-    const channelId = session?.connection?.channelId ?? null;
-    if (!guildId || !channelId || !this.voiceStateStore.countUsersInChannel) return 1;
-
-    const listeners = this.voiceStateStore.countUsersInChannel(
-      guildId,
-      channelId ?? '',
-      this.botUserId ? [this.botUserId] : []
-    );
-    if (listeners <= 1) return 1;
-    const ratio = Number.isFinite(session?.settings?.voteSkipRatio) ? Number(session?.settings?.voteSkipRatio) : 0.5;
-    const minVotes = Number.isFinite(session?.settings?.voteSkipMinVotes) ? Number(session?.settings?.voteSkipMinVotes) : 2;
-    return Math.max(minVotes, Math.ceil(listeners * ratio));
-  }
-
   async _publishNowPlaying(
     session: SessionLookup | null | undefined,
     track: Record<string, unknown>,
@@ -1154,9 +1138,6 @@ export class CommandRouter {
     );
   }
 
-  _handleUnknownGuildForChannel(channelId: string) {
-    return handleUnknownGuildForChannel(this, channelId);
-  }
 }
 
 

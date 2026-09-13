@@ -21,7 +21,6 @@ import {
   now,
   settingsFromGuildConfig,
   toChannelId,
-  toRoleSet,
 } from './sessionManager/runtimeHelpers.ts';
 import { runtimeMethods } from './sessionManager/runtimeMethods.ts';
 
@@ -50,12 +49,6 @@ function delay(ms: number): Promise<void> {
     setTimeout(resolve, ms);
   });
 }
-
-type GatewayVoiceStateUpdate = {
-  guild_id?: string | null;
-  user_id?: string | null;
-  channel_id?: string | null;
-};
 
 type PlayerSessionListeners = {
   tracksAdded: (...args: unknown[]) => void;
@@ -844,46 +837,6 @@ export class SessionManager extends EventEmitter {
     session.lastActivityAt = now();
   }
 
-  setSetting(guildId: string, key: string, value: unknown) {
-    const sessions = this.listByGuild(guildId);
-    if (!sessions.length) return null;
-
-    for (const session of sessions) {
-      if (key === 'djRoleIds') {
-        session.settings.djRoleIds = toRoleSet(value);
-      } else {
-        (session.settings as Record<string, unknown>)[key] = value;
-      }
-
-      if (key === 'stayInVoiceEnabled') {
-        if (value) {
-          this._clearIdleTimer(session);
-        } else {
-          this._scheduleIdleTimeout(session);
-        }
-      }
-
-      if (key === 'earrapeProtectionEnabled') {
-        session.connection.setEarrapeProtectionEnabled?.(Boolean(value));
-      }
-
-      if (['stayInVoiceEnabled', 'volumePercent'].includes(key)) {
-        this.markSnapshotDirty(session, true);
-      }
-    }
-
-    if (key === 'stayInVoiceEnabled') {
-      this.syncPersistentVoiceState(guildId).catch((err) => {
-        this.logger?.debug?.('Failed to sync persistent voice state after 24/7 update', {
-          guildId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      });
-    }
-
-    return (sessions[0]?.settings as Record<string, unknown> | undefined)?.[key];
-  }
-
   async syncPersistentVoiceState(guildId: string): Promise<boolean> {
     this._clearPersistentSyncTimer(guildId);
     if (!this.library?.patchGuildFeatureConfig) return false;
@@ -915,20 +868,6 @@ export class SessionManager extends EventEmitter {
     });
 
     return persistentVoiceConnections.length > 0 || restartRecoveryConnections.length > 0;
-  }
-
-  async clearPersistentVoiceState(guildId: string): Promise<boolean> {
-    if (!this.library?.patchGuildFeatureConfig) return false;
-
-    await this.library.patchGuildFeatureConfig(guildId, {
-      persistentVoiceConnections: [],
-      restartRecoveryConnections: [],
-      persistentVoiceChannelId: null,
-      persistentTextChannelId: null,
-      persistentVoiceUpdatedAt: new Date(),
-    });
-
-    return true;
   }
 
   clearVoteSkips(guildId: string, selector: SessionSelector | string | null = null): void {

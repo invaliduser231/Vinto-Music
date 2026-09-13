@@ -396,8 +396,4 @@ export class LastFmAccountStore {
     }
   }
 
-  invalidate(userId: unknown): void {
-    const key = normalizeUserId(userId);
-    if (key) this.cache.delete(key);
-  }
 }
