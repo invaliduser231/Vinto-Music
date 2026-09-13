@@ -44,6 +44,7 @@ type UrlResolverMethods = {
   _resolveSingleUrlTrack(url: string, requestedBy: string | null): Promise<Track[]>;
   _resolveDirectHttpAudioTrack(url: string, requestedBy: string | null): Promise<Track | null>;
   _resolveRadioStreamTrack(url: string, requestedBy: string | null, seen?: Set<string> | null): Promise<Track | null>;
+  _looksLikeWebPage(url: string): Promise<boolean>;
   _resolveSoundCloudByGuess(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
   _resolveDeezerByGuess(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
   _resolveSpotifyByGuess(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
@@ -89,6 +90,16 @@ function isRadioPlaylistContentType(contentType: unknown) {
     || normalized.includes('audio/x-scpls')
     || normalized.includes('application/pls+xml')
     || normalized.includes('application/x-scpls')
+  );
+}
+
+export function isWebPageContentType(contentType: unknown) {
+  const normalized = String(contentType ?? '').toLowerCase();
+  if (!normalized) return false;
+  return (
+    normalized.includes('text/html')
+    || normalized.includes('application/xhtml')
+    || normalized.includes('text/plain')
   );
 }
 
@@ -469,6 +480,13 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
           return nodeLinkResolved;
         }
       }
+      if (await this._looksLikeWebPage(url)) {
+        this.logger?.debug?.('Refusing to queue a web page as a live stream', { url });
+        throw new ValidationError(
+          'That link points at a web page, not at audio. This site is not supported.',
+        );
+      }
+
       this.logger?.debug?.('Classifying unresolved extensionless HTTP URL as live radio fallback', {
         url,
       });
@@ -535,6 +553,28 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
       artist: String(probe?.artist ?? '').trim() || null,
       isLive: false,
     });
+  },
+
+  async _looksLikeWebPage(url: string): Promise<boolean> {
+    const response = await fetch(url, {
+      method: 'GET',
+      redirect: 'follow',
+      headers: { range: 'bytes=0-0' },
+      signal: AbortSignal.timeout(5_000),
+    }).catch(() => null);
+
+    if (!response) return false;
+
+    try {
+      await response.body?.cancel?.();
+    } catch {
+      // ignore early body cancellation errors
+    }
+
+    if (!response.ok && response.status !== 206) return false;
+    if (hasStationHeaders(response.headers)) return false;
+
+    return isWebPageContentType(response.headers.get('content-type'));
   },
 
   async _resolveRadioStreamTrack(url: string, requestedBy: string | null, seen: Set<string> | null = null) {
