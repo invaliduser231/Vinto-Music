@@ -367,17 +367,37 @@ export class VoiceConnection {
     this.room = null;
   }
 
+  _resetGatewayVoiceState() {
+    try {
+      this.gateway.leaveVoice(this.guildId);
+    } catch (err) {
+      this.logger?.debug?.('Releasing the gateway voice state failed', {
+        guildId: this.guildId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   async _connect(channelId: string) {
     await this._discardStaleRoom();
 
     this.gateway.joinVoice(this.guildId, channelId, {
       selfDeaf: !this.earrapeProtectionEnabled,
     });
-    const update = await this._waitForVoiceServer();
+
+    let update: VoiceServerUpdate;
+    try {
+      update = await this._waitForVoiceServer();
+    } catch (err) {
+      this._resetGatewayVoiceState();
+      throw err;
+    }
+
     const endpoint = update.endpoint;
     const token = update.token;
 
     if (!endpoint || !token) {
+      this._resetGatewayVoiceState();
       throw new Error('Voice server response is missing endpoint or token.');
     }
 
@@ -395,6 +415,7 @@ export class VoiceConnection {
       await this._ensureAudioTrack();
     } catch (err) {
       await this._cleanupFailedConnect(room);
+      this._resetGatewayVoiceState();
       throw this._describeConnectFailure(err, endpoint, roomUrl);
     }
 
