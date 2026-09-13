@@ -196,7 +196,7 @@ export function normalizePlaybackError(player: ProcessUtilsPlayer, err: unknown)
     return new Error('Network connection refused during media fetch. Check proxy env vars (HTTP_PROXY/HTTPS_PROXY/ALL_PROXY) and remove localhost:9 mappings.');
   }
   if (isYouTubeBotCheckError(err)) {
-    return new Error('YouTube requested bot verification. Configure YTDLP_COOKIES_FILE or YTDLP_COOKIES_FROM_BROWSER and update yt-dlp.');
+    return new Error('YouTube asked this host to verify it is not a bot. Signing in with YTDLP_COOKIES_FILE or routing YouTube through YTDLP_PROXY_URL both lift it; a newer yt-dlp does not, since the block is tied to the host rather than the client.');
   }
 
   if (err instanceof ValidationError) return err;
