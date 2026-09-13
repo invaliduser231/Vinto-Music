@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.11.8] - 2026-09-13
+
+- Fixes:
+  - volume changes during a track now land where they were asked to. When the stream itself already carried a volume, the correction applied on top was capped at the listener-facing maximum instead of the reachable gain, so from a quiet stream every setting above a certain point produced the same loudness: asking for 20 sounded the same as asking for 100, and both were louder than before
+  - a change the running stream cannot reach by correction alone now restarts the stream instead of silently settling for the loudest value it could manage
+
 ## [0.11.7] - 2026-09-13
 
 - Fixes:
