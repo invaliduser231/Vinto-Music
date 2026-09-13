@@ -5,6 +5,8 @@ import { LiveAudioProcessor, isLiveFilterPresetSupported } from '../LiveAudioPro
 import { SpectrumAnalyzer } from '../audio/SpectrumAnalyzer.ts';
 import { ValidationError } from '../../core/errors.ts';
 import { FILTER_PRESETS } from './constants.ts';
+
+const MAX_LIVE_VOLUME_COMPENSATION_PERCENT = 400;
 import { isRetryableYtDlpProxyError, isRetryableYtDlpStartupError } from './errorUtils.ts';
 import {
   clamp,
@@ -382,12 +384,20 @@ export const pipelineMethods: LooseMethodMap = {
     return isLiveFilterPresetSupported(name ?? this.filterPreset);
   },
 
-  _getLiveAudioProcessorState() {
+  _liveVolumeCompensation() {
     const target = clamp(this.volumePercent, this.minVolumePercent, this.maxVolumePercent);
     const applied = Number.parseInt(String(this.streamAppliedVolumePercent ?? 100), 10) || 100;
-    const relative = applied === 100 ? target : Math.round((target / applied) * 100);
+    const required = applied === 100 ? target : Math.round((target / applied) * 100);
     return {
-      volumePercent: clamp(relative, this.minVolumePercent, this.maxVolumePercent),
+      required,
+      reachable: required <= MAX_LIVE_VOLUME_COMPENSATION_PERCENT,
+    };
+  },
+
+  _getLiveAudioProcessorState() {
+    const { required } = this._liveVolumeCompensation();
+    return {
+      volumePercent: clamp(required, 0, MAX_LIVE_VOLUME_COMPENSATION_PERCENT),
       filterPreset: this.isLiveFilterPresetSupported(this.filterPreset) ? this.filterPreset : 'off',
       eqPreset: this.eqPreset,
       tempoRatio: Number(this.tempoRatio) || 1,
@@ -466,6 +476,15 @@ export const pipelineMethods: LooseMethodMap = {
     const hadLiveProcessor = Boolean(this.liveAudioProcessor);
     this._syncLiveAudioProcessor();
     if (!this.playing) return false;
+
+    if (!this._liveVolumeCompensation().reachable) {
+      this.logger?.debug?.('Restarting the stream to reach the requested volume', {
+        volumePercent: this.volumePercent,
+        streamAppliedVolumePercent: this.streamAppliedVolumePercent,
+      });
+      return this.refreshCurrentTrackProcessing();
+    }
+
     if (hadLiveProcessor || !this._shouldUseLiveAudioProcessor()) return false;
     if (this._enableLiveAudioProcessorDuringPlayback()) return false;
     return this.refreshCurrentTrackProcessing();
