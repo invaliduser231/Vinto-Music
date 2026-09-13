@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.11.5] - 2026-09-13
+
+- Fixes:
+  - a track that was already mirrored onto YouTube may now keep looking when playback fails there. Previously any YouTube address ended the search, so a Spotify song that had been mirrored died on YouTube instead of falling back to another source. A YouTube link a listener asked for is still never swapped for a different recording
+  - the YouTube bot check now names the remedies that actually apply. It used to recommend updating yt-dlp, which does not help because the check follows the host, not the client version
+
 ## [0.11.4] - 2026-09-13
 
 - Fixes:
