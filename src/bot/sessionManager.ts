@@ -26,7 +26,17 @@ import {
 import { runtimeMethods } from './sessionManager/runtimeMethods.ts';
 
 const PERSISTENT_RESTORE_CONNECT_RETRY_ATTEMPTS = 3;
-const PERSISTENT_RESTORE_CONNECT_RETRY_DELAY_MS = 250;
+const PERSISTENT_RESTORE_CONNECT_RETRY_DELAY_MS = 2_000;
+const PERSISTENT_RESTORE_CONNECT_RETRY_MAX_DELAY_MS = 8_000;
+
+export function persistentRestoreRetryDelayMs(attempt: number): number {
+  const parsed = Number(attempt);
+  const step = Number.isFinite(parsed) ? Math.max(1, Math.floor(parsed)) : 1;
+  return Math.min(
+    PERSISTENT_RESTORE_CONNECT_RETRY_MAX_DELAY_MS,
+    PERSISTENT_RESTORE_CONNECT_RETRY_DELAY_MS * step,
+  );
+}
 const PERSISTENT_RESTORE_STAGGER_MS = 2500;
 const PERSISTENT_SYNC_DEBOUNCE_MS = 5000;
 
@@ -1138,7 +1148,7 @@ export class SessionManager extends EventEmitter {
               error: err instanceof Error ? err.message : String(err),
             });
             await session.connection.disconnect?.().catch(() => null);
-            await delay(PERSISTENT_RESTORE_CONNECT_RETRY_DELAY_MS);
+            await delay(persistentRestoreRetryDelayMs(attempt));
           }
         }
         if (lastConnectError) {
