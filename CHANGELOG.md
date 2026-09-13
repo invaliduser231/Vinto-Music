@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.11.9] - 2026-09-13
+
+- Fixes:
+  - a command that has to join a voice channel now retries when the voice handshake times out. Restoring a session after a restart already got three attempts, while a play or join typed by a listener got exactly one and failed with a generic error
+
 ## [0.11.8] - 2026-09-13
 
 - Fixes:
