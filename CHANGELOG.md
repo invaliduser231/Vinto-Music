@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.11.4] - 2026-09-13
+
+- Fixes:
+  - released the gateway voice state when joining a channel fails. After a timed out or incomplete voice server handshake the bot still counted as joining, so every retry asked to join a channel it was already in and timed out again. Playback stayed broken for that guild until the state was cleared some other way
+
 ## [0.11.3] - 2026-09-12
 
 - Fixes:
