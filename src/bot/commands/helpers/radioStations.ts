@@ -435,10 +435,6 @@ function isFuzzyStationMatch(station: ResolvedRadioStation, queryKey: string) {
   return tokens.every((token) => haystack.some((part) => part.includes(token)));
 }
 
-export function listBuiltInRadioStations() {
-  return [...BUILTIN_RADIO_STATIONS];
-}
-
 export function listAvailableRadioStations(guildStations: RadioStationRecord[] = [], query: string | null = null) {
   const byKey = new Map<string, ResolvedRadioStation>();
   for (const station of BUILTIN_RADIO_STATIONS) {

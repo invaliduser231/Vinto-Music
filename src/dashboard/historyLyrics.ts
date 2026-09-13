@@ -14,12 +14,6 @@ export type DashboardHistoryPayload = {
   total: number;
 };
 
-export type DashboardLyricsPayload = {
-  query: string;
-  source: string;
-  lyrics: string;
-};
-
 function storedTrackAsTrack(track: Record<string, unknown>, index: number): Track {
   return {
     title: String(track.title ?? 'Unknown title'),

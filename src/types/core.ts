@@ -1,5 +1,3 @@
-export type JsonPrimitive = string | number | boolean | null;
-export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 export type BivariantCallback<TArgs extends unknown[] = unknown[], TResult = unknown> = {
   bivarianceHack(...args: TArgs): TResult;
 }['bivarianceHack'];

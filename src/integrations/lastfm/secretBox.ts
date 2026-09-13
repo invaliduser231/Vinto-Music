@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { ConfigurationError } from '../../core/errors.ts';
 
 const ALGORITHM = 'aes-256-gcm';
@@ -74,9 +74,3 @@ export function openSecret(sealed: unknown, key: Buffer): string | null {
   }
 }
 
-export function secretsMatch(left: string, right: string): boolean {
-  const a = Buffer.from(String(left), 'utf8');
-  const b = Buffer.from(String(right), 'utf8');
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
-}

@@ -26,22 +26,6 @@ export function normalizeEmojiName(payload: EmojiPayload | null | undefined): st
     .replace(/\uFE0F/g, '');
 }
 
-export function isSkipEmoji(emoji: string): boolean {
-  return ['\u2705', '\u23ED', 'skip', 'next_track'].includes(emoji);
-}
-
-export function isPauseEmoji(emoji: string): boolean {
-  return ['\u23F8', 'pause'].includes(emoji);
-}
-
-export function isResumeEmoji(emoji: string): boolean {
-  return ['\u25B6', 'resume', 'play'].includes(emoji);
-}
-
-export function isFavoriteEmoji(emoji: string): boolean {
-  return ['\u2764', '\u2665', 'heart', 'red_heart', 'favorite', 'like'].includes(emoji);
-}
-
 export function isLeftEmoji(emoji: string): boolean {
   return ['\u2B05', 'left', 'arrow_left'].includes(emoji);
 }

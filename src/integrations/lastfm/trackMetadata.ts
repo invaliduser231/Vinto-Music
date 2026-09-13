@@ -109,10 +109,6 @@ export function toLastFmTrack(
   };
 }
 
-export function buildSearchQuery(meta: Pick<LastFmTrackMetadata, 'artist' | 'track'>): string {
-  return `${meta.artist} - ${meta.track}`;
-}
-
 export function trackIdentity(meta: Pick<LastFmTrackMetadata, 'artist' | 'track'>): string {
   return `${normalizeMirrorText(meta.artist)} ${normalizeMirrorText(meta.track)}`.trim();
 }
