@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.11.7] - 2026-09-13
+
+- Fixes:
+  - spaced out the retries when restoring a voice session after a restart. All three attempts were made within half a second of each other, so a gateway that was briefly slow, which is exactly what the timeout means, was met with the same congestion every time and the session was given up on
+
 ## [0.11.6] - 2026-09-13
 
 - Fixes:
