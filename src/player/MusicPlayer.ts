@@ -13,7 +13,7 @@ import { NodeLinkClient } from './musicPlayer/NodeLinkClient.ts';
 import type { NodeLinkLoadResult } from './musicPlayer/NodeLinkClient.ts';
 import { playbackStateMethods } from './musicPlayer/playbackStateMethods.ts';
 import { queueLifecycleMethods } from './musicPlayer/queueLifecycleMethods.ts';
-import { resolverMethods } from './musicPlayer/resolverMethods.ts';
+import { resolverMethods, shouldMirrorFailedStartup } from './musicPlayer/resolverMethods.ts';
 import { nodeLinkMethods } from './musicPlayer/nodeLinkMethods.ts';
 import { pipelineMethods } from './musicPlayer/pipelineMethods.ts';
 import { trackRuntimeMethods } from './musicPlayer/trackRuntimeMethods.ts';
@@ -1174,33 +1174,32 @@ export class MusicPlayer extends EventEmitter {
           }
         }
         const mirrorSourceLabel = String(track?.source ?? '').toLowerCase();
-        const isMirrorableSource = (
-          !track?.isLive
-          && !mirrorSourceLabel.startsWith('radio')
-          && mirrorSourceLabel !== 'http-audio'
-          && mirrorSourceLabel !== 'url'
-        );
-        const exhaustedMirrorSources = Array.isArray(
+        const previousMirrorSources = Array.isArray(
           (track as Track & { exhaustedMirrorSources?: string[] })?.exhaustedMirrorSources,
         )
-          ? [...(track as Track & { exhaustedMirrorSources?: string[] }).exhaustedMirrorSources!]
+          ? (track as Track & { exhaustedMirrorSources?: string[] }).exhaustedMirrorSources!
           : [];
+        const exhaustedMirrorSources = [...previousMirrorSources];
         if (mirrorSourceLabel) {
           exhaustedMirrorSources.push(mirrorSourceLabel);
           this._noteMirrorSourceFailure(mirrorSourceLabel);
         }
 
-        const shouldMirrorNonYouTubeStartup = (
+        const shouldMirrorStartup = (
           !retryStartupTrack
-          && !isYouTubeUrl(String(track?.url ?? ''))
-          && isMirrorableSource
+          && shouldMirrorFailedStartup({
+            url: track?.url ?? null,
+            source: track?.source ?? null,
+            isLive: track?.isLive ?? false,
+            previousMirrorSources,
+          })
           && !normalizedMessage.includes('not connected')
           && startupRetryAttempt < Math.min(
             MIRROR_ATTEMPT_CEILING,
             Math.max(2, (this.nodeLinkMirrorSearchOrder?.length ?? 0) + 1),
           )
         );
-        if (shouldMirrorNonYouTubeStartup) {
+        if (shouldMirrorStartup) {
           const requestedBy = String(track?.requestedBy ?? '').trim() || null;
           const mirrorTrack = await this._resolveStartupMirrorFallbackTrack(
             track,

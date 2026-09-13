@@ -102,6 +102,23 @@ function shouldBypassNodeLinkForDirectStreamUrl(
   return isLikelyDirectAudioFileUrl(url) || isLikelyPlaylistUrl(url);
 }
 
+export function shouldMirrorFailedStartup(options: {
+  url?: string | null;
+  source?: string | null;
+  isLive?: boolean | null;
+  previousMirrorSources?: readonly string[] | null;
+}): boolean {
+  const source = String(options.source ?? '').toLowerCase();
+  if (options.isLive) return false;
+  if (source.startsWith('radio')) return false;
+  if (source === 'http-audio' || source === 'url') return false;
+
+  const alreadyMirrored = (options.previousMirrorSources?.length ?? 0) > 0;
+  if (isYouTubeUrl(String(options.url ?? '')) && !alreadyMirrored) return false;
+
+  return true;
+}
+
 export const resolverMethods: LooseMethodMap = {
   async _resolveYouTubeTrackViaNodeLink(track: Partial<Track> | null | undefined) {
     const url = String(track?.url ?? '').trim();
