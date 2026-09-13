@@ -80,6 +80,9 @@ test('play() reports a startup pipeline close as trackError instead of queueEmpt
   player._startPlayDlPipeline = async () => {
     player.ffmpeg = ffmpeg;
   };
+  player._awaitInitialPlaybackChunk = async () => {
+    throw new Error('Playback pipeline exited before audio output (code=1).');
+  };
 
   let queueEmptyEvent: { reason?: string } | null = null;
   let trackError: Error | null = null;
@@ -100,11 +103,7 @@ test('play() reports a startup pipeline close as trackError instead of queueEmpt
     }),
   ]);
 
-  const playPromise = player.play();
-  setImmediate(() => {
-    ffmpeg.emit('close', 1, null);
-  });
-  await playPromise;
+  await player.play();
 
   assert.equal((queueEmptyEvent as { reason?: string } | null)?.reason, 'startup_error');
   assert.match(String((trackError as Error | null)?.message ?? ''), /before audio output/i);

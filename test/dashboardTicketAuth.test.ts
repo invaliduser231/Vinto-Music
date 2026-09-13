@@ -69,7 +69,7 @@ function createMockSessions(session: Session): MockSessions {
   return emitter;
 }
 
-function createServer(port: number) {
+function createServer() {
   const voiceStateStore = new VoiceStateStore();
   voiceStateStore.guildVoiceStates.set('guild-1', new Map([['user-1', 'vc-1']]));
 
@@ -84,7 +84,7 @@ function createServer(port: number) {
   return new DashboardServer({
     enabled: true,
     host: '127.0.0.1',
-    port,
+    port: 0,
     secret: SECRET,
     requireTicket: true,
     sessions: createMockSessions(session) as unknown as import('../src/bot/sessionManager.ts').SessionManager,
@@ -112,6 +112,12 @@ function waitForMessage(
   });
 }
 
+function boundPort(server: { server: { address: () => unknown } | null }): number {
+  const address = server.server?.address();
+  if (!address || typeof address === 'string') throw new Error('server is not listening');
+  return (address as { port: number }).port;
+}
+
 async function openSocket(port: number): Promise<WebSocket> {
   const ws = new WebSocket(`ws://127.0.0.1:${port}`);
   await new Promise<void>((resolve, reject) => {
@@ -122,10 +128,10 @@ async function openSocket(port: number): Promise<WebSocket> {
 }
 
 test('the raw secret no longer authenticates once tickets are required', async () => {
-  const server = createServer(19101);
+  const server = createServer();
   await server.start();
   try {
-    const ws = await openSocket(19101);
+    const ws = await openSocket(boundPort(server as never));
     ws.send(JSON.stringify({ op: 'auth', secret: SECRET }));
     const reply = await waitForMessage(ws, (payload) => (
       payload.op === 'auth_ok' || payload.op === 'auth_fail'
@@ -138,10 +144,10 @@ test('the raw secret no longer authenticates once tickets are required', async (
 });
 
 test('a subscribe cannot claim a user id other than the one inside the ticket', async () => {
-  const server = createServer(19102);
+  const server = createServer();
   await server.start();
   try {
-    const ws = await openSocket(19102);
+    const ws = await openSocket(boundPort(server as never));
     const ticket = signDashboardTicket({ userId: 'user-2', exp: Date.now() + 30_000 }, SECRET);
     ws.send(JSON.stringify({ op: 'auth', ticket }));
     await waitForMessage(ws, (payload) => payload.op === 'auth_ok');
@@ -163,10 +169,10 @@ test('a subscribe cannot claim a user id other than the one inside the ticket', 
 });
 
 test('a ticket for a listening user subscribes successfully', async () => {
-  const server = createServer(19103);
+  const server = createServer();
   await server.start();
   try {
-    const ws = await openSocket(19103);
+    const ws = await openSocket(boundPort(server as never));
     const ticket = signDashboardTicket({ userId: 'user-1', exp: Date.now() + 30_000 }, SECRET);
     ws.send(JSON.stringify({ op: 'auth', ticket }));
     await waitForMessage(ws, (payload) => payload.op === 'auth_ok');
