@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.11.13] - 2026-09-14
+
+- Fixes:
+  - `eval` reads the raw argument text and strips a surrounding code fence, so pasted code keeps its line breaks and survives the chat client's markdown handling
+
 ## [0.11.12] - 2026-09-14
 
 - Fixes:
