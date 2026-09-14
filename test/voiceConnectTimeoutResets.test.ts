@@ -46,8 +46,24 @@ test('a retry after a timeout issues a fresh join', async () => {
 
   assert.deepEqual(
     gateway.calls.map((entry) => entry.op),
-    ['join', 'leave', 'join', 'leave'],
+    ['join', 'leave', 'leave', 'join', 'leave'],
     'every attempt must start from a released voice state',
+  );
+});
+
+test('a repeated join is preceded by a released voice state', async () => {
+  const gateway = createGateway();
+  const connection = createConnection(gateway);
+
+  await assert.rejects(connection._connect('voice-1'));
+  await assert.rejects(connection._connect('voice-1'));
+
+  const ops = gateway.calls.map((entry) => entry.op);
+  const secondJoin = ops.indexOf('join', ops.indexOf('join') + 1);
+  assert.equal(
+    ops[secondJoin - 1],
+    'leave',
+    'the server has to see the bot leave before it announces a voice server again',
   );
 });
 

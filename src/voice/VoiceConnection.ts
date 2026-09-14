@@ -13,7 +13,7 @@ import type { EarrapeProfileSnapshot, EarrapeProfileStoreLike } from '../types/d
 
 const SAMPLE_RATE = 48_000;
 const CHANNELS = 2;
-const FRAME_DURATION_MS = 20;
+export const FRAME_DURATION_MS = 40;
 const SAMPLES_PER_CHANNEL = (SAMPLE_RATE * FRAME_DURATION_MS) / 1000;
 const SAMPLES_PER_FRAME = SAMPLES_PER_CHANNEL * CHANNELS;
 const BYTES_PER_SAMPLE = 2;
@@ -25,6 +25,7 @@ const QUEUE_REFILL_HEADROOM_MS = 120;
 const PUMP_IDLE_WAIT_MS = 5;
 const CAPTURE_FRAME_MAX_RETRIES = 12;
 const CAPTURE_FRAME_RETRY_DELAY_MS = 20;
+const VOICE_STATE_RESET_SETTLE_MS = 400;
 const RECONNECT_MAX_ATTEMPTS = 5;
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_DELAY_MS = 30_000;
@@ -223,6 +224,7 @@ export class VoiceConnection {
   onReconnectFailed: (() => void) | null;
   autoReconnectEnabled: boolean;
   _hasConnectedBefore: boolean;
+  _needsVoiceStateReset: boolean;
   _reconnectToken: number;
   _reconnectInProgress: boolean;
   _reconnectMaxAttempts: number;
@@ -265,6 +267,7 @@ export class VoiceConnection {
     this.onReconnectFailed = null;
     this.autoReconnectEnabled = options.autoReconnectEnabled !== false;
     this._hasConnectedBefore = false;
+    this._needsVoiceStateReset = false;
     this._reconnectToken = 0;
     this._reconnectInProgress = false;
     this._reconnectMaxAttempts = RECONNECT_MAX_ATTEMPTS;
@@ -285,6 +288,7 @@ export class VoiceConnection {
     if (this.earrapeProtectionEnabled === next) return;
 
     this.earrapeProtectionEnabled = next;
+    this._setRemoteAudioSubscribed(next);
     if (next) {
       this._monitorSubscribedRemoteAudio();
     } else {
@@ -293,6 +297,46 @@ export class VoiceConnection {
     }
 
     this._syncVoiceDeafState();
+  }
+
+  _eachRemotePublication(visit: (publication: unknown) => void) {
+    const room = this.room as {
+      remoteParticipants?: Map<unknown, unknown> | Iterable<[unknown, unknown]>;
+    } | null;
+    const participants = room?.remoteParticipants;
+    if (!participants) return;
+
+    const entries = typeof (participants as Map<unknown, unknown>).values === 'function'
+      ? Array.from((participants as Map<unknown, unknown>).values())
+      : Array.from(participants as Iterable<[unknown, unknown]>, (entry) => entry?.[1]);
+
+    for (const participant of entries) {
+      const publications = (participant as {
+        trackPublications?: Map<unknown, unknown>;
+      } | null)?.trackPublications;
+      if (!publications?.values) continue;
+      for (const publication of publications.values()) {
+        visit(publication);
+      }
+    }
+  }
+
+  _setRemoteAudioSubscribed(subscribed: boolean) {
+    this._eachRemotePublication((publication) => {
+      const setSubscribed = (publication as {
+        setSubscribed?: (value: boolean) => unknown;
+      } | null)?.setSubscribed;
+      if (typeof setSubscribed !== 'function') return;
+      try {
+        setSubscribed.call(publication, subscribed);
+      } catch (err) {
+        this.logger?.debug?.('Changing the remote audio subscription failed', {
+          guildId: this.guildId,
+          subscribed,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    });
   }
 
   _monitorSubscribedRemoteAudio() {
@@ -356,13 +400,14 @@ export class VoiceConnection {
 
   async _discardStaleRoom() {
     const room = this.room;
-    if (!room) return;
+    if (!room) return false;
     this._detachRoomListeners();
     await room.disconnect?.().catch(() => null);
     this._detachRoomFfiListener(room);
     this._resetRoomPreConnectEvents(room);
     room.removeAllListeners?.();
     this.room = null;
+    return true;
   }
 
   _resetGatewayVoiceState() {
@@ -377,8 +422,14 @@ export class VoiceConnection {
   }
 
   async _connect(channelId: string) {
-    await this._discardStaleRoom();
+    const hadStaleRoom = await this._discardStaleRoom();
 
+    if (hadStaleRoom || this._needsVoiceStateReset) {
+      this._resetGatewayVoiceState();
+      await new Promise<void>((resolve) => setTimeout(resolve, VOICE_STATE_RESET_SETTLE_MS));
+    }
+
+    this._needsVoiceStateReset = true;
     this.gateway.joinVoice(this.guildId, channelId, {
       selfDeaf: !this.earrapeProtectionEnabled,
     });
@@ -408,7 +459,10 @@ export class VoiceConnection {
     this._attachRoomListeners(room);
 
     try {
-      await room.connect(roomUrl, token);
+      await room.connect(roomUrl, token, {
+        autoSubscribe: this.earrapeProtectionEnabled,
+        dynacast: false,
+      });
       this.channelId = channelId;
       await this._ensureAudioTrack();
     } catch (err) {
@@ -450,6 +504,7 @@ export class VoiceConnection {
 
     this.room = null;
     this.channelId = null;
+    this._needsVoiceStateReset = false;
   }
 
   _describeConnectFailure(err: unknown, endpoint: string, roomUrl: string): Error {
@@ -1297,7 +1352,7 @@ export class VoiceConnection {
       throw new Error('No local participant available.');
     }
 
-    this.audioSource = new AudioSource(SAMPLE_RATE, CHANNELS);
+    this.audioSource = new AudioSource(SAMPLE_RATE, CHANNELS, MAX_QUEUE_MS);
     this.audioTrack = LocalAudioTrack.createAudioTrack('music', this.audioSource);
 
     const options = new TrackPublishOptions({
@@ -1505,6 +1560,7 @@ export class VoiceConnection {
     return {
       inputKbps,
       framesPerSec,
+      frameDurationMs: FRAME_DURATION_MS,
       bytesIn: stats.bytesIn,
       framesCaptured: stats.framesCaptured,
       concealedFrames: stats.concealedFrames,

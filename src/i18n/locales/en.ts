@@ -385,6 +385,7 @@ export const en = {
   'errors.libraryUnavailable': 'Music library storage is unavailable.',
   'errors.noVoicePermission': 'I do not have permission to connect and speak in that voice channel.',
   'errors.botDeafened': 'Cannot connect to VC because I am Deafened - please undeafen me.',
+  'errors.voiceConnectTimeout': 'The voice server did not answer in time, so I could not join. Run the command again.',
   'errors.notExecutable': 'Command "{command}" is not executable.',
   'errors.rateLimit': 'Rate limit hit ({scope}). Please retry in {seconds}s.',
   'errors.mustBeInteger': '{field} must be an integer.',

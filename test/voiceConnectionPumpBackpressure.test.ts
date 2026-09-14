@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { VoiceConnection } from '../src/voice/VoiceConnection.ts';
+import { VoiceConnection, FRAME_DURATION_MS } from '../src/voice/VoiceConnection.ts';
 
-const FRAME_BYTES = 48_000 * 2 * 2 * 20 / 1000;
+const FRAME_BYTES = 48_000 * 2 * 2 * FRAME_DURATION_MS / 1000;
 
 class ControlledPcmStream {
   chunks: Buffer[];

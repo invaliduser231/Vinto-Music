@@ -1,3 +1,4 @@
+import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { MetricsRegistry } from '../monitoring/metrics.ts';
 import type { BivariantCallback } from '../types/core.ts';
 type GatewayMetricOptions = {
@@ -54,6 +55,9 @@ export function createAppMetrics() {
     processRssBytes: registry.gauge('process_rss_bytes', 'Process RSS in bytes'),
     processExternalBytes: registry.gauge('process_external_bytes', 'Process external memory in bytes'),
     processArrayBuffersBytes: registry.gauge('process_array_buffers_bytes', 'Process array buffer memory in bytes'),
+    eventLoopDelayP50Ms: registry.gauge('event_loop_delay_p50_ms', 'Median event loop delay in milliseconds'),
+    eventLoopDelayP99Ms: registry.gauge('event_loop_delay_p99_ms', '99th percentile event loop delay in milliseconds'),
+    eventLoopDelayMaxMs: registry.gauge('event_loop_delay_max_ms', 'Longest event loop delay in milliseconds since the last sample'),
     sessionsVoiceConnected: registry.gauge('sessions_voice_connected', 'Sessions with an active voice connection'),
     sessionsPlaying: registry.gauge('sessions_playing', 'Sessions currently playing audio'),
     sessionsSnapshotDirty: registry.gauge('sessions_snapshot_dirty', 'Sessions with dirty snapshots pending persistence'),
@@ -125,6 +129,12 @@ export function bindSessionMetrics(sessions: SessionsLike, metricSet: AppMetricS
   metricSet.processRssBytes.set(0);
   metricSet.processExternalBytes.set(0);
   metricSet.processArrayBuffersBytes.set(0);
+  metricSet.eventLoopDelayP50Ms.set(0);
+  metricSet.eventLoopDelayP99Ms.set(0);
+  metricSet.eventLoopDelayMaxMs.set(0);
+
+  const eventLoopDelay = monitorEventLoopDelay({ resolution: 10 });
+  eventLoopDelay.enable();
 
   const onTrackStart = () => {
     metricSet.tracksStarted.inc(1);
@@ -145,6 +155,11 @@ export function bindSessionMetrics(sessions: SessionsLike, metricSet: AppMetricS
     metricSet.processRssBytes.set(memory.rss);
     metricSet.processExternalBytes.set(memory.external);
     metricSet.processArrayBuffersBytes.set(memory.arrayBuffers);
+
+    metricSet.eventLoopDelayP50Ms.set(eventLoopDelay.percentile(50) / 1e6);
+    metricSet.eventLoopDelayP99Ms.set(eventLoopDelay.percentile(99) / 1e6);
+    metricSet.eventLoopDelayMaxMs.set(eventLoopDelay.max / 1e6);
+    eventLoopDelay.reset();
 
     const telemetry = sessions.getMemoryTelemetry?.();
     if (!telemetry) return;
@@ -171,6 +186,7 @@ export function bindSessionMetrics(sessions: SessionsLike, metricSet: AppMetricS
 
   return () => {
     clearInterval(interval);
+    eventLoopDelay.disable();
     sessions.off('trackStart', onTrackStart);
     sessions.off('trackError', onTrackError);
     sessions.off('destroyed', onDestroyed);

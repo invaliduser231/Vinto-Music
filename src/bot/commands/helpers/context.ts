@@ -257,6 +257,9 @@ export async function connectPreparedSession(
     if (await isBotCurrentlyDeafened(ctx)) {
       throw new ValidationError(ctx.t('errors.botDeafened'));
     }
+    if (isRetryableVoiceConnectFailure(err)) {
+      throw new ValidationError(ctx.t('errors.voiceConnectTimeout'));
+    }
     throw err;
   }
 

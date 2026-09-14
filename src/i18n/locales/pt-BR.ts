@@ -387,6 +387,7 @@ export const ptBR: Catalog = {
   'errors.libraryUnavailable': 'O armazenamento da biblioteca de música não está disponível.',
   'errors.noVoicePermission': 'Não tenho permissão para entrar e falar nesse canal de voz.',
   'errors.botDeafened': 'Não consigo entrar no canal de voz porque estou com o áudio desativado, por favor, reative.',
+  'errors.voiceConnectTimeout': 'O servidor de voz não respondeu a tempo, então não consegui entrar. Execute o comando novamente.',
   'errors.notExecutable': 'O comando "{command}" não é executável.',
   'errors.rateLimit': 'Limite de uso atingido ({scope}). Tente novamente em {seconds}s.',
   'errors.mustBeInteger': '{field} deve ser um número inteiro.',

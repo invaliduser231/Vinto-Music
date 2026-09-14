@@ -24,6 +24,7 @@ const DIAG_OWNER_USER_ID = String(process.env.BOT_OWNER_USER_ID ?? '').trim() ||
 type DiagnosticPayload = Record<string, unknown> | null;
 type VoicePumpDiagnostics = {
   framesCaptured?: unknown;
+  frameDurationMs?: unknown;
   uptimeSec?: unknown;
   backpressureWaits?: unknown;
   concealedFrames?: unknown;
@@ -107,7 +108,8 @@ function buildDiagSnapshot(session: SessionLike | null | undefined, playerDiagno
   const pump = (voiceDiagnostics?.pump ?? null) as VoicePumpDiagnostics | null;
   const transport = (voiceDiagnostics?.transport ?? null) as VoiceTransportDiagnostics | null;
   const framesCaptured = Number.parseInt(String(pump?.framesCaptured ?? 0), 10) || 0;
-  const producedPcmMs = framesCaptured * 20;
+  const frameDurationMs = Number.parseInt(String(pump?.frameDurationMs ?? 20), 10) || 20;
+  const producedPcmMs = framesCaptured * frameDurationMs;
   const pumpUptimeSec = Number.parseInt(String(pump?.uptimeSec ?? 0), 10) || 0;
   const wallClockMs = Math.max(0, pumpUptimeSec * 1000);
   const paceRatio = wallClockMs > 0 ? producedPcmMs / wallClockMs : null;

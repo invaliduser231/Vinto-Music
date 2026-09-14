@@ -387,6 +387,7 @@ export const de: Catalog = {
   'errors.libraryUnavailable': 'Der Musikbibliothek-Speicher ist nicht verfügbar.',
   'errors.noVoicePermission': 'Mir fehlt die Berechtigung, diesem Sprachkanal beizutreten und dort zu sprechen.',
   'errors.botDeafened': 'Ich kann dem Sprachkanal nicht beitreten, weil ich stummgeschaltet bin, bitte hebe das auf.',
+  'errors.voiceConnectTimeout': 'Der Sprachserver hat nicht rechtzeitig geantwortet, deshalb konnte ich nicht beitreten. Führe den Befehl noch einmal aus.',
   'errors.notExecutable': 'Der Befehl „{command}" ist nicht ausführbar.',
   'errors.rateLimit': 'Ratenbegrenzung erreicht ({scope}). Bitte versuche es in {seconds}s erneut.',
   'errors.mustBeInteger': '{field} muss eine ganze Zahl sein.',
