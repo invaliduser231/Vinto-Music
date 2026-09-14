@@ -36,7 +36,7 @@ export const de: Catalog = {
   'language.hint': 'Setze deine eigene Sprache mit {prefix}language <code> oder die Servervorgabe mit {prefix}language server <code>.',
 
   'errors.guildOnly': 'Dieser Befehl funktioniert nur in einem Server.',
-  'errors.actionRunning': 'Diese Aktion läuft bereits. Bitte versuche es gleich noch einmal.',
+  'errors.actionRunning': 'Der Befehl läuft noch. Der Beitritt zu einem Sprachkanal kann einige Sekunden dauern.',
   'errors.unexpected': 'Beim Ausführen des Befehls ist etwas schiefgelaufen.',
   'errors.unknown': 'Unbekannter Fehler',
   'errors.restUnavailable': 'REST-Adapter ist nicht verfügbar.',

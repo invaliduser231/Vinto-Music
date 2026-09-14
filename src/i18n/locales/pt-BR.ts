@@ -36,7 +36,7 @@ export const ptBR: Catalog = {
   'language.hint': 'Defina seu idioma com {prefix}language <código> ou o padrão do servidor com {prefix}language server <código>.',
 
   'errors.guildOnly': 'Este comando só funciona dentro de um servidor.',
-  'errors.actionRunning': 'Esta ação já está em andamento. Tente novamente em instantes.',
+  'errors.actionRunning': 'O comando ainda está em execução. Entrar em um canal de voz pode levar alguns segundos.',
   'errors.unexpected': 'Algo deu errado ao executar esse comando.',
   'errors.unknown': 'Erro desconhecido',
   'errors.restUnavailable': 'O adaptador REST não está disponível.',

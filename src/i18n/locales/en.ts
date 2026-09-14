@@ -34,7 +34,7 @@ export const en = {
   'language.hint': 'Set your own language with {prefix}language <code>, or the server default with {prefix}language server <code>.',
 
   'errors.guildOnly': 'This command only works inside a server.',
-  'errors.actionRunning': 'This action is already running. Please retry in a moment.',
+  'errors.actionRunning': 'That command is still running. Joining a voice channel can take a few seconds.',
   'errors.unexpected': 'Something went wrong while running that command.',
   'errors.unknown': 'Unknown error',
   'errors.restUnavailable': 'REST adapter is not available.',
