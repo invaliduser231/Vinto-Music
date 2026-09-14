@@ -303,6 +303,15 @@ function buildEvalPagePayload(content: string): MessagePayload {
   };
 }
 
+function stripCodeFence(raw: unknown) {
+  const trimmed = String(raw ?? '').trim();
+  const fenced = /^```[a-zA-Z0-9+-]*\r?\n?([\s\S]*?)\r?\n?```$/.exec(trimmed);
+  if (fenced) return String(fenced[1] ?? '').trim();
+  const inline = /^`([^`]+)`$/.exec(trimmed);
+  if (inline) return String(inline[1] ?? '').trim();
+  return trimmed;
+}
+
 async function executeOwnerEval(code: string, ctx: QueueEffectsContext) {
   try {
     const expressionExecutor = new AsyncFunction(
@@ -369,7 +378,7 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
       const typedCtx = ctx as QueueEffectsContext;
       ensureDiagOwner(typedCtx);
 
-      const code = String(ctx.args.join(' ') ?? '').trim();
+      const code = stripCodeFence(ctx.rawArgs ?? ctx.args.join(' '));
       if (!code) {
         throw new ValidationError(`Usage: ${ctx.prefix}eval <code>`);
       }
