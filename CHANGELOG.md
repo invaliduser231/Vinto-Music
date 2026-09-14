@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.11.11] - 2026-09-14
+
+- Fixes:
+  - a volume change applies to the running track instead of restarting it
+  - a voice handshake releases the previous voice state first, so a rejoin no longer fails until the next attempt
+  - a voice server that does not answer in time says so instead of reporting a generic failure
+- Audio:
+  - NodeLink levels every track to about -14 LUFS, so loud and quiet masters arrive at a comparable volume. Set `NODELINK_PLAYBACK_AUDIO_LOUDNESSNORMALIZER=false` to hear sources untouched
+  - default outbound bitrate is 128 kbps
+- Performance:
+  - remote audio is only received while earrape protection is on. Decoding everyone else in the channel cost roughly a fifth of the process CPU
+  - audio reaches the voice track in 40 ms frames, halving the round trips into the native layer and leaving more buffer standing under load
+  - `event_loop_delay_p50_ms`, `event_loop_delay_p99_ms` and `event_loop_delay_max_ms` expose a stalled event loop, which is what choppy playback looks like from the inside
+- Sharding:
+  - `SHARD_COUNT` and `SHARD_ID` split the guilds across several bot processes, each with its own gateway connection. A guild always maps to the same shard. The compose file ships a second shard under the `sharded` profile
+
 ## [0.11.10] - 2026-09-13
 
 - Fixes:
