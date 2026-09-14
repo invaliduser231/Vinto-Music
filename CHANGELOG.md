@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.11.12] - 2026-09-14
+
+- Fixes:
+  - a silent voice server is given up on after 8 seconds per attempt instead of 15, so a failed join reports back in about half the time. Tunable with `VOICE_CONNECT_TIMEOUT_MS`
+  - a command that is blocked by another one now names the likely reason instead of only stating that something is running
+
 ## [0.11.11] - 2026-09-14
 
 - Fixes:
