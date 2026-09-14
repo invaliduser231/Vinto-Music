@@ -100,6 +100,7 @@ Most runtime environment variables are parsed in `src/config.ts`. `.env.example`
 | `MIN_VOLUME_PERCENT` | `0` | Lower volume bound. |
 | `MAX_VOLUME_PERCENT` | `200` | Upper volume bound. |
 | `VOICE_MAX_BITRATE` | `128000` | Max outbound voice track bitrate in bps. Lower this on multi-stream hosts to cut CPU and network pressure. |
+| `VOICE_CONNECT_TIMEOUT_MS` | `8000` | How long to wait for the voice server per attempt before giving up. Three attempts are made. |
 | `MEMORY_TELEMETRY_INTERVAL_MS` | `15000` | Sampling interval for runtime memory telemetry collection. |
 | `MEMORY_TELEMETRY_LOG_INTERVAL_MS` | `300000` | Log interval for aggregated runtime memory telemetry. Set `0` to disable periodic memory log emission. |
 | `MEMORY_RSS_EXIT_MB` | `0` | Optional RSS watchdog threshold in MB. When greater than `0`, the process exits with code `1` after repeated over-threshold samples so a supervisor can restart it. |

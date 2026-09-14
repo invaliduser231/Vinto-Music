@@ -182,6 +182,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     maxVolumePercent: parsePositiveInt(env.MAX_VOLUME_PERCENT, 200),
     minVolumePercent: parseNonNegativeInt(env.MIN_VOLUME_PERCENT, 0),
     voiceMaxBitrate: parsePositiveInt(env.VOICE_MAX_BITRATE, 128_000),
+    voiceConnectTimeoutMs: parsePositiveInt(env.VOICE_CONNECT_TIMEOUT_MS, 8_000),
 
     mongoUri: env.MONGODB_URI?.trim() || null,
     mongoDb: env.MONGODB_DB?.trim() || 'fluxer_music_bot',

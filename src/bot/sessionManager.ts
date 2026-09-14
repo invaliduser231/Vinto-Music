@@ -541,6 +541,7 @@ export class SessionManager extends EventEmitter {
     const connectionOptions: ConstructorParameters<typeof VoiceConnection>[2] = {
       ...(connectionLogger ? { logger: connectionLogger } : { logger: null }),
       ...(this.config.voiceMaxBitrate != null ? { voiceMaxBitrate: this.config.voiceMaxBitrate } : {}),
+      ...(this.config.voiceConnectTimeoutMs != null ? { connectTimeoutMs: this.config.voiceConnectTimeoutMs } : {}),
       earrapeProtectionEnabled: Boolean(initialSettings.earrapeProtectionEnabled),
       botUserId: this.botUserId,
       earrapeProfileStore: this.earrapeProfiles,
