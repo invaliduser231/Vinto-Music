@@ -512,9 +512,9 @@ export const pipelineMethods: LooseMethodMap = {
       return this._syncLiveAudioProcessor();
     }
 
-    const ffmpegOutput = this.ffmpeg?.stdout;
+    const playbackSource = this.playbackSourceStream ?? this.ffmpeg?.stdout;
     const playbackOutput = this.playbackOutputStream;
-    if (!ffmpegOutput?.pipe || !ffmpegOutput?.unpipe || !playbackOutput?.pipe) {
+    if (!playbackSource?.pipe || !playbackSource?.unpipe || !playbackOutput?.pipe) {
       return false;
     }
 
@@ -522,14 +522,14 @@ export const pipelineMethods: LooseMethodMap = {
     this._bindPipelineErrorHandler(processor, 'liveAudioProcessor');
 
     try {
-      ffmpegOutput.unpipe(playbackOutput);
-      ffmpegOutput.pipe(processor);
+      playbackSource.unpipe(playbackOutput);
+      playbackSource.pipe(processor);
       processor.pipe(playbackOutput);
       this.liveAudioProcessor = processor;
       return true;
     } catch (err) {
       try {
-        ffmpegOutput.unpipe?.(processor);
+        playbackSource.unpipe?.(processor);
       } catch {}
       try {
         processor.unpipe?.(playbackOutput);

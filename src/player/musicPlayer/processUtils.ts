@@ -18,15 +18,17 @@ export function cleanupProcesses(player: ProcessUtilsPlayer) {
   const sourceProc = player.sourceProc;
   const ffmpeg = player.ffmpeg;
 
+  const playbackSource = player.playbackSourceStream ?? ffmpeg?.stdout ?? null;
+
   try {
-    if (ffmpeg?.stdout && player.liveAudioProcessor) {
-      ffmpeg.stdout.unpipe?.(player.liveAudioProcessor as unknown as NodeJS.WritableStream);
+    if (playbackSource && player.liveAudioProcessor) {
+      playbackSource.unpipe?.(player.liveAudioProcessor as unknown as NodeJS.WritableStream);
     }
   } catch {}
 
   try {
-    if (ffmpeg?.stdout && player.playbackOutputStream) {
-      ffmpeg.stdout.unpipe?.(player.playbackOutputStream as unknown as NodeJS.WritableStream);
+    if (playbackSource && player.playbackOutputStream) {
+      playbackSource.unpipe?.(player.playbackOutputStream as unknown as NodeJS.WritableStream);
     }
   } catch {}
 
@@ -79,6 +81,7 @@ export function cleanupProcesses(player: ProcessUtilsPlayer) {
     player.sourceStream?.destroy?.();
   } catch {}
   player.sourceStream = null;
+  player.playbackSourceStream = null;
 
   try {
     sourceProc?.stdout?.destroy?.();
@@ -115,6 +118,7 @@ export function clearPipelineState(player: ProcessUtilsPlayer) {
   player.playbackOutputStream = null;
   player.deezerDecryptStream = null;
   player.sourceStream = null;
+  player.playbackSourceStream = null;
   player.activeSourceProcessCloseInfo = null;
 }
 

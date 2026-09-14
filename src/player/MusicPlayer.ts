@@ -416,6 +416,7 @@ export class MusicPlayer extends EventEmitter {
   ffmpeg: PipelineProcess | null;
   sourceProc: PipelineProcess | null;
   sourceStream: PipelineStreamLike | null;
+  playbackSourceStream: PipelineStreamLike | null;
   deezerDecryptStream: PipelineStreamLike | null;
   liveAudioProcessor: LiveAudioProcessor | null;
   playbackOutputStream: PassThrough | null;
@@ -550,6 +551,7 @@ export class MusicPlayer extends EventEmitter {
     this.ffmpeg = null;
     this.sourceProc = null;
     this.sourceStream = null;
+    this.playbackSourceStream = null;
     this.deezerDecryptStream = null;
     this.liveAudioProcessor = null;
     this.playbackOutputStream = null;
@@ -1043,6 +1045,7 @@ export class MusicPlayer extends EventEmitter {
       });
 
       const playbackOutput = this._createPlaybackOutputStream();
+      this.playbackSourceStream = ffmpegProc.stdout ?? null;
       if (this._shouldUseLiveAudioProcessor()) {
         this.liveAudioProcessor = this._createLiveAudioProcessor();
         this._bindPipelineErrorHandler(this.liveAudioProcessor, 'liveAudioProcessor');
@@ -1635,6 +1638,7 @@ export class MusicPlayer extends EventEmitter {
     nodeLinkStream.once('close', onClose);
 
     const playbackOutput = this._createPlaybackOutputStream();
+    this.playbackSourceStream = nodeLinkStream as PipelineStreamLike;
     if (this._shouldUseLiveAudioProcessor()) {
       this.liveAudioProcessor = this._createLiveAudioProcessor();
       this._bindPipelineErrorHandler(this.liveAudioProcessor, 'liveAudioProcessor');
