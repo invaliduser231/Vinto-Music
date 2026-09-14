@@ -304,8 +304,17 @@ export async function startApp() {
     token: config.token,
     intents: config.gatewayIntents,
     initialPresence,
+    shardId: config.shardId,
+    shardCount: config.shardCount,
     logger: logger.child('gateway'),
   });
+
+  if (config.shardCount > 1) {
+    logger.info('Running as a shard', {
+      shardId: config.shardId,
+      shardCount: config.shardCount,
+    });
+  }
 
   const voiceStateStore = new VoiceStateStore(logger.child('voice-state'));
   voiceStateStore.register(gateway);

@@ -1,20 +1,39 @@
 name: vinto
 
+# Extra shards live under the "sharded" profile:
+#   docker compose --profile sharded up -d
+# SHARD_COUNT must match across all of them, SHARD_ID is set per container.
+x-app-base: &app-base
+  image: ${APP_IMAGE:-ghcr.io/invaliduser231/vinto-music:latest}
+  pull_policy: always
+  restart: unless-stopped
+  mem_limit: ${APP_MEM_LIMIT:-3g}
+  depends_on:
+    nodelink:
+      condition: service_started
+    bgutil-pot:
+      condition: service_started
+  env_file:
+    - .env
+  logging:
+    driver: json-file
+    options:
+      max-size: "50m"
+      max-file: "5"
+  healthcheck:
+    test: ["CMD-SHELL", "node -e \"require('node:http').get({host:'127.0.0.1',port:9091,path:'/readyz'},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+    interval: 30s
+    timeout: 5s
+    retries: 5
+    start_period: 60s
+
 services:
   app:
-    image: ${APP_IMAGE:-ghcr.io/invaliduser231/vinto-music:latest}
-    pull_policy: always
-    restart: unless-stopped
-    mem_limit: ${APP_MEM_LIMIT:-3g}
-    depends_on:
-      nodelink:
-        condition: service_started
-      bgutil-pot:
-        condition: service_started
-    env_file:
-      - .env
-    environment:
+    <<: *app-base
+    environment: &app-env
       NODE_ENV: production
+      SHARD_ID: "0"
+      SHARD_COUNT: ${SHARD_COUNT:-1}
       # Falls back to the bundled mongo container. Set MONGODB_URI in .env to
       # use an external database instead.
       MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017}
@@ -37,17 +56,17 @@ services:
     ports:
       - "127.0.0.1:${MONITORING_PORT:-9091}:9091"
       - "127.0.0.1:${DASHBOARD_API_PORT:-9092}:9092"
-    logging:
-      driver: json-file
-      options:
-        max-size: "50m"
-        max-file: "5"
-    healthcheck:
-      test: ["CMD-SHELL", "node -e \"require('node:http').get({host:'127.0.0.1',port:9091,path:'/readyz'},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-      start_period: 60s
+
+  # Needs SHARD_COUNT=2 or higher. Serves no dashboard.
+  app-shard-1:
+    <<: *app-base
+    profiles: ["sharded"]
+    environment:
+      <<: *app-env
+      SHARD_ID: "1"
+      DASHBOARD_API_ENABLED: "0"
+    ports:
+      - "127.0.0.1:${MONITORING_PORT_SHARD_1:-9093}:9091"
 
   dashboard:
     image: ${DASHBOARD_IMAGE:-ghcr.io/invaliduser231/vinto-music-dashboard:latest}
@@ -94,6 +113,7 @@ services:
       NODELINK_API_ENABLETRACKSTREAMENDPOINT: "false"
       NODELINK_SEARCH_MAXRESULTS: ${NODELINK_SEARCH_MAXRESULTS:-10}
       NODELINK_PLAYBACK_MAXPLAYLISTLENGTH: ${NODELINK_PLAYBACK_MAXPLAYLISTLENGTH:-100}
+      NODELINK_PLAYBACK_AUDIO_LOUDNESSNORMALIZER: ${NODELINK_PLAYBACK_AUDIO_LOUDNESSNORMALIZER:-true}
       NODELINK_SOURCES_SPOTIFY_ENABLED: "true"
       NODELINK_SOURCES_SPOTIFY_CLIENTID: ${SPOTIFY_CLIENT_ID:-}
       NODELINK_SOURCES_SPOTIFY_CLIENTSECRET: ${SPOTIFY_CLIENT_SECRET:-}

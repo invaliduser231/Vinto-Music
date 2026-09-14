@@ -1,4 +1,5 @@
 import { ConfigurationError } from './core/errors.ts';
+import { parseShardAssignment } from './core/sharding.ts';
 import { DEFAULT_LOCALE, normalizeLocale } from './i18n/index.ts';
 
 function parsePositiveInt(value: unknown, fallback: number): number {
@@ -149,6 +150,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     apiBase: normalizeApiBase(env.API_BASE),
     gatewayUrl: normalizeGatewayUrl(env.GATEWAY_URL),
     gatewayIntents: parseNonNegativeInt(env.GATEWAY_INTENTS, 0),
+    ...parseShardAssignment(env.SHARD_ID, env.SHARD_COUNT),
     gatewayPresenceEnabled: parseBool(env.GATEWAY_PRESENCE_ENABLED, false),
     dnsResultOrder: normalizeDnsResultOrder(env.DNS_RESULT_ORDER),
     autoGatewayUrl: parseBool(env.AUTO_GATEWAY_URL, true),
@@ -179,7 +181,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     defaultVolumePercent: parsePositiveInt(env.DEFAULT_VOLUME_PERCENT, 100),
     maxVolumePercent: parsePositiveInt(env.MAX_VOLUME_PERCENT, 200),
     minVolumePercent: parseNonNegativeInt(env.MIN_VOLUME_PERCENT, 0),
-    voiceMaxBitrate: parsePositiveInt(env.VOICE_MAX_BITRATE, 192_000),
+    voiceMaxBitrate: parsePositiveInt(env.VOICE_MAX_BITRATE, 128_000),
 
     mongoUri: env.MONGODB_URI?.trim() || null,
     mongoDb: env.MONGODB_DB?.trim() || 'fluxer_music_bot',

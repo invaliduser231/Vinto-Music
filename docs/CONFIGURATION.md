@@ -30,6 +30,8 @@ Most runtime environment variables are parsed in `src/config.ts`. `.env.example`
 | `API_BASE` | `https://api.fluxer.app/v1` | REST API base URL. |
 | `GATEWAY_URL` | `wss://gateway.fluxer.app` | Gateway websocket URL. |
 | `GATEWAY_INTENTS` | `0` | Gateway identify intents bitset. |
+| `SHARD_COUNT` | `1` | Number of bot processes sharing the guilds. Every process needs the same value. |
+| `SHARD_ID` | `0` | Position of this process, counting from zero, and lower than `SHARD_COUNT`. |
 | `GATEWAY_PRESENCE_ENABLED` | `0` | Send initial and rotating gateway presence updates. Keep disabled if Fluxer closes the socket after `READY` with close code `4013`. |
 | `DNS_RESULT_ORDER` | `ipv4first` | `ipv4first` or `verbatim`. |
 | `AUTO_GATEWAY_URL` | `1` | Resolve gateway URL from REST `/gateway` or `/gateway/bot` when possible. |
@@ -97,7 +99,7 @@ Most runtime environment variables are parsed in `src/config.ts`. `.env.example`
 | `DEFAULT_VOLUME_PERCENT` | `100` | Initial playback volume. |
 | `MIN_VOLUME_PERCENT` | `0` | Lower volume bound. |
 | `MAX_VOLUME_PERCENT` | `200` | Upper volume bound. |
-| `VOICE_MAX_BITRATE` | `192000` | Max outbound voice track bitrate in bps. Lower this on multi-stream hosts to cut CPU and network pressure. |
+| `VOICE_MAX_BITRATE` | `128000` | Max outbound voice track bitrate in bps. Lower this on multi-stream hosts to cut CPU and network pressure. |
 | `MEMORY_TELEMETRY_INTERVAL_MS` | `15000` | Sampling interval for runtime memory telemetry collection. |
 | `MEMORY_TELEMETRY_LOG_INTERVAL_MS` | `300000` | Log interval for aggregated runtime memory telemetry. Set `0` to disable periodic memory log emission. |
 | `MEMORY_RSS_EXIT_MB` | `0` | Optional RSS watchdog threshold in MB. When greater than `0`, the process exits with code `1` after repeated over-threshold samples so a supervisor can restart it. |

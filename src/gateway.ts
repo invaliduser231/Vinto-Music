@@ -41,6 +41,8 @@ type GatewayOptions = {
   handshakeTimeoutMs?: number;
   connectOpenTimeoutMs?: number;
   initialPresence?: Record<string, unknown> | null;
+  shardId?: number;
+  shardCount?: number;
 };
 
 type GatewayPresence = Record<string, unknown>;
@@ -84,6 +86,7 @@ type GatewayIdentifyPayload = {
     device: string;
   };
   presence?: GatewayPresence;
+  shard?: [number, number];
 };
 
 function withGatewayQuery(url: string) {
@@ -140,12 +143,19 @@ export class Gateway extends EventEmitter {
   reconnectAttempts: number;
   manualDisconnect;
   initialPresence: GatewayPresence | null;
+  shardId: number;
+  shardCount: number;
   constructor(options: GatewayOptions) {
     super();
 
     this.url = withGatewayQuery(options.url);
     this.token = options.token.startsWith('Bot ') ? options.token.slice(4) : options.token;
     this.intents = options.intents ?? 0;
+    this.shardCount = Math.max(1, Number.parseInt(String(options.shardCount ?? 1), 10) || 1);
+    this.shardId = Math.min(
+      this.shardCount - 1,
+      Math.max(0, Number.parseInt(String(options.shardId ?? 0), 10) || 0),
+    );
     this.logger = options.logger ?? null;
 
     this.reconnectBaseDelayMs = options.reconnectBaseDelayMs ?? 1_000;
@@ -445,6 +455,10 @@ export class Gateway extends EventEmitter {
 
     if (this.initialPresence && typeof this.initialPresence === 'object') {
       payload.presence = this.initialPresence;
+    }
+
+    if (this.shardCount > 1) {
+      payload.shard = [this.shardId, this.shardCount];
     }
 
     this._send(Op.IDENTIFY, payload);
