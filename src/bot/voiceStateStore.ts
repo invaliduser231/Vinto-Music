@@ -7,6 +7,8 @@ type VoiceStateWaiter = {
 type VoiceStatePayload = {
   user_id?: string | null;
   channel_id?: string | null;
+  deaf?: boolean | null;
+  self_deaf?: boolean | null;
 };
 
 type GatewayPayload = {
@@ -30,11 +32,13 @@ type RestLike = {
 export class VoiceStateStore {
   logger: LoggerLike | undefined;
   guildVoiceStates: Map<string, Map<string, string>>;
+  deafenedUsers: Set<string>;
   pendingWaiters: Map<string, VoiceStateWaiter[]>;
 
   constructor(logger?: LoggerLike) {
     this.logger = logger;
     this.guildVoiceStates = new Map();
+    this.deafenedUsers = new Set();
     this.pendingWaiters = new Map();
   }
 
@@ -64,7 +68,12 @@ export class VoiceStateStore {
     });
 
     gateway.on('VOICE_STATE_UPDATE', (payload: GatewayPayload & VoiceStatePayload) => {
-      this._upsert(payload?.guild_id, payload?.user_id, payload?.channel_id ?? null);
+      this._upsert(
+        payload?.guild_id,
+        payload?.user_id,
+        payload?.channel_id ?? null,
+        payload?.deaf === true || payload?.self_deaf === true,
+      );
     });
 
     gateway.on('GUILD_DELETE', (payload: GatewayPayload) => {
@@ -144,15 +153,25 @@ export class VoiceStateStore {
     if (!guildId) return 0;
 
     const next = new Map<string, string>();
+    const deafened: string[] = [];
     for (const state of states ?? []) {
       if (!state?.user_id) continue;
       if (!state?.channel_id) continue;
       next.set(state.user_id, state.channel_id);
+      if (state.deaf === true || state.self_deaf === true) deafened.push(state.user_id);
     }
 
     if (next.size === 0) {
       const existing = this.guildVoiceStates.get(guildId);
       if (existing && existing.size > 0) return existing.size;
+    }
+
+    for (const userId of this.guildVoiceStates.get(guildId)?.keys() ?? []) {
+      if (!next.has(userId)) this.deafenedUsers.delete(userId);
+    }
+    for (const userId of next.keys()) {
+      if (deafened.includes(userId)) this.deafenedUsers.add(userId);
+      else this.deafenedUsers.delete(userId);
     }
 
     this.guildVoiceStates.set(guildId, next);
@@ -163,6 +182,7 @@ export class VoiceStateStore {
     guildId: string | null | undefined,
     userId: string | null | undefined,
     channelId: string | null | undefined,
+    deafened: boolean | null = null,
   ) {
     if (!guildId || !userId) return;
 
@@ -174,11 +194,20 @@ export class VoiceStateStore {
 
     if (!channelId) {
       map.delete(userId);
+      this.deafenedUsers.delete(userId);
       return;
     }
 
+    if (deafened === true) this.deafenedUsers.add(userId);
+    else if (deafened === false) this.deafenedUsers.delete(userId);
+
     map.set(userId, channelId);
     this._resolveWaiters(guildId, userId, channelId);
+  }
+
+  isDeafened(userId: unknown) {
+    const id = String(userId ?? '').trim();
+    return id ? this.deafenedUsers.has(id) : false;
   }
 
   waitForMemberVoiceChannel(guildId: string, userId: string, timeoutMs: number = 2_000) {

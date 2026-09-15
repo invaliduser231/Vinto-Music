@@ -35,6 +35,7 @@ type SessionEmitterLike = {
 
 type VoiceStateStoreLike = {
   getUsersInChannel: (guildId: string, channelId: string) => string[];
+  isDeafened?: (userId: string) => boolean;
 };
 
 type RestLike = {
@@ -298,7 +299,8 @@ export class ScrobbleService {
 
     return this.voiceStateStore
       .getUsersInChannel(guild, channel)
-      .filter((userId) => userId && userId !== this.botUserId);
+      .filter((userId) => userId && userId !== this.botUserId)
+      .filter((userId) => !this.voiceStateStore.isDeafened?.(userId));
   }
 
   async _resolveAccounts(userIds: string[]): Promise<Array<{ userId: string; sessionKey: string }>> {
