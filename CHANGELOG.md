@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.11.14] - 2026-09-15
+
+- Changes:
+  - a listener who is deafened no longer collects listening time, so nothing is scrobbled for a track they could not hear. Server-side and self-chosen deafening count the same, and time collected before going deaf is kept rather than discarded
+
 ## [0.11.13] - 2026-09-14
 
 - Fixes:
