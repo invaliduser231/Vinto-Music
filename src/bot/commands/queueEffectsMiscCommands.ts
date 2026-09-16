@@ -16,6 +16,7 @@ import {
   formatSeconds,
 } from './commandHelpers.ts';
 import { createProgressReporter } from './responseUtils.ts';
+import { relativeTimestamp } from '../fluxerMarkdown.ts';
 import type { CommandRegistry } from '../commandRegistry.ts';
 import type { CommandContextLike, SessionLike, TrackDataLike } from './helpers/types.ts';
 import type { MessagePayload } from '../../types/core.ts';
@@ -527,7 +528,7 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
         }
 
         await typedCtx.reply.info('Audio diagnostics (last)', [
-          { name: 'Captured', value: new Date(previous.capturedAt).toISOString(), inline: true },
+          { name: 'Captured', value: relativeTimestamp(previous.capturedAt), inline: true },
           { name: 'Track', value: previous.track?.title ?? 'none', inline: true },
           { name: 'Source', value: previous.track?.source ?? 'n/a', inline: true },
           { name: 'Pace ratio', value: toFixedSafe(previous.computed?.paceRatio, 3), inline: true },
@@ -556,7 +557,7 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
       diagSnapshotsByGuild.set(key, snapshot);
 
       await typedCtx.reply.info('Audio diagnostics (now)', [
-        { name: 'Captured', value: new Date(snapshot.capturedAt).toISOString(), inline: true },
+        { name: 'Captured', value: relativeTimestamp(snapshot.capturedAt), inline: true },
         { name: 'Track', value: snapshot.track?.title ?? 'none', inline: true },
         { name: 'Source', value: snapshot.track?.source ?? 'n/a', inline: true },
         { name: 'Pace ratio', value: toFixedSafe(snapshot.computed?.paceRatio, 3), inline: true },

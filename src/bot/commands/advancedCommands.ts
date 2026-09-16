@@ -1,6 +1,7 @@
 import { ValidationError } from '../../core/errors.ts';
 import { createTranslator, type Translator } from '../../i18n/index.ts';
 import { buildSingleFieldInfoPayload } from './responseUtils.ts';
+import { relativeTimestamp } from '../fluxerMarkdown.ts';
 import type { CommandContextLike, CommandHelperBundle, SessionLike, TrackDataLike } from './helpers/types.ts';
 import { partyStateStore, type PartyTeam } from '../services/partyStateStore.ts';
 
@@ -535,7 +536,7 @@ export function registerAdvancedCommands(registry: RegistryLike, h: AdvancedComm
           return;
         }
         await ctx.reply.info(ctx.t('handoff.active', { user: `<@${handoff.userId}>` }), [
-          { name: ctx.t('handoff.expires'), value: new Date(handoff.expiresAt).toISOString() },
+          { name: ctx.t('handoff.expires'), value: relativeTimestamp(handoff.expiresAt) },
         ]);
         return;
       }
