@@ -1,5 +1,5 @@
 import type { EmbedAuthor, EmbedField, MessagePayload, MessageReference } from '../../types/core.ts';
-import { buildEmbed, COLORS, renderMinimalEmbedContent } from '../messageFormatter.ts';
+import { buildEmbed, COLORS, renderMinimalEmbedContent, type StatusKind } from '../messageFormatter.ts';
 
 interface CommandContextLike {
   message?: {
@@ -45,8 +45,6 @@ interface ProgressReporterConfig {
   replyReference?: boolean;
 }
 
-type StatusKind = 'info' | 'success' | 'warning' | 'error' | 'working';
-
 export function buildCommandMessageReference(ctx: CommandContextLike): MessageReference | null {
   const messageId = String(ctx?.message?.id ?? ctx?.message?.message_id ?? '').trim();
   if (!messageId) return null;
@@ -85,28 +83,10 @@ export function buildInfoPayload(
   options: StatusPayloadOptions = {},
 ): MessagePayload {
   const safeOptions = options && typeof options === 'object' ? options : {};
-  if (ctx.config?.enableEmbeds === false) {
-    const lines: string[] = [];
-    if (title) lines.push(title);
-    if (description) lines.push(description);
-    for (const field of fields ?? []) {
-      const value = String(field.value ?? '').trim();
-      if (value.includes('\n')) {
-        lines.push(String(field.name));
-        lines.push(value);
-      } else {
-        lines.push(`${field.name}: ${field.value}`);
-      }
-    }
-
-    if (safeOptions.footer) {
-      lines.push(String(safeOptions.footer));
-    }
-    return { content: lines.join('\n').slice(0, 1900) };
-  }
-
-  if (ctx.config?.minimalMode === true) {
-    return { content: renderMinimalEmbedContent(description, fields, safeOptions.footer ?? null) };
+  if (ctx.config?.enableEmbeds === false || ctx.config?.minimalMode === true) {
+    return {
+      content: renderMinimalEmbedContent(description, fields, safeOptions.footer ?? null, { title }),
+    };
   }
 
   return {
@@ -167,25 +147,12 @@ export function buildStatusPayload(
     working: COLORS.brand,
   };
 
-  if (ctx.config?.enableEmbeds === false) {
-    const lines = [description];
-    for (const field of fields ?? []) {
-      const value = String(field.value ?? '').trim();
-      if (value.includes('\n')) {
-        lines.push(String(field.name));
-        lines.push(value);
-      } else {
-        lines.push(`${field.name}: ${field.value}`);
-      }
-    }
-    if (safeOptions.footer) {
-      lines.push(String(safeOptions.footer));
-    }
-    return { content: lines.filter(Boolean).join('\n').slice(0, 1900) };
-  }
-
-  if (ctx.config?.minimalMode === true) {
-    return { content: renderMinimalEmbedContent(description, fields, safeOptions.footer ?? null) };
+  if (ctx.config?.enableEmbeds === false || ctx.config?.minimalMode === true) {
+    return {
+      content: renderMinimalEmbedContent(description, fields, safeOptions.footer ?? null, {
+        kind: normalizedKind as StatusKind,
+      }),
+    };
   }
 
   return {

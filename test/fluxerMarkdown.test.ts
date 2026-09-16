@@ -10,6 +10,7 @@ import {
   subtext,
   timestampTag,
 } from '../src/bot/fluxerMarkdown.ts';
+import { renderMinimalEmbedContent } from '../src/bot/messageFormatter.ts';
 
 test('timestampTag renders unix seconds with the requested style', () => {
   assert.equal(timestampTag(new Date('2026-09-16T12:00:00.000Z'), 'R'), '<t:1789560000:R>');
@@ -62,4 +63,24 @@ test('maskedLink falls back to plain text for unusable targets', () => {
   assert.equal(maskedLink('Station', 'https://radio.example/a b'), 'Station');
   assert.equal(maskedLink('Station', null), 'Station');
   assert.equal(maskedLink('[Sta]tion', 'https://radio.example/'), '[Station](<https://radio.example/>)');
+});
+
+test('renderMinimalEmbedContent renders a title as a heading and the footer as subtext', () => {
+  const content = renderMinimalEmbedContent('Queue updated.', [{ name: 'Track', value: 'Song A' }], 'Loop off', {
+    title: 'Queue',
+  });
+
+  assert.equal(content, '### Queue\nQueue updated.\n**Track**: Song A\n-# Loop off');
+});
+
+test('renderMinimalEmbedContent turns warnings and errors into admonitions', () => {
+  assert.equal(
+    renderMinimalEmbedContent('Nothing is playing.', null, null, { kind: 'warning' }),
+    '> [!WARNING]\n> Nothing is playing.'
+  );
+  assert.equal(
+    renderMinimalEmbedContent('Playback failed.', null, null, { kind: 'error' }),
+    '> [!CAUTION]\n> Playback failed.'
+  );
+  assert.equal(renderMinimalEmbedContent('Playback resumed.', null, null, { kind: 'success' }), 'Playback resumed.');
 });

@@ -9,6 +9,7 @@ import type {
   ResponderEmbedOptions,
   RestLike,
 } from '../types/core.ts';
+import { admonition, heading, subtext, type AdmonitionKind } from './fluxerMarkdown.ts';
 
 const COLORS = {
   brand: 0xff2d78,
@@ -77,14 +78,36 @@ interface ResponderOptions {
   enableEmbeds?: boolean;
 }
 
+export type StatusKind = 'info' | 'success' | 'warning' | 'error' | 'working';
+
+const ADMONITION_BY_KIND: Partial<Record<StatusKind, AdmonitionKind>> = {
+  warning: 'WARNING',
+  error: 'CAUTION',
+};
+
+interface MinimalContentOptions {
+  title?: string | null;
+  kind?: StatusKind | null;
+}
+
 export function renderMinimalEmbedContent(
   description: string | null | undefined,
   fields: EmbedField[] | null | undefined,
   footer: string | null | undefined = null,
+  options: MinimalContentOptions = {},
 ): string {
   const lines: string[] = [];
+  const safeTitle = String(options.title ?? '').trim();
   const safeDescription = String(description ?? '').trim();
-  if (safeDescription) lines.push(safeDescription);
+  const admonitionKind = options.kind ? ADMONITION_BY_KIND[options.kind] : undefined;
+
+  if (admonitionKind) {
+    const block = admonition(admonitionKind, [safeTitle, safeDescription].filter(Boolean).join('\n'));
+    if (block) lines.push(block);
+  } else {
+    if (safeTitle) lines.push(heading(safeTitle));
+    if (safeDescription) lines.push(safeDescription);
+  }
 
   for (const field of Array.isArray(fields) ? fields : []) {
     const name = String(field.name ?? '-').trim() || '-';
@@ -97,7 +120,7 @@ export function renderMinimalEmbedContent(
     lines.push(`**${name}**: ${value}`);
   }
 
-  const safeFooter = String(footer ?? '').trim();
+  const safeFooter = subtext(footer);
   if (safeFooter) lines.push(safeFooter);
 
   return lines.join('\n').slice(0, 1900);
@@ -213,17 +236,29 @@ export function buildEmbed({
   return embed;
 }
 
+function textFooter(footer: string | null | undefined): string | null {
+  const safe = String(footer ?? '').trim();
+  if (!safe || safe === BOT_BRAND) return null;
+  return safe;
+}
+
 function createMessagePayload(
   text: string | null,
   embed: EmbedPayload | null,
   useEmbeds: boolean,
   minimalMode = false,
   replyOptions: ReplyOptions | null = null,
+  kind: StatusKind | null = null,
 ): MessagePayload {
   const payload: MessagePayload = (!useEmbeds || !embed || minimalMode)
     ? {
-      content: minimalMode && embed
-        ? renderMinimalEmbedContent(embed.description, embed.fields, embed.footer?.text ?? null)
+      content: embed
+        ? renderMinimalEmbedContent(
+          embed.description ?? text,
+          embed.fields,
+          textFooter(embed.footer?.text),
+          kind ? { kind } : {},
+        )
         : text,
     }
     : {
@@ -249,7 +284,7 @@ function createMessagePayload(
 export function makeResponder(rest: RestLike, options: ResponderOptions = {}): Responder {
   const useEmbeds = options.enableEmbeds !== false;
 
-  function buildResponderMethod(title: string, color: number): ResponderMethod {
+  function buildResponderMethod(title: string, color: number, kind: StatusKind): ResponderMethod {
     return async (channelId, text, details = null, replyOptions = null, embedOptions = null) => {
       const minimalMode = embedOptions?.minimalMode === true;
       const payload = createMessagePayload(
@@ -268,17 +303,18 @@ export function makeResponder(rest: RestLike, options: ResponderOptions = {}): R
         }),
         useEmbeds,
         minimalMode,
-        replyOptions
+        replyOptions,
+        kind
       );
       return rest.sendMessage(channelId, payload);
     };
   }
 
   return {
-    info: buildResponderMethod('Info', COLORS.info),
-    success: buildResponderMethod('Success', COLORS.success),
-    warning: buildResponderMethod('Warning', COLORS.warning),
-    error: buildResponderMethod('Error', COLORS.error),
+    info: buildResponderMethod('Info', COLORS.info, 'info'),
+    success: buildResponderMethod('Success', COLORS.success, 'success'),
+    warning: buildResponderMethod('Warning', COLORS.warning, 'warning'),
+    error: buildResponderMethod('Error', COLORS.error, 'error'),
     async plain(channelId, text, replyOptions = null) {
       const payload = createMessagePayload(text, null, false, false, replyOptions);
       return rest.sendMessage(channelId, payload);
