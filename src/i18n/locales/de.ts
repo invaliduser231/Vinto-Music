@@ -135,6 +135,7 @@ export const de: Catalog = {
   'now.queued': 'In Warteschlange',
   'now.song': 'Titel',
   'now.detecting': 'Wird erkannt...',
+  'now.ends': 'Endet {time}',
 
   'seek.usage': 'Verwendung: {prefix}seek <Sekunden|mm:ss|hh:mm:ss>',
   'seek.invalid': 'Ungültige Sprungposition.',
@@ -581,8 +582,9 @@ export const de: Catalog = {
   'queue.empty': 'Die Warteschlange ist leer.',
   'queue.nowPlaying': 'Läuft gerade',
   'queue.upNext': 'Als Nächstes (Seite {page}/{total})',
-  'queue.summary': 'Warteschlange: **{count}** Titel • Restdauer: **{remaining}**',
-  'history.summary': 'Verlaufsseite **{page}/{totalPages}** • Titel gesamt: **{count}**',
+  'queue.summary': 'Warteschlange: {count} Titel | Restdauer: {remaining}',
+  'queue.endsAt': 'endet {time}',
+  'history.summary': 'Verlaufsseite {page}/{totalPages} | Titel gesamt: {count}',
 
   'recap.weeklyTitle': 'Wöchentlicher Musikrückblick',
   'recap.totalPlays7d': 'Wiedergaben gesamt (7 Tage)',

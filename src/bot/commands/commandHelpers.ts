@@ -11,6 +11,7 @@ export {
   buildHelpPages,
   buildProgressBar,
   createCommand,
+  formatEta,
   formatHistoryPage,
   formatQueuePage,
   formatSeconds,

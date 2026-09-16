@@ -135,6 +135,7 @@ export const ptBR: Catalog = {
   'now.queued': 'Na fila',
   'now.song': 'Música',
   'now.detecting': 'Detectando...',
+  'now.ends': 'Termina {time}',
 
   'seek.usage': 'Uso: {prefix}seek <segundos|mm:ss|hh:mm:ss>',
   'seek.invalid': 'Posição de avanço inválida.',
@@ -581,8 +582,9 @@ export const ptBR: Catalog = {
   'queue.empty': 'A fila está vazia.',
   'queue.nowPlaying': 'Tocando agora',
   'queue.upNext': 'A seguir (página {page}/{total})',
-  'queue.summary': 'Fila: **{count}** faixas • Restante: **{remaining}**',
-  'history.summary': 'Página do histórico **{page}/{totalPages}** • Total de faixas: **{count}**',
+  'queue.summary': 'Fila: {count} faixas | Restante: {remaining}',
+  'queue.endsAt': 'termina {time}',
+  'history.summary': 'Página do histórico {page}/{totalPages} | Total de faixas: {count}',
 
   'recap.weeklyTitle': 'Resumo musical da semana',
   'recap.totalPlays7d': 'Total de reproduções (7d)',

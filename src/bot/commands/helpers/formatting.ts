@@ -1,5 +1,6 @@
 import { ValidationError } from '../../../core/errors.ts';
 import { buildEmbed, sourceLabel } from '../../messageFormatter.ts';
+import { maskedLink, relativeFromNow } from '../../fluxerMarkdown.ts';
 import type { CommandDefinition, EmbedAuthor, MessagePayload } from '../../../types/core.ts';
 import type { TranslationKey, Translator } from '../../../i18n/index.ts';
 import {
@@ -55,10 +56,6 @@ function compactTrackTitle(title: unknown) {
   return value || 'Unknown title';
 }
 
-function isSafeMarkdownLinkTarget(value: unknown) {
-  return /^https?:\/\//i.test(String(value ?? '').trim());
-}
-
 function formatTrackListLine(
   track: TrackLike,
   index: number | null = null,
@@ -67,7 +64,7 @@ function formatTrackListLine(
 ) {
   const prefix = Number.isFinite(index) ? `${index}. ` : '';
   const requesterLabel = options.t ? options.t('common.requestedByLower') : 'requested by';
-  const by = options.includeRequester !== false && track?.requestedBy ? ` • ${requesterLabel} <@${track.requestedBy}>` : '';
+  const by = options.includeRequester !== false && track?.requestedBy ? ` | ${requesterLabel} <@${track.requestedBy}>` : '';
   const duration = String(track?.duration ?? (options.t ? options.t('common.unknown') : 'Unknown'));
   const titleRaw = compactTrackTitle(track?.title);
   const staticLength = prefix.length + by.length + duration.length + 7;
@@ -121,19 +118,23 @@ export function parseVoiceChannelArgument(args: string[] | null | undefined) {
 }
 
 export function trackLabel(track: TrackLike) {
-  const by = track.requestedBy ? ` • requested by <@${track.requestedBy}>` : '';
+  const by = track.requestedBy ? ` | requested by <@${track.requestedBy}>` : '';
   return `**${track.title}** (${track.duration})${by}`;
 }
 
 export function trackLabelWithLink(track: TrackLike, t?: Translator) {
   const duration = String(track?.duration ?? (t ? t('common.unknown') : 'Unknown'));
   const title = compactTrackTitle(track?.title);
-  const linkedTitle = isSafeMarkdownLinkTarget(track?.url)
-    ? `[**${title}**](${String(track.url).trim()})`
-    : `**${title}**`;
+  const linkedTitle = maskedLink(`**${title}**`, track?.url ?? null) || `**${title}**`;
   const requesterLabel = t ? t('common.requestedByLower') : 'requested by';
-  const by = track?.requestedBy ? ` • ${requesterLabel} <@${track.requestedBy}>` : '';
+  const by = track?.requestedBy ? ` | ${requesterLabel} <@${track.requestedBy}>` : '';
   return `${linkedTitle} (${duration})${by}`;
+}
+
+export function formatEta(remainingSeconds: number | null | undefined): string {
+  const remaining = Number(remainingSeconds);
+  if (!Number.isFinite(remaining) || remaining <= 0) return '';
+  return relativeFromNow(remaining);
 }
 
 export function buildTrackAuthor(track: TrackLike): EmbedAuthor | null {
@@ -191,7 +192,7 @@ export function buildProgressBar(
 ) {
   const isLive = options?.isLive === true;
   if (!Number.isFinite(totalSec) || totalSec <= 0) {
-    return `${formatSeconds(positionSec)} • ${isLive ? 'Live' : 'Unknown'}`;
+    return `${formatSeconds(positionSec)} | ${isLive ? 'Live' : 'Unknown'}`;
   }
 
   const clamped = Math.max(0, Math.min(positionSec, totalSec));
@@ -255,10 +256,17 @@ export function formatQueuePage(session: SessionLike, page: number, t?: Translat
 
   const pendingDurationSec = sumTrackDurationsSeconds(pending);
   const footer = buildSessionStatusFooter(session, pendingDurationSec, pending.length);
+  const currentRemainingSec = current?.isLive
+    ? 0
+    : Math.max(0, (parseDurationToSeconds(current?.duration) ?? 0) - (session.player?.getProgressSeconds?.() ?? 0));
+  const endsAt = current?.isLive ? '' : formatEta(pendingDurationSec + currentRemainingSec);
+  const summary = t
+    ? t('queue.summary', { count: pending.length, remaining: formatSeconds(pendingDurationSec) })
+    : `Queue: ${pending.length} tracks | Remaining: ${formatSeconds(pendingDurationSec)}`;
+  const endsSuffix = endsAt ? ` | ${t ? t('queue.endsAt', { time: endsAt }) : `ends ${endsAt}`}` : '';
+
   return {
-    description: t
-      ? t('queue.summary', { count: pending.length, remaining: formatSeconds(pendingDurationSec) })
-      : `Queue: **${pending.length}** tracks • Remaining: **${formatSeconds(pendingDurationSec)}**`,
+    description: `${summary}${endsSuffix}`,
     footer,
     fields,
   };
@@ -276,7 +284,7 @@ export function formatHistoryPage(session: SessionLike, page: number, t?: Transl
   return {
     description: t
       ? t('history.summary', { page: safePage, totalPages, count: history.length })
-      : `History page **${safePage}/${totalPages}** • Total tracks: **${history.length}**`,
+      : `History page ${safePage}/${totalPages} | Total tracks: ${history.length}`,
     fields: [{
       name: t ? t('history.recentlyPlayed') : 'Recently Played',
       value: joinLinesWithinLimit(

@@ -29,6 +29,7 @@ import {
   computeVoteSkipRequirement,
   parseDurationToSeconds,
   buildProgressBar,
+  formatEta,
   formatSeconds,
   parseRequiredInteger,
   formatQueuePage,
@@ -36,6 +37,7 @@ import {
   requireLibrary,
 } from './commandHelpers.ts';
 import { buildEmbed, sourceColor } from '../messageFormatter.ts';
+import { maskedLink } from '../fluxerMarkdown.ts';
 import type { Translator } from '../../i18n/index.ts';
 import { buildExportFilename, buildQueueCsv } from './helpers/csvExport.ts';
 import {
@@ -1397,19 +1399,23 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       const progressSec = session.player.getProgressSeconds();
       const isRadio = current.source === 'radio-stream';
       const pendingTracks = session.player.pendingTracks ?? [];
+      const stationName = String(current.title ?? 'Live Radio').trim() || 'Live Radio';
+      const endsAt = current.isLive || totalSec == null ? '' : formatEta(totalSec - progressSec);
+      const progressValue = [
+        buildProgressBar(progressSec, totalSec ?? Number.NaN, 16, { isLive: Boolean(current?.isLive) }),
+        endsAt ? ctx.t('now.ends', { time: endsAt }) : '',
+      ].filter(Boolean).join('\n');
       const fields: EmbedField[] = isRadio
         ? [
             { name: ctx.t('now.progress'), value: buildProgressBar(progressSec, totalSec ?? Number.NaN, 16, { isLive: true }) },
             {
               name: 'Station',
-              value: current.url
-                ? `[${String(current.title ?? 'Live Radio').trim() || 'Live Radio'}](${current.url})`
-                : (String(current.title ?? 'Live Radio').trim() || 'Live Radio'),
+              value: maskedLink(stationName, current.url ?? null) || stationName,
               inline: true,
             },
           ]
         : [
-            { name: ctx.t('now.progress'), value: buildProgressBar(progressSec, totalSec ?? Number.NaN, 16, { isLive: Boolean(current?.isLive) }) },
+            { name: ctx.t('now.progress'), value: progressValue },
             { name: ctx.t('now.loop'), value: String(session.player.loopMode ?? 'off'), inline: true },
             { name: ctx.t('common.volume'), value: `${session.player.volumePercent ?? 100}%`, inline: true },
             { name: ctx.t('now.queued'), value: String(pendingTracks.length), inline: true },
@@ -1730,7 +1736,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       const linePages = chunkLines(lines, 1000);
       if (linePages.length === 1) {
         await ctx.reply.info(
-          `Persistent history page **${persisted.page}/${persisted.totalPages}** • Total tracks: **${persisted.total}**`,
+          `Persistent history page ${persisted.page}/${persisted.totalPages} | Total tracks: ${persisted.total}`,
           [{ name: ctx.t('history.recentlyPlayed'), value: linePages[0] ?? '-' }]
         );
         return;
@@ -1739,7 +1745,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       const pages = linePages.map((value, idx) => buildInfoPayload(
         ctx,
         `Persistent history ${idx + 1}/${linePages.length}`,
-        `Page **${persisted.page}/${persisted.totalPages}** • Total tracks: **${persisted.total}**`,
+        `Page ${persisted.page}/${persisted.totalPages} | Total tracks: ${persisted.total}`,
         [{ name: ctx.t('history.recentlyPlayed'), value }]
       ));
       await ctx.sendPaginated(pages);

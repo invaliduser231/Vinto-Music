@@ -44,7 +44,7 @@ test('formatQueuePage keeps queue lines whole and balanced when content is long'
 
   assert.ok(nowPlaying);
   assert.ok(upNext);
-  assert.equal(payload.description, 'Queue: **10** tracks • Remaining: **37:30**');
+  assert.match(String(payload.description), /^Queue: 10 tracks \| Remaining: 37:30 \| ends <t:\d+:R>$/);
   assert.match(String(payload.footer ?? ''), /Loop off \| Vol 100% \| Dedupe off \| 24\/7 off/);
   assert.ok(hasBalancedBoldMarkers(nowPlaying.value));
   assert.ok(hasBalancedBoldMarkers(upNext.value));
@@ -78,7 +78,7 @@ test('formatHistoryPage keeps history lines whole and balanced when content is l
   const lines = value.split('\n').filter((line) => /^\d+\./.test(line));
   assert.ok(lines.length >= 1);
   for (const line of lines) {
-    assert.match(line, /^\d+\. \*\*.+\*\* \([^)]+\)( • requested by <@\d+>)?$/);
+    assert.match(line, /^\d+\. \*\*.+\*\* \([^)]+\)( \| requested by <@\d+>)?$/);
   }
 });
 

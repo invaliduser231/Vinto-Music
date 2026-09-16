@@ -133,6 +133,7 @@ export const en = {
   'now.queued': 'Queued',
   'now.song': 'Song',
   'now.detecting': 'Detecting...',
+  'now.ends': 'Ends {time}',
 
   'seek.usage': 'Usage: {prefix}seek <seconds|mm:ss|hh:mm:ss>',
   'seek.invalid': 'Invalid seek position.',
@@ -579,8 +580,9 @@ export const en = {
   'queue.empty': 'Queue is empty.',
   'queue.nowPlaying': 'Now Playing',
   'queue.upNext': 'Up Next (Page {page}/{total})',
-  'queue.summary': 'Queue: **{count}** tracks • Remaining: **{remaining}**',
-  'history.summary': 'History page **{page}/{totalPages}** • Total tracks: **{count}**',
+  'queue.summary': 'Queue: {count} tracks | Remaining: {remaining}',
+  'queue.endsAt': 'ends {time}',
+  'history.summary': 'History page {page}/{totalPages} | Total tracks: {count}',
 
   'recap.weeklyTitle': 'Weekly music recap',
   'recap.totalPlays7d': 'Total Plays (7d)',

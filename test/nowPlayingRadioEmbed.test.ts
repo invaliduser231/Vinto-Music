@@ -108,7 +108,7 @@ test('now command shows simplified radio embed fields', async () => {
   const fieldNames = finalEmbed.fields.map((field) => field.name);
   assert.deepEqual(fieldNames, ['Song', 'Progress', 'Station', 'Artist']);
   assert.equal(finalEmbed.description, undefined);
-  assert.equal(finalEmbed.fields.find((field) => field.name === 'Station')?.value, '[Demo Station Live](https://radio.example/stream)');
+  assert.equal(finalEmbed.fields.find((field) => field.name === 'Station')?.value, '[Demo Station Live](<https://radio.example/stream>)');
   assert.equal(finalEmbed.fields.find((field) => field.name === 'Song')?.value, 'Song Demo');
   assert.equal(finalEmbed.fields.find((field) => field.name === 'Artist')?.value, 'Artist Demo');
   assert.equal(finalEmbed.footer?.text, 'Vinto | Radio recognition costs money to run. Support: https://ko-fi.com/Q5Q31VDH1Z');
