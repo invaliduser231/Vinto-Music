@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.12.1] - 2026-09-16
+
+- Fixes:
+  - the track title in a now playing embed carries the link to the source, instead of the heading above it
+- Tests: covered the linked title and the fallback for a track without a url
+
 ## [0.12.0] - 2026-09-16
 
 - Changes:
