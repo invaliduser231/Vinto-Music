@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 
 import { CommandRouter } from '../src/bot/commandRouter.ts';
+import { createTranslator } from '../src/i18n/index.ts';
 
 function createRouter(sessions: EventEmitter) {
   return new CommandRouter({
@@ -123,6 +124,68 @@ test('trackStart popup waits briefly for deferred metadata before sending', asyn
     type: 'info',
     text: 'Now playing in <#voice-1>: **Hydrated Track** (3:33)',
   }]);
+});
+
+test('now playing embed links the track title instead of the heading', async () => {
+  const sessions = new EventEmitter();
+  const router = createRouter(sessions);
+  const payloads: Array<Record<string, unknown>> = [];
+
+  router.rest.sendMessage = (async (_channelId: string, payload: Record<string, unknown>) => {
+    payloads.push(payload);
+    return { id: 'message-1' };
+  }) as CommandRouter['rest']['sendMessage'];
+
+  try {
+    const published = await router._publishNowPlaying(
+      { guildId: 'guild-1', settings: {} } as never,
+      { title: 'Loser', duration: '3:43', url: 'https://www.deezer.com/track/3602329332', source: 'deezer', requestedBy: '42' },
+      'text-1',
+      ' in <#voice-1>',
+      createTranslator('en'),
+    );
+
+    assert.equal(published, true);
+  } finally {
+    if (router.weeklySweepHandle) clearInterval(router.weeklySweepHandle);
+    if (router.ephemeralCleanupHandle) clearInterval(router.ephemeralCleanupHandle);
+  }
+
+  const embed = (payloads[0] as { embeds: Array<Record<string, unknown>> }).embeds[0];
+  assert.equal(embed?.url, undefined);
+  assert.equal(embed?.title, 'Now playing in <#voice-1>');
+  assert.equal(
+    embed?.description,
+    '[**Loser**](<https://www.deezer.com/track/3602329332>) `3:43` | <@42>'
+  );
+});
+
+test('now playing embed falls back to plain text when the track has no url', async () => {
+  const sessions = new EventEmitter();
+  const router = createRouter(sessions);
+  const payloads: Array<Record<string, unknown>> = [];
+
+  router.rest.sendMessage = (async (_channelId: string, payload: Record<string, unknown>) => {
+    payloads.push(payload);
+    return { id: 'message-2' };
+  }) as CommandRouter['rest']['sendMessage'];
+
+  try {
+    await router._publishNowPlaying(
+      { guildId: 'guild-1', settings: {} } as never,
+      { title: 'Local File', duration: '2:10', source: 'youtube' },
+      'text-1',
+      '',
+      createTranslator('en'),
+    );
+  } finally {
+    if (router.weeklySweepHandle) clearInterval(router.weeklySweepHandle);
+    if (router.ephemeralCleanupHandle) clearInterval(router.ephemeralCleanupHandle);
+  }
+
+  const embed = (payloads[0] as { embeds: Array<Record<string, unknown>> }).embeds[0];
+  assert.equal(embed?.url, undefined);
+  assert.equal(embed?.description, '**Local File** `2:10`');
 });
 
 test('trackStart popup is suppressed for persistent session restore playback', async () => {

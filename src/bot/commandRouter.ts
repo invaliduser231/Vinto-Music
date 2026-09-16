@@ -3,6 +3,7 @@ import { createTranslator, DEFAULT_LOCALE, resolveLocale, type Locale } from '..
 import { resolveLimits } from './services/votePerks.ts';
 import { parseCommand } from '../utils/commandParser.ts';
 import { buildEmbed, makeResponder, sourceColor } from './messageFormatter.ts';
+import { maskedLink } from './fluxerMarkdown.ts';
 import { buildTrackAuthor } from './commands/helpers/formatting.ts';
 import { CommandRegistry } from './commandRegistry.ts';
 import { registerCommands } from './commands/index.ts';
@@ -982,7 +983,7 @@ export class CommandRouter {
     const url = String(track?.url ?? '').trim();
     const requestedBy = String(track?.requestedBy ?? '').trim();
 
-    const descriptionParts = [`**${title}**`, `\`${duration}\``];
+    const descriptionParts = [maskedLink(`**${title}**`, url) || `**${title}**`, `\`${duration}\``];
     if (requestedBy) descriptionParts.push(`| <@${requestedBy}>`);
 
     const scrobblerFooter = await this._buildScrobbleFooter(session, eventT);
@@ -992,7 +993,6 @@ export class CommandRouter {
       color: sourceColor(track?.source as string | null | undefined),
       thumbnailUrl: (track?.thumbnailUrl as string | null | undefined) ?? null,
       author: buildTrackAuthor(track as never),
-      url: url || null,
       footer: scrobblerFooter,
     });
 

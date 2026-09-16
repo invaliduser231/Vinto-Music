@@ -1439,7 +1439,6 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
           thumbnailUrl: current.thumbnailUrl ?? null,
           imageUrl: current.thumbnailUrl ?? null,
           footer: sessionFooter,
-          url: current.url ?? null,
           author: buildTrackAuthor(current),
           color: sourceColor(current.source),
         }
