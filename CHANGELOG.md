@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.12.0] - 2026-09-16
+
+- Changes:
+  - `now` states when the current track runs out and `queue` states when the whole queue does, both as a live timestamp that stays right while the message sits in the channel
+  - a scrobble, a Last.fm registration date, a DJ handoff expiry and an audio diagnostics snapshot carry a timestamp the client renders in the reader's own locale instead of a raw ISO string
+  - a track link no longer pulls a link preview into the channel
+  - replies without embeds keep their fields and their footer, which were dropped before, and a warning or an error is marked as such
+  - the bullet separator gave way to a pipe, page counters and totals are no longer bold
+- Tests: covered the markdown helpers, the plain-text rendering and the changed queue and radio output
+
 ## [0.11.14] - 2026-09-15
 
 - Changes:
