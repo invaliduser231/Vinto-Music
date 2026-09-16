@@ -453,7 +453,7 @@ export class SessionManager extends EventEmitter {
     } else if (permissionError) {
       await this._notifySessionChannel(
         session,
-        'Kick timer fired, but the disconnect was rejected (403). This uses the same action as earrape protection — if that can remove someone but this cannot, check that I still have **Move Members** in this channel.'
+        'Kick timer fired, but the disconnect was rejected (403). This uses the same action as earrape protection. If that can remove someone but this cannot, check that I still have **Move Members** in this channel.'
       );
     } else {
       await this._notifySessionChannel(

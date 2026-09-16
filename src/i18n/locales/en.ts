@@ -91,20 +91,20 @@ export const en = {
   'play.status.deferredPlaylistInterrupted': 'Stopped live stream and started playlist playback. Resolving track metadata...',
   'play.status.added': 'Added to queue: {track}',
   'play.status.addedPlaylist': {
-    one: 'Added **{count}** track from playlist.',
-    other: 'Added **{count}** tracks from playlist.',
+    one: 'Added {count} track from playlist.',
+    other: 'Added {count} tracks from playlist.',
   },
   'play.status.interruptedNowPlaying': 'Stopped live stream. Playing now: {track}',
   'play.status.interruptedQueued': {
-    one: 'Stopped live stream and queued **{count}** track to start now.',
-    other: 'Stopped live stream and queued **{count}** tracks to start now.',
+    one: 'Stopped live stream and queued {count} track to start now.',
+    other: 'Stopped live stream and queued {count} tracks to start now.',
   },
 
   'playnext.usage': 'Usage: {prefix}playnext <query>',
   'playnext.queuedNext': 'Queued next: {track}',
   'playnext.queuedPlaylist': {
-    one: 'Queued **{count}** playlist track at the front.',
-    other: 'Queued **{count}** playlist tracks at the front.',
+    one: 'Queued {count} playlist track at the front.',
+    other: 'Queued {count} playlist tracks at the front.',
   },
 
   'search.usage': 'Usage: {prefix}search <query>',
@@ -121,7 +121,7 @@ export const en = {
   'skip.voteFailed': 'Could not register vote-skip right now.',
   'skip.alreadyVoted': 'You already voted to skip this track.',
   'skip.votePassed': 'Vote-skip passed ({votes}/{required}). Skipping track.',
-  'skip.voteRegistered': 'Vote registered: **{votes}/{required}** needed to skip.',
+  'skip.voteRegistered': 'Vote registered: {votes}/{required} needed to skip.',
 
   'pause.cannot': 'Cannot pause right now.',
   'pause.paused': 'Playback paused.',
@@ -137,7 +137,7 @@ export const en = {
 
   'seek.usage': 'Usage: {prefix}seek <seconds|mm:ss|hh:mm:ss>',
   'seek.invalid': 'Invalid seek position.',
-  'seek.seeking': 'Seeking to **{position}**...',
+  'seek.seeking': 'Seeking to {position}...',
 
   'previous.notFound': 'No previous track found in history.',
   'previous.queued': 'Queued previous track: {track}',
@@ -163,12 +163,12 @@ export const en = {
   'volume.set': 'Volume set to **{percent}%**.',
 
   'kicktimer.inactive': 'No kick timer is active. Use `{prefix}kicktimer <seconds>` to start one.',
-  'kicktimer.active': 'Kick timer active: **{remaining}** remaining (set to {total}).',
+  'kicktimer.active': 'Kick timer active: {remaining} remaining (set to {total}).',
   'kicktimer.cancelled': 'Kick timer cancelled.',
   'kicktimer.noneActive': 'No kick timer was active.',
-  'kicktimer.rangeError': 'Provide a duration between **{min}** and **{max}** seconds.',
+  'kicktimer.rangeError': 'Provide a duration between {min} and {max} seconds.',
   'kicktimer.unavailable': 'Kick timer is not available right now.',
-  'kicktimer.set': 'Kick timer set to **{duration}**. Cancel with `{prefix}kicktimer off`.',
+  'kicktimer.set': 'Kick timer set to {duration}. Cancel with `{prefix}kicktimer off`.',
 
   'filter.current': 'Current filter: **{preset}**',
   'filter.set': 'Filter set to **{preset}**.',
@@ -185,7 +185,7 @@ export const en = {
   'effects.pitch': 'Pitch',
   'effects.reapplying': 'Reapplying to current track...',
 
-  'voteskip.progress': 'Vote-skip progress: **{current}/{needed}**',
+  'voteskip.progress': 'Vote-skip progress: {current}/{needed}',
 
   'lyrics.needQuery': 'Provide a song query or play a track first.',
   'lyrics.unavailable': 'Lyrics service is not available.',
@@ -325,16 +325,16 @@ export const en = {
   'playlist.deleted': 'Deleted playlist **{name}**.',
   'playlist.guildPlaylists': 'Guild playlists',
   'playlist.listTitlePaged': 'Guild playlists ({current}/{total})',
-  'playlist.listSummary': 'Playlists page **{page}/{totalPages}** • Total: **{total}**',
-  'playlist.pageSummary': 'Page **{page}/{totalPages}** • Total: **{total}**',
-  'playlist.showSummary': 'Playlist **{name}** • Page **{page}/{totalPages}** • Tracks: **{count}**',
+  'playlist.listSummary': 'Playlists page {page}/{totalPages} | Total: {total}',
+  'playlist.pageSummary': 'Page {page}/{totalPages} | Total: {total}',
+  'playlist.showSummary': 'Playlist **{name}** | Page {page}/{totalPages} | Tracks: {count}',
   'playlist.noTracksFound': 'No tracks found for this playlist add query.',
-  'playlist.added': { one: 'Added **{count}** track to **{name}**.', other: 'Added **{count}** tracks to **{name}**.' },
+  'playlist.added': { one: 'Added {count} track to **{name}**.', other: 'Added {count} tracks to **{name}**.' },
   'playlist.skipped': 'Skipped',
   'playlist.overLimit': '{count} over playlist limit.',
   'playlist.removed': 'Removed from **{name}**: {track}',
   'playlist.noneAdded': 'No tracks were added (likely duplicates with dedupe enabled).',
-  'playlist.queued': { one: 'Queued **{count}** track from playlist **{name}**.', other: 'Queued **{count}** tracks from playlist **{name}**.' },
+  'playlist.queued': { one: 'Queued {count} track from playlist **{name}**.', other: 'Queued {count} tracks from playlist **{name}**.' },
   'playlist.usageCreate': 'Usage: {prefix}playlist create <name>',
   'playlist.usageDelete': 'Usage: {prefix}playlist delete <name>',
   'playlist.usageShow': 'Usage: {prefix}playlist show <name> [page]',
@@ -351,8 +351,8 @@ export const en = {
   'station.showTitle': 'Station: **{name}**',
   'station.guildPreset': 'Guild preset',
   'station.builtinPreset': 'Built-in preset',
-  'station.listSummary': 'Radio stations • Page **{page}/{totalPages}** • Total: **{total}**',
-  'station.listSummaryQuery': 'Stations for **{query}** • Page **{page}/{totalPages}** • Total: **{total}**',
+  'station.listSummary': 'Radio stations | Page {page}/{totalPages} | Total: {total}',
+  'station.listSummaryQuery': 'Stations for **{query}** | Page {page}/{totalPages} | Total: {total}',
   'station.noMatch': 'No radio stations matched **{query}**.',
   'station.noneSaved': 'No guild radio presets saved yet.',
   'station.notFound': 'Station **{name}** not found.',
@@ -730,11 +730,7 @@ export const en = {
 
   'lastfm.recentTitle': 'Recent scrobbles: {user}',
   'lastfm.nowPlayingTag': 'playing now',
-  'lastfm.noRecent': '{user} has no scrobbles.',
-
-
-
-
+  'lastfm.noRecent': '{user} has no scrobbles.',
 
   'lastfm.topTitle': 'Top {kind}: {user}, {period}',
   'lastfm.noTop': '{user} has nothing in that chart.',
@@ -757,7 +753,7 @@ export const en = {
 
   'lastfm.blendNobody': 'Nobody here has a Last.fm account linked.',
   'lastfm.blendEmpty': 'No mix could be built from those profiles.',
-  'lastfm.blendQueued': 'Queued **{count}** tracks from {listeners} profiles.',
+  'lastfm.blendQueued': 'Queued {count} tracks from {listeners} profiles.',
   'lastfm.fieldBlendedFrom': 'Mixed from',
 
   'lastfm.leaderboardGlobal': 'Top scrobblers',
@@ -775,8 +771,8 @@ export const en = {
     one: 'Scrobbling for {count} listener',
     other: 'Scrobbling for {count} listeners',
   },
-  'lastfm.milestoneScrobbles': '{user} passed **{count}** scrobbles.',
-  'lastfm.milestoneStreak': '{user} is on a **{count}** day streak.',
+  'lastfm.milestoneScrobbles': '{user} passed {count} scrobbles.',
+  'lastfm.milestoneStreak': '{user} is on a {count} day streak.',
 
   'autoplay.current': 'Autoplay in {channel} is currently **{state}**.',
   'autoplay.set': 'Autoplay in {channel} is now **{state}**.',

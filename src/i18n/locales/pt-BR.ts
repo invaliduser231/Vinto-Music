@@ -93,20 +93,20 @@ export const ptBR: Catalog = {
   'play.status.deferredPlaylistInterrupted': 'Transmissão ao vivo interrompida e reprodução da playlist iniciada. Carregando os dados das faixas...',
   'play.status.added': 'Adicionado à fila: {track}',
   'play.status.addedPlaylist': {
-    one: '**{count}** faixa da playlist adicionada.',
-    other: '**{count}** faixas da playlist adicionadas.',
+    one: '{count} faixa da playlist adicionada.',
+    other: '{count} faixas da playlist adicionadas.',
   },
   'play.status.interruptedNowPlaying': 'Transmissão ao vivo interrompida. Tocando agora: {track}',
   'play.status.interruptedQueued': {
-    one: 'Transmissão ao vivo interrompida e **{count}** faixa colocada na fila para começar agora.',
-    other: 'Transmissão ao vivo interrompida e **{count}** faixas colocadas na fila para começar agora.',
+    one: 'Transmissão ao vivo interrompida e {count} faixa colocada na fila para começar agora.',
+    other: 'Transmissão ao vivo interrompida e {count} faixas colocadas na fila para começar agora.',
   },
 
   'playnext.usage': 'Uso: {prefix}playnext <busca>',
   'playnext.queuedNext': 'Próxima na fila: {track}',
   'playnext.queuedPlaylist': {
-    one: '**{count}** faixa da playlist colocada no início da fila.',
-    other: '**{count}** faixas da playlist colocadas no início da fila.',
+    one: '{count} faixa da playlist colocada no início da fila.',
+    other: '{count} faixas da playlist colocadas no início da fila.',
   },
 
   'search.usage': 'Uso: {prefix}search <busca>',
@@ -123,7 +123,7 @@ export const ptBR: Catalog = {
   'skip.voteFailed': 'Não foi possível registrar o voto para pular agora.',
   'skip.alreadyVoted': 'Você já votou para pular esta faixa.',
   'skip.votePassed': 'Votação aprovada ({votes}/{required}). Pulando a faixa.',
-  'skip.voteRegistered': 'Voto registrado: **{votes}/{required}** necessários para pular.',
+  'skip.voteRegistered': 'Voto registrado: {votes}/{required} necessários para pular.',
 
   'pause.cannot': 'Não é possível pausar agora.',
   'pause.paused': 'Reprodução pausada.',
@@ -139,7 +139,7 @@ export const ptBR: Catalog = {
 
   'seek.usage': 'Uso: {prefix}seek <segundos|mm:ss|hh:mm:ss>',
   'seek.invalid': 'Posição de avanço inválida.',
-  'seek.seeking': 'Avançando para **{position}**...',
+  'seek.seeking': 'Avançando para {position}...',
 
   'previous.notFound': 'Nenhuma faixa anterior encontrada no histórico.',
   'previous.queued': 'Faixa anterior na fila: {track}',
@@ -165,12 +165,12 @@ export const ptBR: Catalog = {
   'volume.set': 'Volume definido como **{percent}%**.',
 
   'kicktimer.inactive': 'Nenhum temporizador de expulsão ativo. Use `{prefix}kicktimer <segundos>` para iniciar um.',
-  'kicktimer.active': 'Temporizador ativo: faltam **{remaining}** (definido para {total}).',
+  'kicktimer.active': 'Temporizador ativo: faltam {remaining} (definido para {total}).',
   'kicktimer.cancelled': 'Temporizador de expulsão cancelado.',
   'kicktimer.noneActive': 'Nenhum temporizador estava ativo.',
-  'kicktimer.rangeError': 'Informe uma duração entre **{min}** e **{max}** segundos.',
+  'kicktimer.rangeError': 'Informe uma duração entre {min} e {max} segundos.',
   'kicktimer.unavailable': 'O temporizador de expulsão não está disponível agora.',
-  'kicktimer.set': 'Temporizador definido para **{duration}**. Cancele com `{prefix}kicktimer off`.',
+  'kicktimer.set': 'Temporizador definido para {duration}. Cancele com `{prefix}kicktimer off`.',
 
   'filter.current': 'Filtro atual: **{preset}**',
   'filter.set': 'Filtro definido como **{preset}**.',
@@ -187,7 +187,7 @@ export const ptBR: Catalog = {
   'effects.pitch': 'Tom',
   'effects.reapplying': 'Reaplicando na faixa atual...',
 
-  'voteskip.progress': 'Votação para pular: **{current}/{needed}**',
+  'voteskip.progress': 'Votação para pular: {current}/{needed}',
 
   'lyrics.needQuery': 'Informe uma busca ou toque uma faixa primeiro.',
   'lyrics.unavailable': 'O serviço de letras não está disponível.',
@@ -327,16 +327,16 @@ export const ptBR: Catalog = {
   'playlist.deleted': 'Playlist **{name}** excluída.',
   'playlist.guildPlaylists': 'Playlists do servidor',
   'playlist.listTitlePaged': 'Playlists do servidor ({current}/{total})',
-  'playlist.listSummary': 'Página de playlists **{page}/{totalPages}** • Total: **{total}**',
-  'playlist.pageSummary': 'Página **{page}/{totalPages}** • Total: **{total}**',
-  'playlist.showSummary': 'Playlist **{name}** • Página **{page}/{totalPages}** • Faixas: **{count}**',
+  'playlist.listSummary': 'Página de playlists {page}/{totalPages} | Total: {total}',
+  'playlist.pageSummary': 'Página {page}/{totalPages} | Total: {total}',
+  'playlist.showSummary': 'Playlist **{name}** | Página {page}/{totalPages} | Faixas: {count}',
   'playlist.noTracksFound': 'Nenhuma faixa encontrada para essa busca.',
-  'playlist.added': { one: '**{count}** faixa adicionada a **{name}**.', other: '**{count}** faixas adicionadas a **{name}**.' },
+  'playlist.added': { one: '{count} faixa adicionada a **{name}**.', other: '{count} faixas adicionadas a **{name}**.' },
   'playlist.skipped': 'Ignoradas',
   'playlist.overLimit': '{count} acima do limite da playlist.',
   'playlist.removed': 'Removido de **{name}**: {track}',
   'playlist.noneAdded': 'Nenhuma faixa foi adicionada (provavelmente duplicatas com a proteção ativa).',
-  'playlist.queued': { one: '**{count}** faixa da playlist **{name}** na fila.', other: '**{count}** faixas da playlist **{name}** na fila.' },
+  'playlist.queued': { one: '{count} faixa da playlist **{name}** na fila.', other: '{count} faixas da playlist **{name}** na fila.' },
   'playlist.usageCreate': 'Uso: {prefix}playlist create <nome>',
   'playlist.usageDelete': 'Uso: {prefix}playlist delete <nome>',
   'playlist.usageShow': 'Uso: {prefix}playlist show <nome> [página]',
@@ -353,8 +353,8 @@ export const ptBR: Catalog = {
   'station.showTitle': 'Estação: **{name}**',
   'station.guildPreset': 'Predefinição do servidor',
   'station.builtinPreset': 'Predefinição interna',
-  'station.listSummary': 'Estações de rádio • Página **{page}/{totalPages}** • Total: **{total}**',
-  'station.listSummaryQuery': 'Estações para **{query}** • Página **{page}/{totalPages}** • Total: **{total}**',
+  'station.listSummary': 'Estações de rádio | Página {page}/{totalPages} | Total: {total}',
+  'station.listSummaryQuery': 'Estações para **{query}** | Página {page}/{totalPages} | Total: {total}',
   'station.noMatch': 'Nenhuma estação de rádio corresponde a **{query}**.',
   'station.noneSaved': 'Ainda não há predefinições de rádio salvas neste servidor.',
   'station.notFound': 'Estação **{name}** não encontrada.',
@@ -732,11 +732,7 @@ export const ptBR: Catalog = {
 
   'lastfm.recentTitle': 'Envios recentes: {user}',
   'lastfm.nowPlayingTag': 'tocando agora',
-  'lastfm.noRecent': '{user} não tem envios.',
-
-
-
-
+  'lastfm.noRecent': '{user} não tem envios.',
 
   'lastfm.topTitle': 'Top {kind}: {user}, {period}',
   'lastfm.noTop': '{user} não tem nada nessa lista.',
@@ -759,7 +755,7 @@ export const ptBR: Catalog = {
 
   'lastfm.blendNobody': 'Ninguém aqui vinculou uma conta do Last.fm.',
   'lastfm.blendEmpty': 'Não deu para montar uma mistura com esses perfis.',
-  'lastfm.blendQueued': '**{count}** faixas de {listeners} perfis na fila.',
+  'lastfm.blendQueued': '{count} faixas de {listeners} perfis na fila.',
   'lastfm.fieldBlendedFrom': 'Misturado de',
 
   'lastfm.leaderboardGlobal': 'Top de envios',
@@ -777,8 +773,8 @@ export const ptBR: Catalog = {
     one: 'Enviando para {count} ouvinte',
     other: 'Enviando para {count} ouvintes',
   },
-  'lastfm.milestoneScrobbles': '{user} passou de **{count}** envios.',
-  'lastfm.milestoneStreak': '{user} está em **{count}** dias seguidos.',
+  'lastfm.milestoneScrobbles': '{user} passou de {count} envios.',
+  'lastfm.milestoneStreak': '{user} está em {count} dias seguidos.',
 
   'autoplay.current': 'A reprodução automática em {channel} está **{state}**.',
   'autoplay.set': 'A reprodução automática em {channel} agora está **{state}**.',

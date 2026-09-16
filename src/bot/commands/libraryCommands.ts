@@ -300,7 +300,7 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
         await typedCtx.sendPaginated(pages.map((value, idx) => buildSingleFieldInfoPayload(
           ctx,
           `Playlist ${playlist.name} (${idx + 1}/${pages.length})`,
-          `Page **${safePage}/${totalPages}** • Tracks: **${playlist.tracks.length}**`,
+          `Page ${safePage}/${totalPages} | Tracks: ${playlist.tracks.length}`,
           'Tracks',
           value
         )));
@@ -511,7 +511,7 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
               payloads.push(buildSingleFieldInfoPayload(
                 ctx,
                 'Guild radio presets',
-                `Page **${next.page}/${next.totalPages}** • Total: **${next.total}**`,
+                `Page ${next.page}/${next.totalPages} | Total: ${next.total}`,
                 'Presets',
                 value
               ));
@@ -524,7 +524,7 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
         const result = paginate(resolved, page, h.PLAYLIST_PAGE_SIZE);
         const lines = result.items.map((station, idx) => formatStationLine(station, result.start + idx + 1));
         const pages = chunkLines(lines, 1000);
-        const summary = `Guild radio presets • Page **${result.page}/${result.totalPages}** • Total: **${result.total}**`;
+        const summary = `Guild radio presets | Page ${result.page}/${result.totalPages} | Total: ${result.total}`;
 
         if (pages.length === 1) {
           await ctx.reply.info(summary, [{ name: ctx.t('station.presets'), value: pages[0]! }]);
@@ -698,7 +698,7 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
       const pages = chunkLines(lines, 1000);
       if (pages.length === 1) {
         await ctx.reply.info(
-          `Favorites page **${result.page}/${result.totalPages}** • Total: **${result.total}**`,
+          `Favorites page ${result.page}/${result.totalPages} | Total: ${result.total}`,
           [{ name: ctx.t('favorites.yours'), value: pages[0]! }]
         );
         return;
@@ -707,7 +707,7 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
       await typedCtx.sendPaginated(pages.map((value, idx) => buildSingleFieldInfoPayload(
         ctx,
         `Favorites (${idx + 1}/${pages.length})`,
-        `Page **${result.page}/${result.totalPages}** • Total: **${result.total}**`,
+        `Page ${result.page}/${result.totalPages} | Total: ${result.total}`,
         'Your favorites',
         value
       )));

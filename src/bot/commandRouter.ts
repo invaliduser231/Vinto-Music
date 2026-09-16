@@ -983,7 +983,7 @@ export class CommandRouter {
     const requestedBy = String(track?.requestedBy ?? '').trim();
 
     const descriptionParts = [`**${title}**`, `\`${duration}\``];
-    if (requestedBy) descriptionParts.push(`• <@${requestedBy}>`);
+    if (requestedBy) descriptionParts.push(`| <@${requestedBy}>`);
 
     const scrobblerFooter = await this._buildScrobbleFooter(session, eventT);
     const embed = buildEmbed({

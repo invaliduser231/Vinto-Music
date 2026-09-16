@@ -93,20 +93,20 @@ export const de: Catalog = {
   'play.status.deferredPlaylistInterrupted': 'Live-Stream gestoppt und Playlist-Wiedergabe gestartet. Lade Titeldaten...',
   'play.status.added': 'Zur Warteschlange hinzugefügt: {track}',
   'play.status.addedPlaylist': {
-    one: '**{count}** Titel aus der Playlist hinzugefügt.',
-    other: '**{count}** Titel aus der Playlist hinzugefügt.',
+    one: '{count} Titel aus der Playlist hinzugefügt.',
+    other: '{count} Titel aus der Playlist hinzugefügt.',
   },
   'play.status.interruptedNowPlaying': 'Live-Stream gestoppt. Läuft jetzt: {track}',
   'play.status.interruptedQueued': {
-    one: 'Live-Stream gestoppt und **{count}** Titel für den Sofortstart eingereiht.',
-    other: 'Live-Stream gestoppt und **{count}** Titel für den Sofortstart eingereiht.',
+    one: 'Live-Stream gestoppt und {count} Titel für den Sofortstart eingereiht.',
+    other: 'Live-Stream gestoppt und {count} Titel für den Sofortstart eingereiht.',
   },
 
   'playnext.usage': 'Verwendung: {prefix}playnext <Suche>',
   'playnext.queuedNext': 'Als Nächstes eingereiht: {track}',
   'playnext.queuedPlaylist': {
-    one: '**{count}** Playlist-Titel ganz vorn eingereiht.',
-    other: '**{count}** Playlist-Titel ganz vorn eingereiht.',
+    one: '{count} Playlist-Titel ganz vorn eingereiht.',
+    other: '{count} Playlist-Titel ganz vorn eingereiht.',
   },
 
   'search.usage': 'Verwendung: {prefix}search <Suche>',
@@ -123,7 +123,7 @@ export const de: Catalog = {
   'skip.voteFailed': 'Die Skip-Abstimmung konnte gerade nicht registriert werden.',
   'skip.alreadyVoted': 'Du hast bereits für das Überspringen dieses Titels gestimmt.',
   'skip.votePassed': 'Abstimmung erfolgreich ({votes}/{required}). Überspringe Titel.',
-  'skip.voteRegistered': 'Stimme gezählt: **{votes}/{required}** zum Überspringen nötig.',
+  'skip.voteRegistered': 'Stimme gezählt: {votes}/{required} zum Überspringen nötig.',
 
   'pause.cannot': 'Pausieren ist gerade nicht möglich.',
   'pause.paused': 'Wiedergabe pausiert.',
@@ -139,7 +139,7 @@ export const de: Catalog = {
 
   'seek.usage': 'Verwendung: {prefix}seek <Sekunden|mm:ss|hh:mm:ss>',
   'seek.invalid': 'Ungültige Sprungposition.',
-  'seek.seeking': 'Springe zu **{position}**...',
+  'seek.seeking': 'Springe zu {position}...',
 
   'previous.notFound': 'Kein vorheriger Titel im Verlauf gefunden.',
   'previous.queued': 'Vorherigen Titel eingereiht: {track}',
@@ -165,12 +165,12 @@ export const de: Catalog = {
   'volume.set': 'Lautstärke auf **{percent}%** gesetzt.',
 
   'kicktimer.inactive': 'Es läuft kein Kick-Timer. Starte einen mit `{prefix}kicktimer <Sekunden>`.',
-  'kicktimer.active': 'Kick-Timer aktiv: noch **{remaining}** (eingestellt auf {total}).',
+  'kicktimer.active': 'Kick-Timer aktiv: noch {remaining} (eingestellt auf {total}).',
   'kicktimer.cancelled': 'Kick-Timer abgebrochen.',
   'kicktimer.noneActive': 'Es war kein Kick-Timer aktiv.',
-  'kicktimer.rangeError': 'Gib eine Dauer zwischen **{min}** und **{max}** Sekunden an.',
+  'kicktimer.rangeError': 'Gib eine Dauer zwischen {min} und {max} Sekunden an.',
   'kicktimer.unavailable': 'Der Kick-Timer ist gerade nicht verfügbar.',
-  'kicktimer.set': 'Kick-Timer auf **{duration}** gesetzt. Abbrechen mit `{prefix}kicktimer off`.',
+  'kicktimer.set': 'Kick-Timer auf {duration} gesetzt. Abbrechen mit `{prefix}kicktimer off`.',
 
   'filter.current': 'Aktueller Filter: **{preset}**',
   'filter.set': 'Filter auf **{preset}** gesetzt.',
@@ -187,7 +187,7 @@ export const de: Catalog = {
   'effects.pitch': 'Tonhöhe',
   'effects.reapplying': 'Wird auf den aktuellen Titel angewendet...',
 
-  'voteskip.progress': 'Skip-Abstimmung: **{current}/{needed}**',
+  'voteskip.progress': 'Skip-Abstimmung: {current}/{needed}',
 
   'lyrics.needQuery': 'Gib eine Suche an oder spiele zuerst einen Titel ab.',
   'lyrics.unavailable': 'Der Lyrics-Dienst ist nicht verfügbar.',
@@ -327,16 +327,16 @@ export const de: Catalog = {
   'playlist.deleted': 'Playlist **{name}** gelöscht.',
   'playlist.guildPlaylists': 'Server-Playlists',
   'playlist.listTitlePaged': 'Server-Playlists ({current}/{total})',
-  'playlist.listSummary': 'Playlist-Seite **{page}/{totalPages}** • Gesamt: **{total}**',
-  'playlist.pageSummary': 'Seite **{page}/{totalPages}** • Gesamt: **{total}**',
-  'playlist.showSummary': 'Playlist **{name}** • Seite **{page}/{totalPages}** • Titel: **{count}**',
+  'playlist.listSummary': 'Playlist-Seite {page}/{totalPages} | Gesamt: {total}',
+  'playlist.pageSummary': 'Seite {page}/{totalPages} | Gesamt: {total}',
+  'playlist.showSummary': 'Playlist **{name}** | Seite {page}/{totalPages} | Titel: {count}',
   'playlist.noTracksFound': 'Für diese Suche wurden keine Titel gefunden.',
-  'playlist.added': { one: '**{count}** Titel zu **{name}** hinzugefügt.', other: '**{count}** Titel zu **{name}** hinzugefügt.' },
+  'playlist.added': { one: '{count} Titel zu **{name}** hinzugefügt.', other: '{count} Titel zu **{name}** hinzugefügt.' },
   'playlist.skipped': 'Übersprungen',
   'playlist.overLimit': '{count} über dem Playlist-Limit.',
   'playlist.removed': 'Aus **{name}** entfernt: {track}',
   'playlist.noneAdded': 'Es wurden keine Titel hinzugefügt (vermutlich Duplikate bei aktivem Duplikatschutz).',
-  'playlist.queued': { one: '**{count}** Titel aus Playlist **{name}** eingereiht.', other: '**{count}** Titel aus Playlist **{name}** eingereiht.' },
+  'playlist.queued': { one: '{count} Titel aus Playlist **{name}** eingereiht.', other: '{count} Titel aus Playlist **{name}** eingereiht.' },
   'playlist.usageCreate': 'Verwendung: {prefix}playlist create <Name>',
   'playlist.usageDelete': 'Verwendung: {prefix}playlist delete <Name>',
   'playlist.usageShow': 'Verwendung: {prefix}playlist show <Name> [Seite]',
@@ -353,8 +353,8 @@ export const de: Catalog = {
   'station.showTitle': 'Sender: **{name}**',
   'station.guildPreset': 'Server-Preset',
   'station.builtinPreset': 'Eingebautes Preset',
-  'station.listSummary': 'Radiosender • Seite **{page}/{totalPages}** • Gesamt: **{total}**',
-  'station.listSummaryQuery': 'Sender für **{query}** • Seite **{page}/{totalPages}** • Gesamt: **{total}**',
+  'station.listSummary': 'Radiosender | Seite {page}/{totalPages} | Gesamt: {total}',
+  'station.listSummaryQuery': 'Sender für **{query}** | Seite {page}/{totalPages} | Gesamt: {total}',
   'station.noMatch': 'Keine Radiosender passen auf **{query}**.',
   'station.noneSaved': 'Es sind noch keine Server-Radio-Presets gespeichert.',
   'station.notFound': 'Sender **{name}** nicht gefunden.',
@@ -732,11 +732,7 @@ export const de: Catalog = {
 
   'lastfm.recentTitle': 'Letzte Scrobbles: {user}',
   'lastfm.nowPlayingTag': 'läuft gerade',
-  'lastfm.noRecent': '{user} hat keine Scrobbles.',
-
-
-
-
+  'lastfm.noRecent': '{user} hat keine Scrobbles.',
 
   'lastfm.topTitle': 'Top {kind}: {user}, {period}',
   'lastfm.noTop': '{user} hat in dieser Auswertung nichts.',
@@ -759,7 +755,7 @@ export const de: Catalog = {
 
   'lastfm.blendNobody': 'Niemand hier hat ein Last.fm-Konto verknüpft.',
   'lastfm.blendEmpty': 'Aus diesen Profilen ließ sich kein Mix bauen.',
-  'lastfm.blendQueued': '**{count}** Titel aus {listeners} Profilen eingereiht.',
+  'lastfm.blendQueued': '{count} Titel aus {listeners} Profilen eingereiht.',
   'lastfm.fieldBlendedFrom': 'Gemischt aus',
 
   'lastfm.leaderboardGlobal': 'Top-Scrobbler',
@@ -777,8 +773,8 @@ export const de: Catalog = {
     one: 'Scrobbelt für {count} Hörer',
     other: 'Scrobbelt für {count} Hörer',
   },
-  'lastfm.milestoneScrobbles': '{user} hat **{count}** Scrobbles geknackt.',
-  'lastfm.milestoneStreak': '{user} ist bei **{count}** Tagen am Stück.',
+  'lastfm.milestoneScrobbles': '{user} hat {count} Scrobbles geknackt.',
+  'lastfm.milestoneStreak': '{user} ist bei {count} Tagen am Stück.',
 
   'autoplay.current': 'Autoplay in {channel} ist derzeit **{state}**.',
   'autoplay.set': 'Autoplay in {channel} ist jetzt **{state}**.',

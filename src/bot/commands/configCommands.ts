@@ -452,7 +452,7 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
       const availableField = {
         name: ctx.t('language.available'),
         value: SUPPORTED_LOCALES
-          .map((locale) => `${localeFlag(locale)} \`${locale}\` — ${localeLabel(locale)}`)
+          .map((locale) => `${localeFlag(locale)} \`${locale}\` ${localeLabel(locale)}`)
           .join('\n'),
       };
 
