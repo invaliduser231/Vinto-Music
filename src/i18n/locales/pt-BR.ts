@@ -733,19 +733,10 @@ export const ptBR: Catalog = {
   'lastfm.recentTitle': 'Envios recentes: {user}',
   'lastfm.nowPlayingTag': 'tocando agora',
   'lastfm.noRecent': '{user} não tem envios.',
-  'lastfm.justNow': 'agora mesmo',
-  'lastfm.minutesAgo': {
-    one: 'há {count} minuto',
-    other: 'há {count} minutos',
-  },
-  'lastfm.hoursAgo': {
-    one: 'há {count} hora',
-    other: 'há {count} horas',
-  },
-  'lastfm.daysAgo': {
-    one: 'há {count} dia',
-    other: 'há {count} dias',
-  },
+
+
+
+
 
   'lastfm.topTitle': 'Top {kind}: {user}, {period}',
   'lastfm.noTop': '{user} não tem nada nessa lista.',

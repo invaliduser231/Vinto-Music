@@ -733,19 +733,10 @@ export const de: Catalog = {
   'lastfm.recentTitle': 'Letzte Scrobbles: {user}',
   'lastfm.nowPlayingTag': 'läuft gerade',
   'lastfm.noRecent': '{user} hat keine Scrobbles.',
-  'lastfm.justNow': 'gerade eben',
-  'lastfm.minutesAgo': {
-    one: 'vor {count} Minute',
-    other: 'vor {count} Minuten',
-  },
-  'lastfm.hoursAgo': {
-    one: 'vor {count} Stunde',
-    other: 'vor {count} Stunden',
-  },
-  'lastfm.daysAgo': {
-    one: 'vor {count} Tag',
-    other: 'vor {count} Tagen',
-  },
+
+
+
+
 
   'lastfm.topTitle': 'Top {kind}: {user}, {period}',
   'lastfm.noTop': '{user} hat in dieser Auswertung nichts.',

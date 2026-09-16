@@ -731,19 +731,10 @@ export const en = {
   'lastfm.recentTitle': 'Recent scrobbles: {user}',
   'lastfm.nowPlayingTag': 'playing now',
   'lastfm.noRecent': '{user} has no scrobbles.',
-  'lastfm.justNow': 'just now',
-  'lastfm.minutesAgo': {
-    one: '{count} minute ago',
-    other: '{count} minutes ago',
-  },
-  'lastfm.hoursAgo': {
-    one: '{count} hour ago',
-    other: '{count} hours ago',
-  },
-  'lastfm.daysAgo': {
-    one: '{count} day ago',
-    other: '{count} days ago',
-  },
+
+
+
+
 
   'lastfm.topTitle': 'Top {kind}: {user}, {period}',
   'lastfm.noTop': '{user} has nothing in that chart.',

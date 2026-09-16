@@ -14,6 +14,7 @@ import {
   trackLabel,
 } from './commandHelpers.ts';
 import { buildInfoPayload } from './responseUtils.ts';
+import { relativeTimestamp, timestampTag } from '../fluxerMarkdown.ts';
 import { LastFmApiError } from '../../integrations/lastfm/LastFmClient.ts';
 import { toLastFmTrack, trackIdentity } from '../../integrations/lastfm/trackMetadata.ts';
 import type { LastFmPeriod, LastFmRankedEntry } from '../../integrations/lastfm/LastFmClient.ts';
@@ -154,16 +155,7 @@ function formatRankedList(entries: LastFmRankedEntry[], t: CommandContextLike['t
 }
 
 function formatRelative(date: Date | null, t: CommandContextLike['t']): string {
-  if (!date) return t('common.unknown');
-
-  const diffMinutes = Math.max(0, Math.round((Date.now() - date.getTime()) / 60_000));
-  if (diffMinutes < 1) return t('lastfm.justNow');
-  if (diffMinutes < 60) return t('lastfm.minutesAgo', { count: diffMinutes });
-
-  const diffHours = Math.round(diffMinutes / 60);
-  if (diffHours < 24) return t('lastfm.hoursAgo', { count: diffHours });
-
-  return t('lastfm.daysAgo', { count: Math.round(diffHours / 24) });
+  return relativeTimestamp(date) || t('common.unknown');
 }
 
 function shuffleInPlace<T>(items: T[]): T[] {
@@ -475,7 +467,7 @@ async function handleProfile(ctx: CommandContextLike, lastfm: LastFmBundle): Pro
   if (info.registeredAt) {
     fields.push({
       name: ctx.t('lastfm.fieldSince'),
-      value: `\`${info.registeredAt.toISOString().slice(0, 10)}\``,
+      value: timestampTag(info.registeredAt, 'D'),
       inline: true,
     });
   }
