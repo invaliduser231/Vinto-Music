@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.12.2] - 2026-09-17
+
+- Audio:
+  - default outbound bitrate is back at 192 kbps, where it sat before the sharding work cut it to 128. Tunable with `VOICE_MAX_BITRATE`
+
 ## [0.12.1] - 2026-09-16
 
 - Fixes:
