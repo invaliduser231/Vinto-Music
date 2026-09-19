@@ -387,6 +387,7 @@ export const en = {
   'errors.noVoicePermission': 'I do not have permission to connect and speak in that voice channel.',
   'errors.botDeafened': 'Cannot connect to VC because I am Deafened - please undeafen me.',
   'errors.voiceConnectTimeout': 'The voice server did not answer in time, so I could not join. Run the command again.',
+  'errors.voiceGatewayOffline': 'I lost my connection to Fluxer for a moment, so I could not join. Run the command again.',
   'errors.notExecutable': 'Command "{command}" is not executable.',
   'errors.rateLimit': 'Rate limit hit ({scope}). Please retry in {seconds}s.',
   'errors.mustBeInteger': '{field} must be an integer.',
@@ -730,7 +731,7 @@ export const en = {
 
   'lastfm.recentTitle': 'Recent scrobbles: {user}',
   'lastfm.nowPlayingTag': 'playing now',
-  'lastfm.noRecent': '{user} has no scrobbles.',
+  'lastfm.noRecent': '{user} has no scrobbles.',
 
   'lastfm.topTitle': 'Top {kind}: {user}, {period}',
   'lastfm.noTop': '{user} has nothing in that chart.',

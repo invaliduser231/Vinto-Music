@@ -202,10 +202,17 @@ export async function prepareSessionConnection(
 const VOICE_CONNECT_ATTEMPTS = 3;
 const VOICE_CONNECT_RETRY_DELAY_MS = 1_200;
 
+export function isGatewayOfflineVoiceFailure(error: unknown): boolean {
+  const message = String((error as { message?: unknown } | null | undefined)?.message ?? '')
+    .toLowerCase();
+  return message.includes('gateway socket is not open');
+}
+
 export function isRetryableVoiceConnectFailure(error: unknown): boolean {
   const message = String((error as { message?: unknown } | null | undefined)?.message ?? '')
     .toLowerCase();
-  return message.includes('timeout waiting for voice_server_update');
+  return message.includes('timeout waiting for voice_server_update')
+    || message.includes('gateway socket is not open');
 }
 
 async function connectWithRetry(
@@ -256,6 +263,9 @@ export async function connectPreparedSession(
     }
     if (await isBotCurrentlyDeafened(ctx)) {
       throw new ValidationError(ctx.t('errors.botDeafened'));
+    }
+    if (isGatewayOfflineVoiceFailure(err)) {
+      throw new ValidationError(ctx.t('errors.voiceGatewayOffline'));
     }
     if (isRetryableVoiceConnectFailure(err)) {
       throw new ValidationError(ctx.t('errors.voiceConnectTimeout'));

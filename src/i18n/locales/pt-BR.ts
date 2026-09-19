@@ -389,6 +389,7 @@ export const ptBR: Catalog = {
   'errors.noVoicePermission': 'Não tenho permissão para entrar e falar nesse canal de voz.',
   'errors.botDeafened': 'Não consigo entrar no canal de voz porque estou com o áudio desativado, por favor, reative.',
   'errors.voiceConnectTimeout': 'O servidor de voz não respondeu a tempo, então não consegui entrar. Execute o comando novamente.',
+  'errors.voiceGatewayOffline': 'Minha conexão com o Fluxer caiu por um instante, então não consegui entrar. Execute o comando novamente.',
   'errors.notExecutable': 'O comando "{command}" não é executável.',
   'errors.rateLimit': 'Limite de uso atingido ({scope}). Tente novamente em {seconds}s.',
   'errors.mustBeInteger': '{field} deve ser um número inteiro.',
@@ -732,7 +733,7 @@ export const ptBR: Catalog = {
 
   'lastfm.recentTitle': 'Envios recentes: {user}',
   'lastfm.nowPlayingTag': 'tocando agora',
-  'lastfm.noRecent': '{user} não tem envios.',
+  'lastfm.noRecent': '{user} não tem envios.',
 
   'lastfm.topTitle': 'Top {kind}: {user}, {period}',
   'lastfm.noTop': '{user} não tem nada nessa lista.',

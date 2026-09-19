@@ -389,6 +389,7 @@ export const de: Catalog = {
   'errors.noVoicePermission': 'Mir fehlt die Berechtigung, diesem Sprachkanal beizutreten und dort zu sprechen.',
   'errors.botDeafened': 'Ich kann dem Sprachkanal nicht beitreten, weil ich stummgeschaltet bin, bitte hebe das auf.',
   'errors.voiceConnectTimeout': 'Der Sprachserver hat nicht rechtzeitig geantwortet, deshalb konnte ich nicht beitreten. Führe den Befehl noch einmal aus.',
+  'errors.voiceGatewayOffline': 'Meine Verbindung zu Fluxer war kurz unterbrochen, deshalb konnte ich nicht beitreten. Führe den Befehl noch einmal aus.',
   'errors.notExecutable': 'Der Befehl „{command}" ist nicht ausführbar.',
   'errors.rateLimit': 'Ratenbegrenzung erreicht ({scope}). Bitte versuche es in {seconds}s erneut.',
   'errors.mustBeInteger': '{field} muss eine ganze Zahl sein.',
@@ -732,7 +733,7 @@ export const de: Catalog = {
 
   'lastfm.recentTitle': 'Letzte Scrobbles: {user}',
   'lastfm.nowPlayingTag': 'läuft gerade',
-  'lastfm.noRecent': '{user} hat keine Scrobbles.',
+  'lastfm.noRecent': '{user} hat keine Scrobbles.',
 
   'lastfm.topTitle': 'Top {kind}: {user}, {period}',
   'lastfm.noTop': '{user} hat in dieser Auswertung nichts.',

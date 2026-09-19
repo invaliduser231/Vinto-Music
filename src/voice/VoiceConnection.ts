@@ -59,6 +59,8 @@ const EARRAPE_RECOVERY_DELAY_MS = 300;
 const EARRAPE_DISCONNECT_COOLDOWN_MS = 3_000;
 const EARRAPE_PROFILE_SYNC_INTERVAL_MS = 75_000;
 
+export const GATEWAY_OFFLINE_MESSAGE = 'Gateway socket is not open, voice join was not sent.';
+
 type VoiceConnectionOptions = {
   logger?: {
     warn?: (message: string, meta?: Record<string, unknown>) => void;
@@ -81,9 +83,18 @@ type VoiceServerUpdate = {
   token?: string;
 };
 
+type GatewayConnectionState = {
+  socketOpen: boolean;
+  readyState: number | null;
+  hasSession: boolean;
+  reconnectAttempts: number;
+  heartbeatLatencyMs: number | null;
+};
+
 type GatewayLike = {
-  joinVoice: (guildId: string, channelId: string, options?: { selfDeaf?: boolean }) => void;
-  leaveVoice: (guildId: string) => void;
+  joinVoice: (guildId: string, channelId: string, options?: { selfDeaf?: boolean }) => boolean | void;
+  leaveVoice: (guildId: string) => boolean | void;
+  describeConnectionState?: () => GatewayConnectionState;
   on: (event: string, listener: (data: VoiceServerUpdate) => void) => void;
   off: (event: string, listener: (data: VoiceServerUpdate) => void) => void;
 };
@@ -430,9 +441,19 @@ export class VoiceConnection {
     }
 
     this._needsVoiceStateReset = true;
-    this.gateway.joinVoice(this.guildId, channelId, {
+    const joinSent = this.gateway.joinVoice(this.guildId, channelId, {
       selfDeaf: !this.earrapeProtectionEnabled,
     });
+
+    if (joinSent === false) {
+      this._needsVoiceStateReset = false;
+      this.logger?.warn?.('Voice join was not sent because the gateway socket is not open', {
+        guildId: this.guildId,
+        channelId,
+        ...(this.gateway.describeConnectionState?.() ?? {}),
+      });
+      throw new Error(GATEWAY_OFFLINE_MESSAGE);
+    }
 
     let update: VoiceServerUpdate;
     try {
@@ -1326,9 +1347,18 @@ export class VoiceConnection {
   }
 
   _waitForVoiceServer(): Promise<VoiceServerUpdate> {
+    const startedAt = Date.now();
+
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.gateway.off('VOICE_SERVER_UPDATE', onUpdate);
+        this.logger?.warn?.('Timed out waiting for VOICE_SERVER_UPDATE', {
+          guildId: this.guildId,
+          channelId: this.channelId,
+          waitedMs: Date.now() - startedAt,
+          timeoutMs: this.connectTimeoutMs,
+          ...(this.gateway.describeConnectionState?.() ?? {}),
+        });
         reject(new Error('Timeout waiting for VOICE_SERVER_UPDATE.'));
       }, this.connectTimeoutMs);
 

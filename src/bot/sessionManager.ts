@@ -42,7 +42,8 @@ const PERSISTENT_SYNC_DEBOUNCE_MS = 5000;
 
 function isRetryablePersistentRestoreConnectFailure(error: unknown): boolean {
   const message = String((error as { message?: unknown } | null | undefined)?.message ?? '').toLowerCase();
-  return message.includes('timeout waiting for voice_server_update');
+  return message.includes('timeout waiting for voice_server_update')
+    || message.includes('gateway socket is not open');
 }
 
 function delay(ms: number): Promise<void> {
