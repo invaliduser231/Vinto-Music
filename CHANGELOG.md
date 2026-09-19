@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.12.3] - 2026-09-19
+
+- Fixes:
+  - persistent voice sessions are restored once the guild stream after a gateway ready has settled, instead of immediately, where the first guild in the queue ran into a connect timeout because its voice state did not exist yet
+  - a join that never left the bot because the gateway socket was closed fails right away and says so, rather than waiting out the voice server timeout and blaming the voice server
+- Diagnostics: a voice server timeout now logs the socket state, the session presence and the time actually waited
+
 ## [0.12.2] - 2026-09-17
 
 - Audio:
