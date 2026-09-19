@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { writeHeapSnapshot } from 'node:v8';
 
 import { loadConfig } from '../config.ts';
+import { waitForGuildStreamSettled } from './guildStreamReady.ts';
 import { createLogger } from '../core/logger.ts';
 import { Gateway } from '../gateway.ts';
 import { RestClient } from '../rest.ts';
@@ -575,11 +576,16 @@ export async function startApp() {
 
     if (!persistentRestoreStarted) {
       persistentRestoreStarted = true;
-      sessions.restorePersistentVoiceSessions().catch((err) => {
-        logger.warn('Persistent voice session restore failed', {
-          error: err instanceof Error ? err.message : String(err),
+      waitForGuildStreamSettled(gateway, { expected: readyGuildCount ?? 0 })
+        .then((settled) => {
+          logger.info('Guild stream settled, starting persistent voice session restore', settled);
+          return sessions.restorePersistentVoiceSessions();
+        })
+        .catch((err) => {
+          logger.warn('Persistent voice session restore failed', {
+            error: err instanceof Error ? err.message : String(err),
+          });
         });
-      });
     }
   });
 
