@@ -246,7 +246,7 @@ export class Gateway extends EventEmitter {
 
   joinVoice(guildId: string, channelId: string, options: { selfDeaf?: boolean } = {}) {
     const selfDeaf = options.selfDeaf !== false;
-    this._send(Op.VOICE_STATE_UPDATE, {
+    return this._send(Op.VOICE_STATE_UPDATE, {
       guild_id: guildId,
       channel_id: channelId,
       self_mute: false,
@@ -255,12 +255,23 @@ export class Gateway extends EventEmitter {
   }
 
   leaveVoice(guildId: string) {
-    this._send(Op.VOICE_STATE_UPDATE, {
+    return this._send(Op.VOICE_STATE_UPDATE, {
       guild_id: guildId,
       channel_id: null,
       self_mute: false,
       self_deaf: false,
     });
+  }
+
+  describeConnectionState() {
+    const readyState = this.ws ? Number(this.ws.readyState) : null;
+    return {
+      socketOpen: readyState === WebSocket.OPEN,
+      readyState,
+      hasSession: Boolean(this.sessionId),
+      reconnectAttempts: this.reconnectAttempts,
+      heartbeatLatencyMs: this.getHeartbeatLatencyMs(),
+    };
   }
 
   updatePresence(presence: GatewayPresence | null | undefined) {
