@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.12.4] - 2026-09-23
+
+- Fixes:
+  - a voice endpoint that already carries a scheme is rewritten instead of prefixed. An instance answering with `https://host/livekit` turned into `wss://https://host/livekit`, so the bot tried to resolve a host literally named `https`, and once that was forced to resolve it met a certificate issued for a different name. Instances that answer with a bare host were never affected
+- Tests: covered the rewrite for http, https, ws, wss, bare hosts and host:port
+
 ## [0.12.3] - 2026-09-19
 
 - Fixes:
