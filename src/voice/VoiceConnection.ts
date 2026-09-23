@@ -61,6 +61,20 @@ const EARRAPE_PROFILE_SYNC_INTERVAL_MS = 75_000;
 
 export const GATEWAY_OFFLINE_MESSAGE = 'Gateway socket is not open, voice join was not sent.';
 
+export function toVoiceRoomUrl(endpoint: string): string {
+  const trimmed = String(endpoint ?? '').trim();
+  if (!trimmed) return trimmed;
+
+  const scheme = /^([a-z][a-z0-9+.-]*):\/\//i.exec(trimmed);
+  if (!scheme) return `wss://${trimmed}`;
+
+  const name = String(scheme[1]).toLowerCase();
+  if (name === 'ws' || name === 'wss') return trimmed;
+
+  const rest = trimmed.slice(scheme[0].length);
+  return name === 'http' ? `ws://${rest}` : `wss://${rest}`;
+}
+
 type VoiceConnectionOptions = {
   logger?: {
     warn?: (message: string, meta?: Record<string, unknown>) => void;
@@ -471,9 +485,7 @@ export class VoiceConnection {
       throw new Error('Voice server response is missing endpoint or token.');
     }
 
-    const roomUrl = endpoint.startsWith('ws://') || endpoint.startsWith('wss://')
-      ? endpoint
-      : `wss://${endpoint}`;
+    const roomUrl = toVoiceRoomUrl(endpoint);
 
     const room = new Room();
     this.room = room;
