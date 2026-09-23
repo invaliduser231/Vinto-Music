@@ -70,7 +70,8 @@ test('a never ending stream is capped by the maximum wait', async () => {
   clearInterval(ticker);
 
   assert.equal(result.reason, 'timeout');
-  assert.ok(result.waitedMs >= 60);
+  assert.ok(result.received > 0, 'the stream has to have delivered something');
+  assert.ok(result.waitedMs < 1_000, 'the cap has to end the wait instead of letting it run on');
   assert.equal(gateway.listenerCount('GUILD_CREATE'), 0);
 });
 
