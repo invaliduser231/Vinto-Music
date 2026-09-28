@@ -135,7 +135,7 @@ export const en = {
   'now.detecting': 'Detecting...',
   'now.ends': 'Ends {time}',
 
-  'seek.usage': 'Usage: {prefix}seek <seconds|mm:ss|hh:mm:ss>',
+  'seek.usage': 'Usage: {prefix}seek <seconds|mm:ss|hh:mm:ss|1h30m>',
   'seek.invalid': 'Invalid seek position.',
   'seek.seeking': 'Seeking to {position}...',
 

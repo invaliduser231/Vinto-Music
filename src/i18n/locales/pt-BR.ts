@@ -137,7 +137,7 @@ export const ptBR: Catalog = {
   'now.detecting': 'Detectando...',
   'now.ends': 'Termina {time}',
 
-  'seek.usage': 'Uso: {prefix}seek <segundos|mm:ss|hh:mm:ss>',
+  'seek.usage': 'Uso: {prefix}seek <segundos|mm:ss|hh:mm:ss|1h30m>',
   'seek.invalid': 'Posição de avanço inválida.',
   'seek.seeking': 'Avançando para {position}...',
 

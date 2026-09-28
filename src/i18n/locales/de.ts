@@ -137,7 +137,7 @@ export const de: Catalog = {
   'now.detecting': 'Wird erkannt...',
   'now.ends': 'Endet {time}',
 
-  'seek.usage': 'Verwendung: {prefix}seek <Sekunden|mm:ss|hh:mm:ss>',
+  'seek.usage': 'Verwendung: {prefix}seek <Sekunden|mm:ss|hh:mm:ss|1h30m>',
   'seek.invalid': 'Ungültige Sprungposition.',
   'seek.seeking': 'Springe zu {position}...',
 

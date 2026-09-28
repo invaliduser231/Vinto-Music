@@ -28,6 +28,7 @@ import {
   isUserInPlaybackChannel,
   computeVoteSkipRequirement,
   parseDurationToSeconds,
+  parseSeekTargetSeconds,
   buildProgressBar,
   formatEta,
   formatSeconds,
@@ -1504,8 +1505,8 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
   registry.register(createCommand({
     name: 'seek',
     aliases: ['jump'],
-    description: 'Seek in current track (seconds or mm:ss or hh:mm:ss).',
-    usage: 'seek <seconds|mm:ss|hh:mm:ss>',
+    description: 'Seek in current track (seconds, mm:ss, hh:mm:ss or 1h30m).',
+    usage: 'seek <seconds|mm:ss|hh:mm:ss|1h30m>',
     async execute(ctx: PlaybackCommandContext) {
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
@@ -1515,14 +1516,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
         throw new ValidationError(ctx.t('seek.usage', { prefix: ctx.prefix }));
       }
 
-      const raw = String(ctx.args[0]).trim();
-      let targetSec;
-      if (raw.includes(':')) {
-        targetSec = parseDurationToSeconds(raw);
-      } else {
-        const parsed = Number.parseInt(raw, 10);
-        targetSec = Number.isFinite(parsed) ? parsed : null;
-      }
+      const targetSec = parseSeekTargetSeconds(ctx.args.join(' '));
 
       if (targetSec == null || targetSec < 0) {
         throw new ValidationError(ctx.t('seek.invalid'));

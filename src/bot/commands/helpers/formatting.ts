@@ -160,6 +160,27 @@ export function parseDurationToSeconds(value: unknown) {
   return null;
 }
 
+const SEEK_UNIT_SECONDS: Record<string, number> = { h: 3600, m: 60, s: 1 };
+
+export function parseSeekTargetSeconds(value: unknown): number | null {
+  const raw = String(value ?? '').trim().toLowerCase().replace(/\s+/g, '');
+  if (!raw) return null;
+
+  if (/^\d+$/.test(raw)) return Number.parseInt(raw, 10);
+  if (/^\d+(:\d{1,2}){1,2}$/.test(raw)) return parseDurationToSeconds(raw);
+  if (!/^(\d+(\.\d+)?[hms])+$/.test(raw)) return null;
+
+  let total = 0;
+  const seen = new Set<string>();
+  for (const [, amount, unit] of raw.matchAll(/(\d+(?:\.\d+)?)([hms])/g)) {
+    if (!unit || seen.has(unit)) return null;
+    seen.add(unit);
+    total += Number(amount) * (SEEK_UNIT_SECONDS[unit] ?? 0);
+  }
+
+  return Number.isFinite(total) ? Math.floor(total) : null;
+}
+
 export function formatSeconds(seconds: number) {
   const safe = Math.max(0, Math.floor(seconds));
   const h = Math.floor(safe / 3600);

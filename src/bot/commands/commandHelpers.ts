@@ -19,6 +19,7 @@ export {
   normalizeIndex,
   parseDurationToSeconds,
   parseOnOff,
+  parseSeekTargetSeconds,
   parseRequiredInteger,
   parseVoiceChannelArgument,
   trackLabel,
