@@ -103,6 +103,7 @@ Important behavior:
 - 24/7 is voice-channel-scoped and comes from `guild_features.voiceProfiles[channelId].stayInVoiceEnabled`
 - active non-24/7 sessions still persist restart-recovery state so playback can be restored after a bot restart
 - active sessions flush progress snapshots periodically while audio is running, so restart recovery resumes closer to the current position instead of the last command boundary
+- each `VoiceConnection` keeps the Fluxer `connection_id` from its `VOICE_SERVER_UPDATE` grant and matches grants by channel as well as guild. Voice state updates and leaves carry that id, so a session only ever changes or drops its own connection. A guild-wide leave without an id is only sent when no sibling session exists in the guild
 
 ## Data Model
 
