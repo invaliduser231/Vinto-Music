@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.12.5] - 2026-09-28
+
+- Fixes:
+  - every voice connection now carries the `connection_id` Fluxer assigns to it. Before, leaving or giving up on one voice channel sent a guild-wide leave and threw the bot out of every other channel it was playing in on that server, and each deaf-state update opened an additional connection instead of updating the existing one
+  - a voice grant is only taken by the session whose channel it belongs to, so two sessions connecting in the same guild at once cannot swap grants
+  - `seek` understands `1h`, `60m`, `90s` and combinations such as `1h30m`. Units used to be dropped, so `1h` jumped to the first second, and input like `12abc` is rejected instead of being read as 12
+- Deployment: the bundled NodeLink runs with its admission limits lifted, since the bot talks to it from a single address and holds one connection per playing session
+- Tests: covered connection ids on join and leave, grant matching by channel, sibling sessions surviving a destroy and the seek formats
+
 ## [0.12.4] - 2026-09-23
 
 - Fixes:
