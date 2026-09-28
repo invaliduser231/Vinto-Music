@@ -6,6 +6,8 @@ export type UserId = string | null;
 
 type VoiceServerUpdate = {
   guild_id?: string;
+  channel_id?: string;
+  connection_id?: string;
   endpoint?: string;
   token?: string;
 };
@@ -239,8 +241,8 @@ export interface SessionManagerConfigLike extends Partial<AppConfig> {
 
 export interface SessionManagerOptions {
   gateway: {
-    joinVoice: (guildId: string, channelId: string, options?: { selfDeaf?: boolean }) => void;
-    leaveVoice: (guildId: string) => void;
+    joinVoice: (guildId: string, channelId: string, options?: { selfDeaf?: boolean; connectionId?: string | null }) => void;
+    leaveVoice: (guildId: string, connectionId?: string | null) => void;
     on: (event: string, listener: BivariantCallback<[VoiceServerUpdate], void>) => void;
     off: (event: string, listener: BivariantCallback<[VoiceServerUpdate], void>) => void;
   };

@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { SessionManager } from '../src/bot/sessionManager.ts';
 
-function createManager() {
+function createManager(leaves: Array<string | null> = []) {
   return new SessionManager({
     gateway: {
       joinVoice() {},
-      leaveVoice() {},
+      leaveVoice(_guildId: string, connectionId: string | null = null) {
+        leaves.push(connectionId);
+      },
       on() {},
       off() {},
     },
@@ -67,6 +69,23 @@ test('destroying one voice-channel session leaves the others intact', async () =
   assert.equal(manager.get('guild-1', { voiceChannelId: 'voice-a' }), null);
   assert.equal(manager.get('guild-1', { voiceChannelId: 'voice-b' }), second);
   assert.equal(manager.listByGuild('guild-1').length, 1);
+});
+
+test('destroying one session never drops the voice connection of another', async () => {
+  const leaves: Array<string | null> = [];
+  const manager = createManager(leaves);
+
+  const first = await manager.ensure('guild-1', null, { voiceChannelId: 'voice-a' });
+  const second = await manager.ensure('guild-1', null, { voiceChannelId: 'voice-b' });
+  manager._clearIdleTimer(first);
+  manager._clearIdleTimer(second);
+  (second.connection as unknown as { connectionId: string | null }).connectionId = 'conn-b';
+
+  await manager.destroy('guild-1', 'voice_reconnect_failed', { voiceChannelId: 'voice-a' });
+  assert.deepEqual(leaves, [], 'a guild-wide leave would also disconnect voice-b');
+
+  await manager.destroy('guild-1', 'manual_command', { voiceChannelId: 'voice-b' });
+  assert.deepEqual(leaves, ['conn-b']);
 });
 
 test('destroy detaches session-scoped player listeners', async () => {

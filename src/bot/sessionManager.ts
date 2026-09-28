@@ -547,6 +547,7 @@ export class SessionManager extends EventEmitter {
       botUserId: this.botUserId,
       earrapeProfileStore: this.earrapeProfiles,
       onEarrapeDetected: (event: EarrapeDetectionEvent) => this._handleEarrapeDetected(event),
+      hasSiblingConnections: () => this.listByGuild(guildId).some((entry) => entry.connection !== connection),
     };
     const connection = new VoiceConnection(this.gateway, guildId, connectionOptions);
 

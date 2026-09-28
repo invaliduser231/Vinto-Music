@@ -244,20 +244,22 @@ export class Gateway extends EventEmitter {
     this.ws = null;
   }
 
-  joinVoice(guildId: string, channelId: string, options: { selfDeaf?: boolean } = {}) {
+  joinVoice(guildId: string, channelId: string, options: { selfDeaf?: boolean; connectionId?: string | null } = {}) {
     const selfDeaf = options.selfDeaf !== false;
     return this._send(Op.VOICE_STATE_UPDATE, {
       guild_id: guildId,
       channel_id: channelId,
+      ...(options.connectionId ? { connection_id: options.connectionId } : {}),
       self_mute: false,
       self_deaf: selfDeaf,
     });
   }
 
-  leaveVoice(guildId: string) {
+  leaveVoice(guildId: string, connectionId: string | null = null) {
     return this._send(Op.VOICE_STATE_UPDATE, {
       guild_id: guildId,
       channel_id: null,
+      ...(connectionId ? { connection_id: connectionId } : {}),
       self_mute: false,
       self_deaf: false,
     });

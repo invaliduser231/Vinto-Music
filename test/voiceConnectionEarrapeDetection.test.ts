@@ -4,14 +4,15 @@ import assert from 'node:assert/strict';
 import { VoiceConnection } from '../src/voice/VoiceConnection.ts';
 
 function createGateway() {
-  const joinCalls: Array<{ guildId: string; channelId: string; selfDeaf: boolean }> = [];
+  const joinCalls: Array<{ guildId: string; channelId: string; selfDeaf: boolean; connectionId: string | null }> = [];
   return {
     joinCalls,
-    joinVoice(guildId: string, channelId: string, options: { selfDeaf?: boolean } = {}) {
+    joinVoice(guildId: string, channelId: string, options: { selfDeaf?: boolean; connectionId?: string | null } = {}) {
       joinCalls.push({
         guildId,
         channelId,
         selfDeaf: options.selfDeaf !== false,
+        connectionId: options.connectionId ?? null,
       });
     },
     leaveVoice() {},
@@ -26,13 +27,14 @@ test('earrape protection toggles the gateway self_deaf voice state for active se
 
   connection.room = { isConnected: true } as never;
   connection.channelId = 'voice-1';
+  connection.connectionId = 'conn-1';
 
   connection.setEarrapeProtectionEnabled(true);
   connection.setEarrapeProtectionEnabled(false);
 
   assert.deepEqual(gateway.joinCalls, [
-    { guildId: 'guild-1', channelId: 'voice-1', selfDeaf: false },
-    { guildId: 'guild-1', channelId: 'voice-1', selfDeaf: true },
+    { guildId: 'guild-1', channelId: 'voice-1', selfDeaf: false, connectionId: 'conn-1' },
+    { guildId: 'guild-1', channelId: 'voice-1', selfDeaf: true, connectionId: 'conn-1' },
   ]);
 });
 

@@ -89,10 +89,13 @@ type VoiceConnectionOptions = {
   onEarrapeDetected?: EarrapeDetectionHandler | null;
   earrapeProfileStore?: EarrapeProfileStoreLike | null;
   autoReconnectEnabled?: boolean;
+  hasSiblingConnections?: (() => boolean) | null;
 };
 
 type VoiceServerUpdate = {
   guild_id?: string;
+  channel_id?: string;
+  connection_id?: string;
   endpoint?: string;
   token?: string;
 };
@@ -106,8 +109,12 @@ type GatewayConnectionState = {
 };
 
 type GatewayLike = {
-  joinVoice: (guildId: string, channelId: string, options?: { selfDeaf?: boolean }) => boolean | void;
-  leaveVoice: (guildId: string) => boolean | void;
+  joinVoice: (
+    guildId: string,
+    channelId: string,
+    options?: { selfDeaf?: boolean; connectionId?: string | null },
+  ) => boolean | void;
+  leaveVoice: (guildId: string, connectionId?: string | null) => boolean | void;
   describeConnectionState?: () => GatewayConnectionState;
   on: (event: string, listener: (data: VoiceServerUpdate) => void) => void;
   off: (event: string, listener: (data: VoiceServerUpdate) => void) => void;
@@ -220,6 +227,8 @@ export class VoiceConnection {
   gateway: GatewayLike;
   guildId: string;
   channelId: string | null;
+  connectionId: string | null;
+  hasSiblingConnections: (() => boolean) | null;
   logger: VoiceConnectionOptions['logger'];
   connectTimeoutMs: number;
   voiceMaxBitrate: number;
@@ -267,6 +276,8 @@ export class VoiceConnection {
     this.room = null;
     this.connectingPromise = null;
     this.channelId = null;
+    this.connectionId = null;
+    this.hasSiblingConnections = options.hasSiblingConnections ?? null;
     this.audioSource = null;
     this.audioTrack = null;
     this.audioTrackSid = null;
@@ -437,13 +448,33 @@ export class VoiceConnection {
 
   _resetGatewayVoiceState() {
     try {
-      this.gateway.leaveVoice(this.guildId);
+      this._releaseGatewayVoiceState();
     } catch (err) {
       this.logger?.debug?.('Releasing the gateway voice state failed', {
         guildId: this.guildId,
         error: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  _releaseGatewayVoiceState() {
+    const connectionId = this.connectionId;
+    this.connectionId = null;
+
+    if (connectionId) {
+      this.gateway.leaveVoice(this.guildId, connectionId);
+      return;
+    }
+
+    if (this.hasSiblingConnections?.() === true) {
+      this.logger?.debug?.('Skipped a guild-wide voice leave to keep sibling connections alive', {
+        guildId: this.guildId,
+        channelId: this.channelId,
+      });
+      return;
+    }
+
+    this.gateway.leaveVoice(this.guildId);
   }
 
   async _connect(channelId: string) {
@@ -471,12 +502,13 @@ export class VoiceConnection {
 
     let update: VoiceServerUpdate;
     try {
-      update = await this._waitForVoiceServer();
+      update = await this._waitForVoiceServer(channelId);
     } catch (err) {
       this._resetGatewayVoiceState();
       throw err;
     }
 
+    this.connectionId = update.connection_id ?? null;
     const endpoint = update.endpoint;
     const token = update.token;
 
@@ -525,7 +557,7 @@ export class VoiceConnection {
     this._cancelAutoReconnect();
     this._stopAudioPump();
     this._stopRemoteAudioMonitoring();
-    this.gateway.leaveVoice(this.guildId);
+    this._releaseGatewayVoiceState();
 
     const room = this.room;
     this._detachRoomListeners();
@@ -590,7 +622,7 @@ export class VoiceConnection {
     await this._closeAudioResources();
 
     try {
-      this.gateway.leaveVoice(this.guildId);
+      this._releaseGatewayVoiceState();
     } catch {
       // ignore gateway leave failures during connect rollback
     }
@@ -825,10 +857,11 @@ export class VoiceConnection {
   }
 
   _syncVoiceDeafState() {
-    if (!this.connected || !this.channelId) return;
+    if (!this.connected || !this.channelId || !this.connectionId) return;
     try {
       this.gateway.joinVoice(this.guildId, this.channelId, {
         selfDeaf: !this.earrapeProtectionEnabled,
+        connectionId: this.connectionId,
       });
     } catch (err) {
       this.logger?.debug?.('Failed to synchronize voice deaf state', {
@@ -1358,7 +1391,7 @@ export class VoiceConnection {
     }
   }
 
-  _waitForVoiceServer(): Promise<VoiceServerUpdate> {
+  _waitForVoiceServer(channelId: string | null = null): Promise<VoiceServerUpdate> {
     const startedAt = Date.now();
 
     return new Promise((resolve, reject) => {
@@ -1376,6 +1409,7 @@ export class VoiceConnection {
 
       const onUpdate = (data: VoiceServerUpdate) => {
         if (data?.guild_id !== this.guildId) return;
+        if (channelId && data.channel_id && data.channel_id !== channelId) return;
 
         clearTimeout(timeout);
         this.gateway.off('VOICE_SERVER_UPDATE', onUpdate);
