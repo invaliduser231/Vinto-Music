@@ -943,6 +943,22 @@ export class MusicPlayer extends EventEmitter {
         throw new ValidationError('Track is missing a playable URL.');
       }
 
+      if (!track.nodelinkEncodedTrack && isYouTubeUrl(trackUrl) && this._isNodeLinkOnlyModeForSourceTrack(track, trackUrl)) {
+        const resolved = await this._resolveYouTubeTrackViaNodeLink(track).catch((err: unknown) => {
+          this.logger?.debug?.('NodeLink re-resolution of a stored YouTube track failed', {
+            title: track.title,
+            url: trackUrl,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          return null;
+        });
+        this._ensurePlaybackStartupActive(startupToken);
+        if (resolved?.nodelinkEncodedTrack) {
+          track.nodelinkEncodedTrack = resolved.nodelinkEncodedTrack;
+          track.nodelinkInfo = resolved.nodelinkInfo ?? null;
+        }
+      }
+
       if (track.nodelinkEncodedTrack) {
         try {
           await this._startNodeLinkStream(track, startupToken, playbackToken);
@@ -1087,6 +1103,13 @@ export class MusicPlayer extends EventEmitter {
         const normalized = this._normalizePlaybackError(this._withStartupStderr(err, ffmpegStartupStderr));
         normalizedMessage = String(normalized?.message ?? '').toLowerCase();
         const startupRetryAttempt = getStartupRetryAttempt(track);
+        const nodeLinkOnlyTrack = this._isNodeLinkOnlyModeForSourceTrack(track, track?.url ?? null);
+        const shouldRetryNodeLinkYouTube = (
+          nodeLinkOnlyTrack
+          && isYouTubeUrl(String(track?.url ?? ''))
+          && startupRetryAttempt < 1
+          && !normalizedMessage.includes('not connected')
+        );
         const shouldFallbackToYtDlpUrl = (
           normalizedMessage.includes('before audio output')
           && String(track?.source ?? '').startsWith('youtube')
@@ -1096,7 +1119,7 @@ export class MusicPlayer extends EventEmitter {
           normalizedMessage.includes('did not produce audio output in time')
           && String(track?.source ?? '').startsWith('youtube')
           && startupRetryAttempt < 1
-        ) || shouldFallbackToYtDlpUrl;
+        ) || shouldFallbackToYtDlpUrl || shouldRetryNodeLinkYouTube;
         if (shouldRetryYouTubeStartup) {
           retryStartupTrack = this._cloneTrack(track, { seekStartSec: track?.seekStartSec ?? 0 });
           (retryStartupTrack as Track & { startupRetryCount?: number }).startupRetryCount = startupRetryAttempt + 1;
@@ -1117,15 +1140,20 @@ export class MusicPlayer extends EventEmitter {
             }
           }
           const currentYtDlpDiagnostics = this._lastYtDlpDiagnostics;
+          const retryHasNodeLinkTrack = Boolean(String(retryStartupTrack.nodelinkEncodedTrack ?? '').trim());
           const shouldRetryWithProxyPipe = (
-            !String(retryStartupTrack.nodelinkEncodedTrack ?? '').trim()
+            !nodeLinkOnlyTrack
+            && !retryHasNodeLinkTrack
             && Boolean(this.ytdlpProxyUrl)
             && !currentYtDlpDiagnostics?.proxyEnabled
           );
           if (shouldRetryWithProxyPipe) {
             (retryStartupTrack as Track & { startupFallbackPipeline?: 'ytdlp-proxy' }).startupFallbackPipeline = 'ytdlp-proxy';
-          } else if (!String(retryStartupTrack.nodelinkEncodedTrack ?? '').trim() && shouldFallbackToYtDlpUrl) {
+          } else if (!nodeLinkOnlyTrack && !retryHasNodeLinkTrack && shouldFallbackToYtDlpUrl) {
             (retryStartupTrack as Track & { startupFallbackPipeline?: 'ytdlp-url' }).startupFallbackPipeline = 'ytdlp-url';
+          }
+          if (nodeLinkOnlyTrack && !retryHasNodeLinkTrack) {
+            retryStartupTrack = null;
           }
         }
         const mirrorSourceLabel = String(track?.source ?? '').toLowerCase();
@@ -1147,6 +1175,7 @@ export class MusicPlayer extends EventEmitter {
             source: track?.source ?? null,
             isLive: track?.isLive ?? false,
             previousMirrorSources,
+            nodeLinkOnly: nodeLinkOnlyTrack,
           })
           && !normalizedMessage.includes('not connected')
           && startupRetryAttempt < Math.min(
@@ -1383,6 +1412,7 @@ export class MusicPlayer extends EventEmitter {
     if (String(track.nodelinkEncodedTrack ?? '').trim()) return false;
     const url = String(track.url ?? '').trim();
     if (!url || !isYouTubeUrl(url) || !this.enableYtPlayback) return false;
+    if (this._isNodeLinkOnlyModeForSourceTrack(track, url)) return false;
     const seekStartSec = Math.max(0, Number.parseInt(String(track.seekStartSec ?? 0), 10) || 0);
     return seekStartSec <= 0;
   }

@@ -258,6 +258,38 @@ test('_handleTrackClose auto-recovers early-ended NodeLink tracks with NodeLink 
   )));
 });
 
+test('_handleTrackClose keeps the NodeLink track on the second retry in NodeLink-only mode', async () => {
+  const player = new MusicPlayer(createVoice(), {
+    logger: null,
+    nodeLinkEnabled: true,
+    nodeLinkBaseUrl: 'http://nodelink:3000',
+    nodeLinkPassword: 'secret',
+    nodeLinkRoutingMode: 'all',
+  });
+
+  const track = player.createTrackFromData({
+    title: 'NodeLink Only Track',
+    url: 'https://www.youtube.com/watch?v=abcdefghijk',
+    duration: '03:40',
+    source: 'youtube',
+    requestedBy: 'user-1',
+    nodelinkEncodedTrack: 'encoded-node-track',
+    nodelinkInfo: { sourceName: 'youtube' },
+  }) as ({ recoveryAttemptCount?: number } & ReturnType<MusicPlayer['createTrackFromData']>);
+  track.recoveryAttemptCount = 1;
+
+  player.play = async () => {};
+  player.getProgressSeconds = () => 36;
+  player.queue.current = track;
+  player.playing = true;
+
+  await player._handleTrackClose(track, 0, null);
+
+  const resumedTrack = player.pendingTracks[0] as ({ recoveryAttemptCount?: number; nodelinkEncodedTrack?: unknown } & Record<string, unknown>) | undefined;
+  assert.equal(resumedTrack?.recoveryAttemptCount, 2);
+  assert.equal(resumedTrack?.nodelinkEncodedTrack ?? null, 'encoded-node-track');
+});
+
 test('_handleTrackClose second NodeLink early-close retry falls back to local pipeline', async () => {
   const warnings: Array<{ message: string; meta: Record<string, unknown> | undefined }> = [];
   const player = new MusicPlayer(createVoice(), {

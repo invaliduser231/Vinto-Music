@@ -12,6 +12,13 @@ test('a youtube link the user asked for is never swapped for another recording',
   );
 });
 
+test('in NodeLink-only mode a youtube link may mirror once NodeLink cannot play it', () => {
+  assert.equal(
+    shouldMirrorFailedStartup({ url: YT, source: 'youtube', previousMirrorSources: [], nodeLinkOnly: true }),
+    true,
+  );
+});
+
 test('a youtube track that is itself a mirror may keep looking', () => {
   assert.equal(
     shouldMirrorFailedStartup({ url: YT, source: 'youtube', previousMirrorSources: ['spotify'] }),

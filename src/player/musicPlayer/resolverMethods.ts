@@ -107,6 +107,7 @@ export function shouldMirrorFailedStartup(options: {
   source?: string | null;
   isLive?: boolean | null;
   previousMirrorSources?: readonly string[] | null;
+  nodeLinkOnly?: boolean | null;
 }): boolean {
   const source = String(options.source ?? '').toLowerCase();
   if (options.isLive) return false;
@@ -114,7 +115,7 @@ export function shouldMirrorFailedStartup(options: {
   if (source === 'http-audio' || source === 'url') return false;
 
   const alreadyMirrored = (options.previousMirrorSources?.length ?? 0) > 0;
-  if (isYouTubeUrl(String(options.url ?? '')) && !alreadyMirrored) return false;
+  if (isYouTubeUrl(String(options.url ?? '')) && !alreadyMirrored && !options.nodeLinkOnly) return false;
 
   return true;
 }
@@ -198,6 +199,9 @@ export const resolverMethods: LooseMethodMap = {
     }
 
     if (!this.enableYtSearch || !this.enableYtPlayback || blocked.has('youtube')) return null;
+    if (this.nodeLinkEnabled && this.nodeLinkClient?.enabled && getNodeLinkRoutingMode(this.nodeLinkRoutingMode) === 'all') {
+      return null;
+    }
 
     const localMatches = await this._searchYouTubeTracks(query, 1, requestedBy).catch((err: unknown) => {
       this.logger?.debug?.('Local YouTube mirror search failed', {
@@ -218,14 +222,14 @@ export const resolverMethods: LooseMethodMap = {
   _isNodeLinkOnlyModeForSourceTrack(track: Partial<Track> | null | undefined, trackUrl?: string | null) {
     if (!this.nodeLinkEnabled || !this.nodeLinkClient?.enabled) return false;
     if (getNodeLinkRoutingMode(this.nodeLinkRoutingMode) !== 'all') return false;
+
+    const url = String(trackUrl ?? track?.url ?? '');
+    if (isYouTubeUrl(url)) return true;
     if (track?.isLive) return false;
 
     const source = String(track?.source ?? '').toLowerCase();
     if (source.startsWith('radio')) return false;
     if (source === 'http-audio' || source === 'url') return false;
-
-    const url = String(trackUrl ?? track?.url ?? '');
-    if (isYouTubeUrl(url)) return false;
 
     return true;
   },

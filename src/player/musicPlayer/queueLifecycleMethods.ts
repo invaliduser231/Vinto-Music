@@ -323,7 +323,7 @@ export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecy
       const recoveryTrack = this._cloneTrack(track, { seekStartSec: recoverySeekSec });
       (recoveryTrack as Track & { recoveryAttemptCount?: number }).recoveryAttemptCount = recoveryAttempt + 1;
       // First early-close retry keeps the NodeLink encoded track; second retry falls back local.
-      if (isNodeLinkTrack && recoveryAttempt >= 1) {
+      if (isNodeLinkTrack && recoveryAttempt >= 1 && !this._isNodeLinkOnlyModeForSourceTrack(track, track.url)) {
         recoveryTrack.nodelinkEncodedTrack = null;
         recoveryTrack.nodelinkInfo = null;
       }

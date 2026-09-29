@@ -888,7 +888,11 @@ test('_isNodeLinkOnlyModeForSourceTrack gates local playback by routing mode and
   );
   assert.equal(
     allPlayer._isNodeLinkOnlyModeForSourceTrack({ source: 'youtube' }, 'https://www.youtube.com/watch?v=abc'),
-    false
+    true
+  );
+  assert.equal(
+    allPlayer._isNodeLinkOnlyModeForSourceTrack({ source: 'youtube', isLive: true }, 'https://www.youtube.com/watch?v=live1'),
+    true
   );
   assert.equal(
     allPlayer._isNodeLinkOnlyModeForSourceTrack({ source: 'radio-stream' }, 'https://radio.example/stream'),
@@ -910,7 +914,7 @@ test('_isNodeLinkOnlyModeForSourceTrack gates local playback by routing mode and
   );
 });
 
-test('NodeLink-only mode (all) skips the local Deezer pipeline and mirrors to YouTube', async () => {
+test('NodeLink-only mode (all) skips the local Deezer pipeline and mirrors through NodeLink', async () => {
   const player = createPlayer({ nodeLinkRoutingMode: 'all' });
   const ffmpeg = {
     stdout: { pipe() {} },
@@ -923,9 +927,12 @@ test('NodeLink-only mode (all) skips the local Deezer pipeline and mirrors to Yo
   let youtubePipelineCalls = 0;
   let mirrorCalls = 0;
 
-  player._startNodeLinkStream = async () => {
+  player._startNodeLinkStream = async (track: Track) => {
     nodeLinkCalls += 1;
-    throw new Error('NodeLink stream failed: Playback pipeline exited before audio output (code=unknown).');
+    if (track.nodelinkEncodedTrack === 'encoded-deezer') {
+      throw new Error('NodeLink stream failed: Playback pipeline exited before audio output (code=unknown).');
+    }
+    player.playing = true;
   };
   player.sources.deezer.startPipeline = async () => {
     deezerPipelineCalls += 1;
@@ -938,6 +945,7 @@ test('NodeLink-only mode (all) skips the local Deezer pipeline and mirrors to Yo
       url: 'https://www.youtube.com/watch?v=abc123',
       duration: '3:00',
       source: 'deezer-mirror',
+      nodelinkEncodedTrack: 'encoded-mirror',
     });
   };
   player._startYouTubePipeline = async () => {
@@ -956,10 +964,10 @@ test('NodeLink-only mode (all) skips the local Deezer pipeline and mirrors to Yo
 
   await player.play();
 
-  assert.equal(nodeLinkCalls, 1);
+  assert.equal(nodeLinkCalls, 2);
   assert.equal(deezerPipelineCalls, 0);
   assert.equal(mirrorCalls, 1);
-  assert.equal(youtubePipelineCalls, 1);
+  assert.equal(youtubePipelineCalls, 0);
 
   player.stop();
 });
@@ -1314,4 +1322,118 @@ test('the local fallback after a late NodeLink failure does not double apply the
   assert.equal(player._getLiveAudioProcessorState().volumePercent, 100, 'raising it back does not amplify');
 
   player.stop();
+});
+
+function nodeLinkOnlyYouTubeTrack(player: MusicPlayer, overrides: Record<string, unknown> = {}) {
+  return player.createTrackFromData({
+    title: 'Nothing Special',
+    artist: 'Some Artist',
+    url: 'https://www.youtube.com/watch?v=T-wrYEaa0_A',
+    duration: '3:30',
+    source: 'youtube',
+    ...overrides,
+  });
+}
+
+test('in all mode a failed YouTube stream retries NodeLink and then mirrors, never the local pipeline', async () => {
+  const player = createPlayer({ nodeLinkRoutingMode: 'all' });
+  const streamedEncoded: string[] = [];
+  let localPipelineCalls = 0;
+  let mirrorCalls = 0;
+
+  player._startNodeLinkStream = async (track: Track) => {
+    streamedEncoded.push(String(track.nodelinkEncodedTrack));
+    if (track.nodelinkEncodedTrack === 'encoded-youtube') {
+      throw new Error('NodeLink stream failed (500): Failed to resolve stream URL');
+    }
+    player.playing = true;
+  };
+  player._startYouTubePipeline = async () => {
+    localPipelineCalls += 1;
+  };
+  player._startYtDlpPipeline = async () => {
+    localPipelineCalls += 1;
+  };
+  player._startYtDlpSeekPipeline = async () => {
+    localPipelineCalls += 1;
+  };
+  player._resolveStartupMirrorFallbackTrack = async () => {
+    mirrorCalls += 1;
+    return player.createTrackFromData({
+      title: 'Nothing Special',
+      url: 'https://www.deezer.com/track/1',
+      duration: '3:30',
+      source: 'deezer',
+      nodelinkEncodedTrack: 'encoded-deezer',
+    });
+  };
+
+  player.enqueueResolvedTracks([nodeLinkOnlyYouTubeTrack(player, { nodelinkEncodedTrack: 'encoded-youtube' })]);
+  await player.play();
+  for (let i = 0; i < 20 && streamedEncoded.length < 3; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+
+  assert.deepEqual(streamedEncoded, ['encoded-youtube', 'encoded-youtube', 'encoded-deezer']);
+  assert.equal(mirrorCalls, 1);
+  assert.equal(localPipelineCalls, 0);
+
+  player.stop();
+});
+
+test('in all mode a stored YouTube track without an encoded track is resolved through NodeLink first', async () => {
+  const player = createPlayer({ nodeLinkRoutingMode: 'all' });
+  const streamedEncoded: string[] = [];
+  let localPipelineCalls = 0;
+
+  player.nodeLinkClient = {
+    enabled: true,
+    loadTracks: async () => ({
+      loadType: 'track',
+      data: nodeLinkTrack('Nothing Special', 'encoded-fresh', 'youtube'),
+    }),
+  } as unknown as MusicPlayer['nodeLinkClient'];
+  player._startNodeLinkStream = async (track: Track) => {
+    streamedEncoded.push(String(track.nodelinkEncodedTrack));
+    player.playing = true;
+  };
+  player._startYouTubePipeline = async () => {
+    localPipelineCalls += 1;
+  };
+
+  player.enqueueResolvedTracks([nodeLinkOnlyYouTubeTrack(player)]);
+  await player.play();
+
+  assert.deepEqual(streamedEncoded, ['encoded-fresh']);
+  assert.equal(localPipelineCalls, 0);
+
+  player.stop();
+});
+
+test('in all mode queued YouTube tracks are never prefetched through yt-dlp', () => {
+  const allPlayer = createPlayer({ nodeLinkRoutingMode: 'all' });
+  const smartPlayer = createPlayer({ nodeLinkRoutingMode: 'smart' });
+
+  assert.equal(allPlayer._canPrefetchTrack(nodeLinkOnlyYouTubeTrack(allPlayer)), false);
+  assert.equal(smartPlayer._canPrefetchTrack(nodeLinkOnlyYouTubeTrack(smartPlayer)), true);
+});
+
+test('in all mode the mirror search never falls back to a local YouTube search', async () => {
+  const player = createPlayer({ nodeLinkRoutingMode: 'all' });
+  let localSearchCalls = 0;
+
+  player._resolveNodeLinkTracks = async () => [];
+  player._searchYouTubeTracks = async () => {
+    localSearchCalls += 1;
+    return [];
+  };
+
+  const mirror = await player._resolveStartupMirrorFallbackTrack(
+    { title: 'Nothing Special', artist: 'Some Artist', source: 'deezer' },
+    'user-1',
+    ['deezer'],
+  );
+
+  assert.equal(mirror, null);
+  assert.equal(localSearchCalls, 0);
 });
