@@ -2,6 +2,21 @@ import { Readable } from 'node:stream';
 import { ValidationError } from '../../core/errors.ts';
 import type { Track } from '../../types/domain.ts';
 
+export function describeNodeLinkErrorBody(body: string, fallback: string): string {
+  const trimmed = body.trim();
+  if (!trimmed) return fallback;
+  try {
+    const parsed = JSON.parse(trimmed) as { message?: unknown; error?: unknown };
+    const message = typeof parsed?.message === 'string' ? parsed.message.trim() : '';
+    if (message) return message.slice(0, 300);
+    const error = typeof parsed?.error === 'string' ? parsed.error.trim() : '';
+    if (error) return error.slice(0, 300);
+  } catch {
+    return trimmed.slice(0, 300);
+  }
+  return trimmed.slice(0, 300);
+}
+
 export type NodeLinkTrackInfo = Record<string, unknown> & {
   identifier?: unknown;
   title?: unknown;
@@ -183,8 +198,8 @@ export class NodeLinkClient {
 
     if (!response.ok) {
       const body = await response.text().catch(() => '');
-      this.lastError = `NodeLink load failed (${response.status}): ${body.slice(0, 300) || response.statusText}`;
-      throw new ValidationError(`NodeLink load failed (${response.status}): ${body.slice(0, 300) || response.statusText}`);
+      this.lastError = `NodeLink load failed (${response.status}): ${describeNodeLinkErrorBody(body, response.statusText)}`;
+      throw new ValidationError(this.lastError);
     }
 
     const payload = await response.json().catch((err) => {
@@ -213,8 +228,8 @@ export class NodeLinkClient {
 
     if (!response.ok) {
       const body = await response.text().catch(() => '');
-      this.lastError = `NodeLink info failed (${response.status}): ${body.slice(0, 300) || response.statusText}`;
-      throw new ValidationError(`NodeLink info failed (${response.status}): ${body.slice(0, 300) || response.statusText}`);
+      this.lastError = `NodeLink info failed (${response.status}): ${describeNodeLinkErrorBody(body, response.statusText)}`;
+      throw new ValidationError(this.lastError);
     }
 
     const payload = await response.json().catch((err) => {
@@ -254,8 +269,8 @@ export class NodeLinkClient {
 
     if (!response.ok || !response.body) {
       const body = await response.text().catch(() => '');
-      this.lastError = `NodeLink stream failed (${response.status}): ${body.slice(0, 300) || response.statusText}`;
-      throw new ValidationError(`NodeLink stream failed (${response.status}): ${body.slice(0, 300) || response.statusText}`);
+      this.lastError = `NodeLink stream failed (${response.status}): ${describeNodeLinkErrorBody(body, response.statusText)}`;
+      throw new ValidationError(this.lastError);
     }
 
     this.lastError = null;
