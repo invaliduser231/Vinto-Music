@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.12.6] - 2026-09-29
+
+- Fixes:
+  - with `NODELINK_ROUTING_MODE=all`, YouTube playback stays on NodeLink as well. A failed NodeLink stream used to drop to a local yt-dlp pipeline, which a blocked host turns into `pipe:0: Invalid data found when processing input` in the channel. It is now retried once through NodeLink and then mirrored to another source through NodeLink
+  - a YouTube track stored without a NodeLink reference, such as a favorite or a saved playlist entry, is resolved through NodeLink before it plays instead of going to yt-dlp
+  - in `all` mode, early-close recovery keeps the NodeLink track, queued YouTube tracks are no longer prefetched through yt-dlp and the mirror search no longer falls back to a local YouTube search
+  - a NodeLink error reaches the channel as its message rather than as the raw JSON body
+- Tests: covered the NodeLink retry and mirror for YouTube, the re-resolution of stored tracks, the prefetch and mirror guards, recovery in `all` mode and the error message extraction
+
 ## [0.12.5] - 2026-09-28
 
 - Fixes:
