@@ -54,6 +54,8 @@ const MIRROR_SOURCE_COOLDOWN_MS = 10 * 60_000;
 const NEXT_TRACK_PREFETCH_TTL_MS = 10 * 60_000;
 const PUMP_RECOVERY_WINDOW_MS = 30_000;
 const PUMP_RECOVERY_MAX_ATTEMPTS = 3;
+const NODELINK_STALL_TIMEOUT_MS = 12_000;
+const NODELINK_STALL_CHECK_INTERVAL_MS = 2_000;
 
 type YouTubePrefetchedStream = {
   streamUrl: string;
@@ -438,6 +440,7 @@ export class MusicPlayer extends EventEmitter {
   pauseStartedAtMs: number | null;
   totalPausedMs: number;
   currentTrackOffsetSec: number;
+  receivedPcmBytes: number | null;
   lastKnownTrack: Track | null;
   lastKnownTrackAtMs: number;
   activePlaybackToken: number;
@@ -575,6 +578,7 @@ export class MusicPlayer extends EventEmitter {
     this.pauseStartedAtMs = null;
     this.totalPausedMs = 0;
     this.currentTrackOffsetSec = 0;
+    this.receivedPcmBytes = null;
     this.lastKnownTrack = null;
     this.lastKnownTrackAtMs = 0;
     this.activePlaybackToken = 0;
@@ -1654,11 +1658,46 @@ export class MusicPlayer extends EventEmitter {
     });
     this.streamAppliedVolumePercent = delegatedVolume;
     this.sourceStream = nodeLinkStream as PipelineStreamLike;
+    this.receivedPcmBytes = 0;
     this._bindPipelineErrorHandler(nodeLinkStream, 'nodelink.stream');
 
     let playbackStarted = false;
     let closeHandled = false;
+    let lastChunkAtMs = Date.now();
+    nodeLinkStream.on('data', (chunk: Buffer) => {
+      if (this.sourceStream !== nodeLinkStream) return;
+      this.receivedPcmBytes = (this.receivedPcmBytes ?? 0) + chunk.length;
+      lastChunkAtMs = Date.now();
+    });
+
+    const stallWatchdog = setInterval(() => {
+      if (closeHandled || nodeLinkStream.destroyed) {
+        clearInterval(stallWatchdog);
+        return;
+      }
+      if (!playbackStarted) return;
+      if (this.paused || !this.voice?.connected) {
+        lastChunkAtMs = Date.now();
+        return;
+      }
+      const stalledMs = Date.now() - lastChunkAtMs;
+      if (stalledMs < NODELINK_STALL_TIMEOUT_MS) return;
+
+      clearInterval(stallWatchdog);
+      this.logger?.warn?.('NodeLink stream stalled, restarting from the last received position', {
+        title: track.title,
+        source: track.source,
+        stalledMs,
+        progressSec: typeof this.getProgressSeconds === 'function' ? this.getProgressSeconds() : null,
+        receivedPcmBytes: this.receivedPcmBytes,
+        guildId,
+      });
+      nodeLinkStream.destroy(new Error('NodeLink stream stalled'));
+    }, NODELINK_STALL_CHECK_INTERVAL_MS);
+    stallWatchdog.unref?.();
+
     const onClose = async () => {
+      clearInterval(stallWatchdog);
       if (!playbackStarted || closeHandled) return;
       closeHandled = true;
       await this._drainPlaybackBeforeClose();

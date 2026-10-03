@@ -157,6 +157,7 @@ export function bindPipelineErrorHandler(player: ProcessUtilsPlayer, stream: unk
       label,
       code: err instanceof Error && 'code' in err ? (err as { code?: unknown }).code ?? null : null,
       error: err instanceof Error ? err.message : String(err),
+      cause: describeErrorCause(err),
     });
   };
 
@@ -164,6 +165,16 @@ export function bindPipelineErrorHandler(player: ProcessUtilsPlayer, stream: unk
   player.pipelineErrorHandlers.push(() => {
     targetStream.off?.('error', onError);
   });
+}
+
+export function describeErrorCause(err: unknown): string | null {
+  const cause = err && typeof err === 'object' ? (err as { cause?: unknown }).cause : undefined;
+  if (cause == null) return null;
+  if (typeof cause !== 'object') return String(cause);
+  const code = (cause as { code?: unknown }).code;
+  const message = (cause as { message?: unknown }).message;
+  const prefix = typeof code === 'string' && code ? `${code}: ` : '';
+  return `${prefix}${String(message ?? cause)}`;
 }
 
 export function isExpectedPipeError(err: unknown) {
@@ -183,6 +194,7 @@ export function resetPlaybackClock(player: ProcessUtilsPlayer) {
   player.pauseStartedAtMs = null;
   player.totalPausedMs = 0;
   player.currentTrackOffsetSec = 0;
+  player.receivedPcmBytes = null;
 }
 
 export function normalizePlaybackError(player: ProcessUtilsPlayer, err: unknown) {

@@ -5,6 +5,13 @@ import type { MusicPlayer } from '../MusicPlayer.ts';
 import type { Track } from '../../types/domain.ts';
 
 const EARLY_CLOSE_MIN_REMAINING_SEC = 10;
+const RECOVERY_WINDOW_MS = 10 * 60_000;
+const PCM_BYTES_PER_SECOND = 48_000 * 2 * 2;
+
+type RecoverableTrack = Track & {
+  recoveryAttemptCount?: unknown;
+  recoveryWindowStartedAtMs?: unknown;
+};
 
 type QueueLifecycleMethods = {
   clearQueue(): number;
@@ -46,10 +53,23 @@ function triggerImmediateTrackTransition(player: QueueLifecycleRuntime) {
   });
 }
 
-function getTrackRecoveryAttempt(track: Track | null | undefined) {
-  const rawValue = (track as (Track & { recoveryAttemptCount?: unknown }) | null | undefined)?.recoveryAttemptCount;
-  const parsed = Number.parseInt(String(rawValue ?? 0), 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+function getTrackRecoveryState(track: Track | null | undefined, nowMs: number) {
+  const recoverable = track as RecoverableTrack | null | undefined;
+  const parsedAttempt = Number.parseInt(String(recoverable?.recoveryAttemptCount ?? 0), 10);
+  const attempt = Number.isFinite(parsedAttempt) && parsedAttempt > 0 ? parsedAttempt : 0;
+  const windowStartedAtMs = Number(recoverable?.recoveryWindowStartedAtMs);
+  const hasWindow = Number.isFinite(windowStartedAtMs) && windowStartedAtMs > 0;
+
+  if (hasWindow && nowMs - windowStartedAtMs >= RECOVERY_WINDOW_MS) {
+    return { attempt: 0, windowStartedAtMs: nowMs };
+  }
+  return { attempt, windowStartedAtMs: hasWindow ? windowStartedAtMs : nowMs };
+}
+
+function getReceivedAudioSeconds(player: QueueLifecycleRuntime): number | null {
+  const bytes = player.receivedPcmBytes;
+  if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes < 0) return null;
+  return Math.floor(Math.max(0, player.currentTrackOffsetSec) + bytes / PCM_BYTES_PER_SECOND);
 }
 
 export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecycleRuntime> = {
@@ -285,6 +305,7 @@ export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecy
     const elapsedSeconds = typeof this.getProgressSeconds === 'function'
       ? this.getProgressSeconds()
       : null;
+    const receivedAudioSeconds = getReceivedAudioSeconds(this);
     const expectedDurationSeconds = this._parseDurationSeconds(track?.duration);
     const sourceCloseInfo = this.activeSourceProcessCloseInfo;
     const isYouTubeTrack = String(track?.source ?? '').startsWith('youtube');
@@ -308,7 +329,8 @@ export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecy
       && elapsedSeconds >= 5
       && elapsedSeconds < Math.max(10, expectedDurationSeconds - 120)
     );
-    const recoveryAttempt = getTrackRecoveryAttempt(track);
+    const recoveryState = getTrackRecoveryState(track, Date.now());
+    const recoveryAttempt = recoveryState.attempt;
     const maxRecoveryAttempts = isNodeLinkTrack ? 2 : 1;
     let continuationTrack = pendingSeekTrack;
     let recoverySeekSec: number | null = null;
@@ -319,9 +341,13 @@ export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecy
       && elapsedSeconds != null
       && recoveryAttempt < maxRecoveryAttempts
     ) {
-      recoverySeekSec = Math.max(0, elapsedSeconds - 2);
-      const recoveryTrack = this._cloneTrack(track, { seekStartSec: recoverySeekSec });
-      (recoveryTrack as Track & { recoveryAttemptCount?: number }).recoveryAttemptCount = recoveryAttempt + 1;
+      const resumeFromSec = receivedAudioSeconds != null
+        ? Math.min(elapsedSeconds, receivedAudioSeconds)
+        : elapsedSeconds;
+      recoverySeekSec = Math.max(0, resumeFromSec - 2);
+      const recoveryTrack = this._cloneTrack(track, { seekStartSec: recoverySeekSec }) as RecoverableTrack;
+      recoveryTrack.recoveryAttemptCount = recoveryAttempt + 1;
+      recoveryTrack.recoveryWindowStartedAtMs = recoveryState.windowStartedAtMs;
       // First early-close retry keeps the NodeLink encoded track; second retry falls back local.
       if (isNodeLinkTrack && recoveryAttempt >= 1 && !this._isNodeLinkOnlyModeForSourceTrack(track, track.url)) {
         recoveryTrack.nodelinkEncodedTrack = null;
@@ -352,6 +378,7 @@ export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecy
         code: code ?? null,
         signal: signal ?? null,
         elapsedSeconds,
+        receivedAudioSeconds,
         expectedDurationSeconds,
         source: track?.source ?? null,
         url: track?.url ?? null,
