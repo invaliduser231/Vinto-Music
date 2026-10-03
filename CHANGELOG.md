@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.12.7] - 2026-10-03
+
+- Fixes:
+  - a NodeLink stream that stops delivering audio is torn down after 12 seconds and resumed through the regular recovery. A NodeLink worker that crashed mid-track used to leave the stream open without data, so the channel went silent for about five minutes while `np` kept counting
+  - early-close recovery resumes from the audio that actually arrived instead of from the playback clock, which kept running during a stall and made the resumed track skip the part nobody heard
+  - recovery attempts are counted per ten-minute window instead of per track, so a long mix or podcast survives several unrelated stream failures while a failure loop still stops after two attempts
+- Diagnostics: pipeline stream errors log their underlying cause, and a stall logs how much audio had been received
+- Tests: covered the stall watchdog, pausing during a stall, the received-audio resume position and the recovery window
+
 ## [0.12.6] - 2026-09-29
 
 - Fixes:
