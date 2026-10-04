@@ -241,6 +241,7 @@ Notes:
 | `MONGO_LOG_MAX_FILE` | `3` | Docker Compose retained MongoDB log files. |
 | `UNHEALTHY_EXIT_ENABLED` | `1` | Exit the process when runtime readiness stays unhealthy long enough, so Docker restart policies can recover it. |
 | `UNHEALTHY_EXIT_AFTER_MS` | `180000` | How long `/readyz` may stay unhealthy before the process exits with code `1`. |
+| `GATEWAY_OUTAGE_EXIT_AFTER_MS` | `1800000` | Replaces `UNHEALTHY_EXIT_AFTER_MS` while the gateway is still scheduling reconnects. A restart does not help when Fluxer itself is unreachable and only drops sessions, so the process waits longer before exiting. Voice sessions wait for the gateway up to 30 minutes and rejoin once it is ready. |
 | `UNHEALTHY_CHECK_INTERVAL_MS` | `5000` | How often the runtime checks whether unhealthy state should trigger a forced exit. |
 | `SENTRY_DSN` | empty | Optional Sentry DSN. |
 | `SENTRY_ENVIRONMENT` | `production` | Sentry environment label. |
