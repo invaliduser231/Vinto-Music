@@ -29,6 +29,7 @@ import { ScrobbleService } from '../bot/services/scrobbleService.ts';
 import { sanitizeBrokenLocalProxyEnv } from './proxy.ts';
 import { verifyApiConnectivity, resolveGatewayUrl } from './connectivity.ts';
 import { bindGatewayMetrics, bindSessionMetrics, createAppMetrics } from './metrics.ts';
+import { isGatewayRecovering, unhealthyExitThresholdMs } from './unhealthyExit.ts';
 import type { SessionManagerOptions } from '../types/domain.ts';
 const PRESENCE_ROTATION_INTERVAL_MS = 10 * 60 * 1000;
 const RSS_EXIT_CONSECUTIVE_BREACHES = 3;
@@ -758,6 +759,11 @@ export async function startApp() {
   });
 
   if (config.unhealthyExitEnabled) {
+    let lastGatewayReconnectActivityAtMs: number | null = null;
+    gateway.on('reconnect_scheduled', () => {
+      lastGatewayReconnectActivityAtMs = Date.now();
+    });
+
     unhealthyExitHandle = setInterval(() => {
       const health = getRuntimeHealth();
       if (health.ok) {
@@ -765,21 +771,30 @@ export async function startApp() {
         return;
       }
 
+      const exitState = {
+        gatewayConnected,
+        lastGatewayReconnectActivityAtMs,
+        nowMs: Date.now(),
+      };
+      const exitAfterMs = unhealthyExitThresholdMs(config, exitState);
+
       if (!unhealthySince) {
         unhealthySince = Date.now();
         logger.warn('Runtime became unhealthy', {
-          unhealthyExitAfterMs: config.unhealthyExitAfterMs,
+          unhealthyExitAfterMs: exitAfterMs,
+          gatewayRecovering: isGatewayRecovering(exitState),
         });
         return;
       }
 
       const unhealthyForMs = Date.now() - unhealthySince;
-      if (unhealthyForMs < config.unhealthyExitAfterMs) return;
+      if (unhealthyForMs < exitAfterMs) return;
 
       logger.error('Runtime stayed unhealthy beyond threshold, exiting for container restart', {
         unhealthyForMs,
-        unhealthyExitAfterMs: config.unhealthyExitAfterMs,
+        unhealthyExitAfterMs: exitAfterMs,
         gatewayConnected,
+        gatewayRecovering: isGatewayRecovering(exitState),
         startedAt,
       });
       process.exit(1);

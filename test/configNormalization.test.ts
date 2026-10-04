@@ -62,6 +62,7 @@ test('loadConfig enables unhealthy-exit watchdog by default', () => {
 
   assert.equal(config.unhealthyExitEnabled, true);
   assert.equal(config.unhealthyExitAfterMs, 180000);
+  assert.equal(config.gatewayOutageExitAfterMs, 1800000);
   assert.equal(config.unhealthyCheckIntervalMs, 5000);
 });
 

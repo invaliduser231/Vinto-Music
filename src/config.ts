@@ -290,6 +290,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     dashboardApiProgressIntervalMs: parsePositiveInt(env.DASHBOARD_API_PROGRESS_INTERVAL_MS, 2000),
     unhealthyExitEnabled: parseBool(env.UNHEALTHY_EXIT_ENABLED, true),
     unhealthyExitAfterMs: parsePositiveInt(env.UNHEALTHY_EXIT_AFTER_MS, 180_000),
+    gatewayOutageExitAfterMs: parsePositiveInt(env.GATEWAY_OUTAGE_EXIT_AFTER_MS, 1_800_000),
     unhealthyCheckIntervalMs: parsePositiveInt(env.UNHEALTHY_CHECK_INTERVAL_MS, 5_000),
 
     sentryDsn: env.SENTRY_DSN?.trim() || null,
