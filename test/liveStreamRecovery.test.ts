@@ -39,9 +39,16 @@ function markPlaying(player: MusicPlayer, track: Track) {
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
+function ffmpegHttpArgs(player: MusicPlayer, url: string, isLive: boolean): string[] {
+  const typed = player as unknown as {
+    _ffmpegHttpArgs: (inputUrl: string, seekSec: number, options: { isLive?: boolean }) => string[];
+  };
+  return typed._ffmpegHttpArgs(url, 0, { isLive });
+}
+
 test('live ffmpeg input reconnects on resets and read stalls', () => {
   const player = createPlayer();
-  const args = player._ffmpegHttpArgs('https://radio.example/stream', 0, { isLive: true });
+  const args = ffmpegHttpArgs(player, 'https://radio.example/stream', true);
   const inputIndex = args.indexOf('-i');
 
   for (const option of ['-reconnect', '-reconnect_streamed', '-reconnect_on_network_error', '-rw_timeout']) {
@@ -53,7 +60,7 @@ test('live ffmpeg input reconnects on resets and read stalls', () => {
 
 test('regular http tracks keep the plain ffmpeg input', () => {
   const player = createPlayer();
-  const args = player._ffmpegHttpArgs('https://cdn.example/track.mp3', 0, { isLive: false });
+  const args = ffmpegHttpArgs(player, 'https://cdn.example/track.mp3', false);
 
   assert.equal(args.includes('-reconnect'), false);
   assert.equal(args.includes('-rw_timeout'), false);
