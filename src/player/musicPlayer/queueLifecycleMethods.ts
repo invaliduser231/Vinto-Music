@@ -7,6 +7,21 @@ import type { Track } from '../../types/domain.ts';
 const EARLY_CLOSE_MIN_REMAINING_SEC = 10;
 const RECOVERY_WINDOW_MS = 10 * 60_000;
 const PCM_BYTES_PER_SECOND = 48_000 * 2 * 2;
+const LIVE_RESTART_MAX_ATTEMPTS = 5;
+const LIVE_RESTART_BASE_DELAY_MS = 1_000;
+const LIVE_RESTART_MAX_DELAY_MS = 15_000;
+
+function isLiveStreamTrack(track: Track | null | undefined) {
+  return track?.isLive === true || String(track?.source ?? '').startsWith('radio');
+}
+
+function summarizeStderrTail(tail: string | null | undefined) {
+  const lines = String(tail ?? '')
+    .split(/[\r\n]+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return lines.length ? lines.slice(-4).join(' | ') : null;
+}
 
 type RecoverableTrack = Track & {
   recoveryAttemptCount?: unknown;
@@ -355,7 +370,23 @@ export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecy
       }
       continuationTrack = recoveryTrack;
     }
-    const autoRecoveryScheduled = continuationTrack != null && continuationTrack !== pendingSeekTrack;
+
+    const isLiveStream = isLiveStreamTrack(track);
+    const liveStreamEnded = isLiveStream && !wasSkip && !pendingSeekTrack;
+    const liveStderrTail = isLiveStream ? summarizeStderrTail(this.liveStreamStderrTail) : null;
+    let liveRestartDelayMs: number | null = null;
+    if (!continuationTrack && liveStreamEnded && recoveryAttempt < LIVE_RESTART_MAX_ATTEMPTS) {
+      const restartTrack = this._cloneTrack(track, { seekStartSec: 0 }) as RecoverableTrack;
+      restartTrack.recoveryAttemptCount = recoveryAttempt + 1;
+      restartTrack.recoveryWindowStartedAtMs = recoveryState.windowStartedAtMs;
+      continuationTrack = restartTrack;
+      liveRestartDelayMs = Math.min(LIVE_RESTART_MAX_DELAY_MS, LIVE_RESTART_BASE_DELAY_MS * 2 ** recoveryAttempt);
+    }
+    const autoRecoveryScheduled = (
+      continuationTrack != null
+      && continuationTrack !== pendingSeekTrack
+      && liveRestartDelayMs == null
+    );
     this.pendingSeekTrack = null;
 
     this._cleanupProcesses();
@@ -423,12 +454,34 @@ export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecy
       });
     }
 
+    if (liveStreamEnded) {
+      const liveMeta = {
+        title: track?.title ?? null,
+        url: track?.url ?? null,
+        code: code ?? null,
+        signal: signal ?? null,
+        elapsedSeconds,
+        restartAttempt: recoveryAttempt + 1,
+        maxAttempts: LIVE_RESTART_MAX_ATTEMPTS,
+        ffmpegStderrTail: liveStderrTail,
+      };
+      if (liveRestartDelayMs != null) {
+        this.logger?.warn?.('Live stream ended, reconnecting', { ...liveMeta, delayMs: liveRestartDelayMs });
+      } else {
+        this.logger?.warn?.('Live stream kept ending, giving up', liveMeta);
+      }
+    }
+
     if (!continuationTrack) {
       this._rememberTrack(track);
     }
 
     if (continuationTrack) {
       this.queue.addFront(continuationTrack);
+      if (liveRestartDelayMs != null) {
+        await new Promise((resolve) => setTimeout(resolve, liveRestartDelayMs));
+        if (this.playing || this.queue.tracks[0] !== continuationTrack) return;
+      }
       await this.play();
       return;
     }

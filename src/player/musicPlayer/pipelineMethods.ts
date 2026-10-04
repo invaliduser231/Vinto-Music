@@ -6,6 +6,9 @@ import { ValidationError } from '../../core/errors.ts';
 import { FILTER_PRESETS } from './constants.ts';
 
 const MAX_LIVE_VOLUME_COMPENSATION_PERCENT = 400;
+const LIVE_RECONNECT_DELAY_MAX_SEC = 10;
+const LIVE_READ_TIMEOUT_US = 15_000_000;
+const LIVE_STDERR_TAIL_CHARS = 2_000;
 import { isRetryableYtDlpProxyError, isRetryableYtDlpStartupError } from './errorUtils.ts';
 import {
   clamp,
@@ -93,7 +96,15 @@ export const pipelineMethods: LooseMethodMap = {
     }
 
     if (isLive) {
-      args.push('-headers', 'Icy-MetaData:1\r\n');
+      args.push(
+        '-nostats',
+        '-headers', 'Icy-MetaData:1\r\n',
+        '-reconnect', '1',
+        '-reconnect_streamed', '1',
+        '-reconnect_on_network_error', '1',
+        '-reconnect_delay_max', String(LIVE_RECONNECT_DELAY_MAX_SEC),
+        '-rw_timeout', String(LIVE_READ_TIMEOUT_US),
+      );
     }
 
     if (seek > 0) {
@@ -148,6 +159,13 @@ export const pipelineMethods: LooseMethodMap = {
 
     this._bindPipelineErrorHandler(this.ffmpeg.stdout, 'ffmpeg.stdout');
     this._bindPipelineErrorHandler(this.ffmpeg.stderr, 'ffmpeg.stderr');
+
+    this.liveStreamStderrTail = null;
+    if (options?.isLive === true) {
+      this.ffmpeg.stderr?.on?.('data', (chunk: unknown) => {
+        this.liveStreamStderrTail = `${this.liveStreamStderrTail ?? ''}${String(chunk ?? '')}`.slice(-LIVE_STDERR_TAIL_CHARS);
+      });
+    }
   },
 
   async _startYouTubePipeline(url: string, seekSec = 0) {

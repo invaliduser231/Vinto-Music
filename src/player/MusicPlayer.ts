@@ -441,6 +441,7 @@ export class MusicPlayer extends EventEmitter {
   totalPausedMs: number;
   currentTrackOffsetSec: number;
   receivedPcmBytes: number | null;
+  liveStreamStderrTail: string | null;
   lastKnownTrack: Track | null;
   lastKnownTrackAtMs: number;
   activePlaybackToken: number;
@@ -579,6 +580,7 @@ export class MusicPlayer extends EventEmitter {
     this.totalPausedMs = 0;
     this.currentTrackOffsetSec = 0;
     this.receivedPcmBytes = null;
+    this.liveStreamStderrTail = null;
     this.lastKnownTrack = null;
     this.lastKnownTrackAtMs = 0;
     this.activePlaybackToken = 0;
