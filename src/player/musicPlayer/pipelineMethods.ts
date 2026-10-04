@@ -97,8 +97,8 @@ export const pipelineMethods: LooseMethodMap = {
 
     if (isLive) {
       args.push(
-        '-nostats',
         '-headers', 'Icy-MetaData:1\r\n',
+        '-nostats',
         '-reconnect', '1',
         '-reconnect_streamed', '1',
         '-reconnect_on_network_error', '1',
