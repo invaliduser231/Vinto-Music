@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { RoomEvent } from '@livekit/rtc-node';
 
-import { VoiceConnection } from '../src/voice/VoiceConnection.ts';
+import { GATEWAY_OFFLINE_MESSAGE, VoiceConnection } from '../src/voice/VoiceConnection.ts';
 
 function createGateway() {
   return {
@@ -145,6 +146,116 @@ test('reconnect gives up after the attempt limit and reports the failure', async
   assert.equal(attempts, 3);
   assert.equal(connection.connected, false);
   assert.equal(connection._reconnectInProgress, false);
+});
+
+function createEmittingGateway() {
+  const emitter = new EventEmitter();
+  const state = { socketOpen: false, readyState: 3, hasSession: true, reconnectAttempts: 4, heartbeatLatencyMs: null };
+  return {
+    emitter,
+    state,
+    joinVoice() {},
+    leaveVoice() {},
+    describeConnectionState: () => ({ ...state }),
+    on: (event: string, listener: (...args: unknown[]) => void) => {
+      emitter.on(event, listener);
+    },
+    off: (event: string, listener: (...args: unknown[]) => void) => {
+      emitter.off(event, listener);
+    },
+  };
+}
+
+function createGatewayAwareConnection(gateway: ReturnType<typeof createEmittingGateway>) {
+  const connection = createConnection(gateway as never);
+  connection._gatewayRecoveryPollMs = 5;
+  connection._gatewayRecoverySettleMinMs = 0;
+  connection._gatewayRecoverySettleMaxMs = 0;
+  return connection;
+}
+
+test('a gateway outage pauses the reconnect until the gateway is ready again', async () => {
+  const gateway = createEmittingGateway();
+  const connection = createGatewayAwareConnection(gateway);
+  const room = createRoom();
+  let gatewayUp = false;
+
+  let failureNotices = 0;
+  connection.onReconnectFailed = () => {
+    failureNotices += 1;
+  };
+
+  let joinAttempts = 0;
+  connection._connect = async (channelId: string) => {
+    joinAttempts += 1;
+    if (!gatewayUp) throw new Error(GATEWAY_OFFLINE_MESSAGE);
+    room.isConnected = true;
+    connection.room = room as never;
+    connection.channelId = channelId;
+  };
+
+  connection.room = room as never;
+  connection.channelId = 'voice-1';
+  connection._attachRoomListeners(room as never);
+  room.emitDisconnected();
+
+  await new Promise<void>((resolve) => setTimeout(resolve, 60));
+  assert.equal(joinAttempts, 1);
+  assert.equal(failureNotices, 0);
+
+  gatewayUp = true;
+  gateway.emitter.emit('READY', {});
+
+  assert.equal(await waitFor(() => connection.connected), true);
+  assert.equal(joinAttempts, 2);
+  assert.equal(failureNotices, 0);
+});
+
+test('the reconnect also notices a recovered gateway without seeing the ready event', async () => {
+  const gateway = createEmittingGateway();
+  const connection = createGatewayAwareConnection(gateway);
+  const room = createRoom();
+
+  connection._connect = async (channelId: string) => {
+    if (!gateway.state.socketOpen) throw new Error(GATEWAY_OFFLINE_MESSAGE);
+    room.isConnected = true;
+    connection.room = room as never;
+    connection.channelId = channelId;
+  };
+
+  connection.room = room as never;
+  connection.channelId = 'voice-1';
+  connection._attachRoomListeners(room as never);
+  room.emitDisconnected();
+
+  await new Promise<void>((resolve) => setTimeout(resolve, 30));
+  Object.assign(gateway.state, { socketOpen: true, readyState: 1, reconnectAttempts: 0 });
+
+  assert.equal(await waitFor(() => connection.connected), true);
+});
+
+test('the reconnect gives up when the gateway stays away past the wait limit', async () => {
+  const gateway = createEmittingGateway();
+  const connection = createGatewayAwareConnection(gateway);
+  connection._gatewayRecoveryMaxWaitMs = 40;
+  const room = createRoom();
+
+  let failureNotices = 0;
+  connection.onReconnectFailed = () => {
+    failureNotices += 1;
+  };
+  connection._connect = async () => {
+    throw new Error(GATEWAY_OFFLINE_MESSAGE);
+  };
+
+  connection.room = room as never;
+  connection.channelId = 'voice-1';
+  connection._attachRoomListeners(room as never);
+  room.emitDisconnected();
+
+  assert.equal(await waitFor(() => failureNotices > 0), true);
+  assert.equal(connection.connected, false);
+  assert.equal(gateway.emitter.listenerCount('READY'), 0);
 });
 
 // A manual disconnect detaches the listener first, so the teardown must never rejoin.

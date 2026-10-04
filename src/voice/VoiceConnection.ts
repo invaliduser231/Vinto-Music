@@ -29,6 +29,10 @@ const VOICE_STATE_RESET_SETTLE_MS = 400;
 const RECONNECT_MAX_ATTEMPTS = 5;
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_DELAY_MS = 30_000;
+const GATEWAY_RECOVERY_MAX_WAIT_MS = 30 * 60_000;
+const GATEWAY_RECOVERY_POLL_MS = 1_000;
+const GATEWAY_RECOVERY_SETTLE_MIN_MS = 3_000;
+const GATEWAY_RECOVERY_SETTLE_MAX_MS = 15_000;
 const PLAYBACK_DRAIN_MAX_WAIT_MS = 3_000;
 const PLAYBACK_DRAIN_POLL_MS = 20;
 const EARRAPE_WARMUP_MS = 1_100;
@@ -264,6 +268,10 @@ export class VoiceConnection {
   _reconnectMaxAttempts: number;
   _reconnectBaseDelayMs: number;
   _reconnectMaxDelayMs: number;
+  _gatewayRecoveryMaxWaitMs: number;
+  _gatewayRecoveryPollMs: number;
+  _gatewayRecoverySettleMinMs: number;
+  _gatewayRecoverySettleMaxMs: number;
   constructor(gateway: GatewayLike, guildId: string, options: VoiceConnectionOptions = {}) {
     this.gateway = gateway;
     this.guildId = guildId;
@@ -309,6 +317,10 @@ export class VoiceConnection {
     this._reconnectMaxAttempts = RECONNECT_MAX_ATTEMPTS;
     this._reconnectBaseDelayMs = RECONNECT_BASE_DELAY_MS;
     this._reconnectMaxDelayMs = RECONNECT_MAX_DELAY_MS;
+    this._gatewayRecoveryMaxWaitMs = GATEWAY_RECOVERY_MAX_WAIT_MS;
+    this._gatewayRecoveryPollMs = GATEWAY_RECOVERY_POLL_MS;
+    this._gatewayRecoverySettleMinMs = GATEWAY_RECOVERY_SETTLE_MIN_MS;
+    this._gatewayRecoverySettleMaxMs = GATEWAY_RECOVERY_SETTLE_MAX_MS;
   }
 
   get connected() {
@@ -665,6 +677,8 @@ export class VoiceConnection {
     await this._closeAudioResources();
 
     try {
+      const gatewayWaitDeadline = Date.now() + this._gatewayRecoveryMaxWaitMs;
+      let gaveUpWaitingForGateway = false;
       for (let attempt = 1; attempt <= this._reconnectMaxAttempts; attempt += 1) {
         const delayMs = Math.min(
           this._reconnectBaseDelayMs * 2 ** (attempt - 1),
@@ -688,6 +702,17 @@ export class VoiceConnection {
         } catch (err) {
           if (token !== this._reconnectToken) return;
 
+          if (err instanceof Error && err.message === GATEWAY_OFFLINE_MESSAGE) {
+            const recovered = await this._waitForGatewayRecovery(token, gatewayWaitDeadline - Date.now());
+            if (token !== this._reconnectToken) return;
+            if (!recovered) {
+              gaveUpWaitingForGateway = true;
+              break;
+            }
+            attempt -= 1;
+            continue;
+          }
+
           this.logger?.warn?.('Voice reconnect attempt failed', {
             guildId: this.guildId,
             channelId,
@@ -704,6 +729,7 @@ export class VoiceConnection {
         guildId: this.guildId,
         channelId,
         attempts: this._reconnectMaxAttempts,
+        reason: gaveUpWaitingForGateway ? 'gateway_unavailable' : 'attempts_exhausted',
       });
       this._notifyReconnectFailed();
     } finally {
@@ -711,6 +737,55 @@ export class VoiceConnection {
         this._reconnectInProgress = false;
       }
     }
+  }
+
+  _isGatewayReady() {
+    const state = this.gateway.describeConnectionState?.();
+    return Boolean(state?.socketOpen && state.hasSession && state.reconnectAttempts === 0);
+  }
+
+  async _waitForGatewayRecovery(token: number, maxWaitMs: number): Promise<boolean> {
+    if (maxWaitMs <= 0) return false;
+
+    this.logger?.warn?.('Voice reconnect is waiting for the gateway to come back', {
+      guildId: this.guildId,
+      channelId: this.channelId,
+      maxWaitMs,
+    });
+
+    const recovered = await new Promise<boolean>((resolve) => {
+      let finished = false;
+      const finish = (value: boolean) => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(deadline);
+        clearInterval(poll);
+        this.gateway.off('READY', onRecovered);
+        this.gateway.off('RESUMED', onRecovered);
+        resolve(value);
+      };
+      const onRecovered = () => finish(true);
+      const deadline = setTimeout(() => finish(false), maxWaitMs);
+      const poll = setInterval(() => {
+        if (token !== this._reconnectToken) finish(false);
+        else if (this._isGatewayReady()) finish(true);
+      }, this._gatewayRecoveryPollMs);
+      deadline.unref?.();
+      poll.unref?.();
+      this.gateway.on('READY', onRecovered);
+      this.gateway.on('RESUMED', onRecovered);
+    });
+    if (!recovered || token !== this._reconnectToken) return false;
+
+    const settleSpanMs = Math.max(0, this._gatewayRecoverySettleMaxMs - this._gatewayRecoverySettleMinMs);
+    const settleMs = this._gatewayRecoverySettleMinMs + Math.floor(Math.random() * (settleSpanMs + 1));
+    this.logger?.info?.('Gateway is back, rejoining voice', {
+      guildId: this.guildId,
+      channelId: this.channelId,
+      settleMs,
+    });
+    await new Promise<void>((resolve) => setTimeout(resolve, settleMs));
+    return token === this._reconnectToken;
   }
 
   _notifyReconnectFailed() {
