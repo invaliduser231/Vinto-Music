@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.12.9] - 2026-10-04
+
+- Fixes:
+  - a 24/7 session whose voice reconnect runs out of attempts stays in place and tries again every five minutes. It used to be destroyed, which also removed its 24/7 binding and its saved queue, so a longer Fluxer outage could silently drop every 24/7 channel until someone set them up again. Sessions in a channel that is gone or no longer accessible are still closed
+- Tests: covered the retry for 24/7 sessions, the permanent failure case and cancelling the retry on destroy
+
 ## [0.12.8] - 2026-10-04
 
 - Fixes:
