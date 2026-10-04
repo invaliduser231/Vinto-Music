@@ -188,6 +188,48 @@ test('now playing embed falls back to plain text when the track has no url', asy
   assert.equal(embed?.description, '**Local File** `2:10`');
 });
 
+test('two sessions in one guild each keep editing their own now playing message', async () => {
+  const sessions = new EventEmitter();
+  const router = createRouter(sessions);
+  const sent: string[] = [];
+  const edited: string[] = [];
+  let nextId = 0;
+
+  router.rest.sendMessage = (async (channelId: string) => {
+    sent.push(channelId);
+    nextId += 1;
+    return { id: `message-${nextId}` };
+  }) as CommandRouter['rest']['sendMessage'];
+  router.rest.editMessage = (async (channelId: string, messageId: string) => {
+    edited.push(`${channelId}/${messageId}`);
+    return { id: messageId };
+  }) as CommandRouter['rest']['editMessage'];
+
+  const music = { guildId: 'guild-1', sessionId: 'guild-1:voice-music', settings: {} };
+  const chill = { guildId: 'guild-1', sessionId: 'guild-1:voice-chill', settings: {} };
+  const publish = (session: typeof music, channelId: string, title: string) => router._publishNowPlaying(
+    session as never,
+    { title, duration: '4:20', source: 'youtube' },
+    channelId,
+    '',
+    createTranslator('en'),
+  );
+
+  try {
+    await publish(music, 'text-music', 'Libertas');
+    await publish(chill, 'text-chill', 'Let\'s Groove');
+    await publish(music, 'text-music', 'Libertas');
+    await publish(chill, 'text-chill', 'Let\'s Groove');
+    await publish(music, 'text-music', 'Libertas');
+  } finally {
+    if (router.weeklySweepHandle) clearInterval(router.weeklySweepHandle);
+    if (router.ephemeralCleanupHandle) clearInterval(router.ephemeralCleanupHandle);
+  }
+
+  assert.deepEqual(sent, ['text-music', 'text-chill']);
+  assert.deepEqual(edited, ['text-music/message-1', 'text-chill/message-2', 'text-music/message-1']);
+});
+
 test('trackStart popup is suppressed for persistent session restore playback', async () => {
   const sessions = new EventEmitter();
   const router = createRouter(sessions);

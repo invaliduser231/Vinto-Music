@@ -690,7 +690,7 @@ export class CommandRouter {
     this.sessions.on('queueEmpty', async (payload?: SessionEventPayload) => {
       const { session, reason = null } = payload ?? {};
       if (!session?.guildId) return;
-      this.nowPlayingMessages.delete(String(session.guildId));
+      this.nowPlayingMessages.delete(this._nowPlayingKey(session));
       const activeSession = this.sessions.get(session.guildId, { sessionId: session?.sessionId });
       if (activeSession && activeSession !== session) return;
       const player = session?.player ?? null;
@@ -977,6 +977,7 @@ export class CommandRouter {
 
     const guildId = String(session?.guildId ?? '').trim();
     if (!guildId) return false;
+    const messageKey = this._nowPlayingKey(session);
 
     const title = String(track?.title ?? '').trim() || 'Unknown';
     const duration = String(track?.duration ?? '').trim() || 'Unknown';
@@ -1001,11 +1002,11 @@ export class CommandRouter {
       allowed_mentions: { parse: [], users: [], roles: [], replied_user: false },
     };
 
-    const existing = this.nowPlayingMessages.get(guildId);
+    const existing = this.nowPlayingMessages.get(messageKey);
     if (existing && existing.channelId === channelId) {
       const edited = await this.rest.editMessage(channelId, existing.messageId, payload).catch(() => null);
       if (edited) return true;
-      this.nowPlayingMessages.delete(guildId);
+      this.nowPlayingMessages.delete(messageKey);
     }
 
     const sent = await this.rest.sendMessage(channelId, payload).catch((error: unknown) => {
@@ -1019,8 +1020,13 @@ export class CommandRouter {
     if (!sent) return false;
 
     const messageId = String((sent as { id?: unknown })?.id ?? '').trim();
-    if (messageId) this.nowPlayingMessages.set(guildId, { channelId, messageId });
+    if (messageId) this.nowPlayingMessages.set(messageKey, { channelId, messageId });
     return true;
+  }
+
+  _nowPlayingKey(session: SessionLookup | null | undefined): string {
+    const sessionId = String(session?.sessionId ?? '').trim();
+    return sessionId || String(session?.guildId ?? '').trim();
   }
 
   async _emitWebhookEvent(session: SessionLookup | null | undefined, type: string, text: string) {
