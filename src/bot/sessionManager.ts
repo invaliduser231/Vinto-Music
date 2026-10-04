@@ -39,6 +39,7 @@ export function persistentRestoreRetryDelayMs(attempt: number): number {
 }
 const PERSISTENT_RESTORE_STAGGER_MS = 2500;
 const PERSISTENT_SYNC_DEBOUNCE_MS = 5000;
+const PERSISTENT_VOICE_RETRY_MS = 5 * 60_000;
 
 function isRetryablePersistentRestoreConnectFailure(error: unknown): boolean {
   const message = String((error as { message?: unknown } | null | undefined)?.message ?? '').toLowerCase();
@@ -339,6 +340,26 @@ export class SessionManager extends EventEmitter {
         );
       }
     }
+  }
+
+  _scheduleVoiceRetry(session: Session, channelId: string): void {
+    this._clearVoiceRetryTimer(session);
+    session.voiceRetryTimer = setTimeout(() => {
+      session.voiceRetryTimer = null;
+      if (!this._hasSessionInstance(session)) return;
+      const connection = session.connection as Session['connection'] & {
+        _runAutoReconnect?: (targetChannelId: string) => Promise<void>;
+      };
+      if (connection.connected) return;
+      void connection._runAutoReconnect?.(channelId);
+    }, PERSISTENT_VOICE_RETRY_MS);
+    (session.voiceRetryTimer as NodeJS.Timeout | null)?.unref?.();
+  }
+
+  _clearVoiceRetryTimer(session: Session | null | undefined): void {
+    if (!session?.voiceRetryTimer) return;
+    clearTimeout(session.voiceRetryTimer as NodeJS.Timeout);
+    session.voiceRetryTimer = null;
   }
 
   _clearKickTimer(session: Session | null | undefined): void {
@@ -732,8 +753,24 @@ export class SessionManager extends EventEmitter {
     player.on('trackError', playerListeners.trackError);
     player.on('queueEmpty', playerListeners.queueEmpty);
 
-    connection.onReconnectFailed = () => {
+    connection.onReconnectFailed = (lastError: unknown, failedChannelId: string) => {
       if (!this._hasSessionInstance(session)) return;
+      const retryChannelId = toChannelId(failedChannelId) ?? toChannelId(session.targetVoiceChannelId);
+      if (
+        session.settings?.stayInVoiceEnabled
+        && retryChannelId
+        && !this._isPermanentPersistentVoiceFailure(lastError as Parameters<SessionManager['_isPermanentPersistentVoiceFailure']>[0])
+      ) {
+        this.logger?.warn?.('Keeping 24/7 session after voice reconnect gave up, retrying later', {
+          guildId,
+          sessionId: session.sessionId,
+          channelId: retryChannelId,
+          retryInMs: PERSISTENT_VOICE_RETRY_MS,
+          error: lastError instanceof Error ? lastError.message : null,
+        });
+        this._scheduleVoiceRetry(session, retryChannelId);
+        return;
+      }
       this.logger?.warn?.('Destroying session after voice reconnect gave up', {
         guildId,
         sessionId: session.sessionId,
@@ -925,6 +962,7 @@ export class SessionManager extends EventEmitter {
       this._stopPlaybackDiagnostics(session);
       this._clearIdleTimer(session);
       this._clearKickTimer(session);
+      this._clearVoiceRetryTimer(session);
 
       try {
         session.player.stop?.();

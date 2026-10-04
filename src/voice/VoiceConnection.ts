@@ -259,7 +259,7 @@ export class VoiceConnection {
   earrapeProfileStore: EarrapeProfileStoreLike | null;
   onAudioPumpFatalError: (() => void) | null;
   onReconnected: (() => void) | null;
-  onReconnectFailed: (() => void) | null;
+  onReconnectFailed: ((lastError: unknown, channelId: string) => void) | null;
   autoReconnectEnabled: boolean;
   _hasConnectedBefore: boolean;
   _needsVoiceStateReset: boolean;
@@ -679,6 +679,7 @@ export class VoiceConnection {
     try {
       const gatewayWaitDeadline = Date.now() + this._gatewayRecoveryMaxWaitMs;
       let gaveUpWaitingForGateway = false;
+      let lastError: unknown = null;
       for (let attempt = 1; attempt <= this._reconnectMaxAttempts; attempt += 1) {
         const delayMs = Math.min(
           this._reconnectBaseDelayMs * 2 ** (attempt - 1),
@@ -701,6 +702,7 @@ export class VoiceConnection {
           return;
         } catch (err) {
           if (token !== this._reconnectToken) return;
+          lastError = err;
 
           if (err instanceof Error && err.message === GATEWAY_OFFLINE_MESSAGE) {
             const recovered = await this._waitForGatewayRecovery(token, gatewayWaitDeadline - Date.now());
@@ -731,7 +733,7 @@ export class VoiceConnection {
         attempts: this._reconnectMaxAttempts,
         reason: gaveUpWaitingForGateway ? 'gateway_unavailable' : 'attempts_exhausted',
       });
-      this._notifyReconnectFailed();
+      this._notifyReconnectFailed(lastError, channelId);
     } finally {
       if (token === this._reconnectToken) {
         this._reconnectInProgress = false;
@@ -788,12 +790,12 @@ export class VoiceConnection {
     return token === this._reconnectToken;
   }
 
-  _notifyReconnectFailed() {
+  _notifyReconnectFailed(lastError: unknown, channelId: string) {
     const notify = this.onReconnectFailed;
     if (typeof notify !== 'function') return;
 
     try {
-      notify();
+      notify(lastError, channelId);
     } catch (err) {
       this.logger?.error?.('Voice reconnect failure handler threw', {
         guildId: this.guildId,

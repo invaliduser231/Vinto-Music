@@ -214,6 +214,7 @@ export interface Session {
   idleTimer?: unknown;
   kickTimer?: unknown;
   kickTimerMeta?: SessionKickTimerMeta | null;
+  voiceRetryTimer?: unknown;
   idleTimeoutIgnoreListeners?: boolean;
   diagnostics?: SessionDiagnosticsState;
   snapshot?: SessionSnapshotState;
