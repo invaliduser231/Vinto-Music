@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.12.8] - 2026-10-04
+
+- Fixes:
+  - radio and other live streams recover when the station drops the connection or stops sending. ffmpeg reconnects on resets and read stalls, and if the stream ends anyway the bot restarts it after a short delay, up to five times in ten minutes. A dropped station used to stop for good, leaving a 24/7 channel silent until someone started it again
+  - two sessions in the same server each edit their own now playing message. They used to overwrite each other's reference, so a looping track posted a fresh message on almost every repeat
+  - during a Fluxer gateway outage, voice sessions wait for the gateway and rejoin once it is ready instead of giving up after about 30 seconds and closing the session
+  - while the gateway is still reconnecting, the process no longer exits after three minutes. It waits up to `GATEWAY_OUTAGE_EXIT_AFTER_MS`, since a restart cannot reach an unreachable gateway either and only drops sessions
+- Diagnostics: the reason a live stream ended is logged with the last ffmpeg output
+- Configuration: added `GATEWAY_OUTAGE_EXIT_AFTER_MS`, 30 minutes by default
+- Tests: covered the live reconnect options, restart backoff and limit, per session now playing messages, voice reconnects across a gateway outage and the outage exit threshold
+
 ## [0.12.7] - 2026-10-03
 
 - Fixes:
