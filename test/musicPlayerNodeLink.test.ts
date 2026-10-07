@@ -975,7 +975,6 @@ test('NodeLink-only mode (all) skips the local Deezer pipeline and mirrors throu
 test('NodeLink all routing mode hands Tidal links to NodeLink, which verifies the mirror itself', async () => {
   const player = createPlayer({ nodeLinkRoutingMode: 'all', enableTidalImport: true });
   const urlQueries: string[] = [];
-  let guessCalls = 0;
 
   player._resolveNodeLinkTracks = async (
     query: string,
@@ -994,15 +993,10 @@ test('NodeLink all routing mode hands Tidal links to NodeLink, which verifies th
       requestedBy,
     }, requestedBy)];
   };
-  player._resolveTidalByGuess = async () => {
-    guessCalls += 1;
-    return [];
-  };
 
   const url = 'https://tidal.com/browse/track/290255059';
   const tracks = await player.previewTracks(url, { requestedBy: 'user-1', limit: 1 });
 
-  assert.equal(guessCalls, 0, 'the local Tidal resolver must not run any more');
   assert.deepEqual(urlQueries, [url]);
   assert.equal(tracks.length, 1);
   assert.equal(tracks[0]!.nodelinkEncodedTrack, 'encoded-mirror');
@@ -1024,9 +1018,6 @@ test('NodeLink all routing mode hands Spotify track links to NodeLink instead of
   });
   const urlQueries: string[] = [];
 
-  player._spotifyApiRequestWithMarketFallback = async () => {
-    throw new Error('the local Spotify resolver should not run any more');
-  };
   player._resolveNodeLinkTracks = async (
     query: string,
     requestedBy: string | null,
@@ -1087,7 +1078,7 @@ test('Spotify album links keep using NodeLink when the bot has no Spotify creden
   assert.equal(tracks.length, 1);
 });
 
-test('a Spotify link that the bot cannot resolve locally falls back to NodeLink', async () => {
+test('NodeLink all routing mode hands Spotify playlist links to NodeLink', async () => {
   const player = createPlayer({
     nodeLinkRoutingMode: 'all',
     spotifyClientId: 'client-id',
@@ -1095,9 +1086,6 @@ test('a Spotify link that the bot cannot resolve locally falls back to NodeLink'
   });
   const urlQueries: string[] = [];
 
-  player._spotifyApiRequest = async () => {
-    throw Object.assign(new Error('Spotify API request failed (404): /v1/playlists/37i9dQZF1E4DcffsQOUbbg'), { status: 404 });
-  };
   player._resolveNodeLinkTracks = async (
     query: string,
     requestedBy: string | null,

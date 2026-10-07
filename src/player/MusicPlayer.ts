@@ -194,7 +194,6 @@ type SourceProcessCloseInfo = {
 };
 
 export class MusicPlayer extends EventEmitter {
-  [key: string]: unknown;
   spectrumEnabled = false;
   voice: VoiceAdapterLike;
   queue: Queue<Track>;
