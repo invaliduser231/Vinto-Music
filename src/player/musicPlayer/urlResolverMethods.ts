@@ -38,8 +38,6 @@ type CrossSourceTrack = {
   isrc?: unknown;
 };
 export type UrlResolverMethods = {
-  _resolveSpotifyTrack(url: string, requestedBy: string | null): Promise<Track[]>;
-  _resolveSpotifyCollection(url: string, requestedBy: string | null): Promise<Track[]>;
   _resolveCrossSourceToYouTube(sourceTracks: CrossSourceTrack[], requestedBy: string | null, source: string): Promise<Track[]>;
   _resolveSingleUrlTrack(url: string, requestedBy: string | null): Promise<Track[]>;
   _resolveDirectHttpAudioTrack(url: string, requestedBy: string | null): Promise<Track | null>;
@@ -47,14 +45,10 @@ export type UrlResolverMethods = {
   _looksLikeWebPage(url: string): Promise<boolean>;
   _resolveSoundCloudByGuess(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
   _resolveDeezerByGuess(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
-  _resolveSpotifyByGuess(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
-  _resolveTidalByGuess(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
   _resolveFromUrlFallbackSearch(url: string, requestedBy: string | null, source: string): Promise<Track[]>;
   _normalizeInputUrl(url: unknown): Promise<string>;
 };
 type UrlResolverRuntime = MusicPlayer & UrlResolverMethods & {
-  _resolveSpotifyArtist(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
-  _resolveSpotifyCollection(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
   _resolveSoundCloudPlaylist(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
   _resolveSoundCloudTrack(url: string, requestedBy: string | null): Promise<Track[]>;
   _resolveDeezerCollection(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
@@ -351,19 +345,6 @@ function pickMirrorMatch(
 }
 
 export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntime> = {
-  async _resolveSpotifyTrack(_url: string, _requestedBy: string | null) {
-    if (!this.enableSpotifyImport) {
-      throw new ValidationError('Spotify import is currently disabled by bot configuration.');
-    }
-    throw new ValidationError('Spotify support is coming soon.');
-  },
-
-  async _resolveSpotifyCollection(_url: string, _requestedBy: string | null) {
-    if (!this.enableSpotifyImport) {
-      throw new ValidationError('Spotify import is currently disabled by bot configuration.');
-    }
-    throw new ValidationError('Spotify support is coming soon.');
-  },
 
   async _resolveCrossSourceToYouTube(sourceTracks: CrossSourceTrack[], requestedBy: string | null, source: string) {
     if (!this.enableYtSearch) {
@@ -688,16 +669,6 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
     }
   },
 
-  async _resolveSpotifyByGuess(url: string, requestedBy: string | null, limit?: number | null) {
-    if (url.includes('/artist/')) {
-      return this._resolveSpotifyArtist(url, requestedBy, limit);
-    }
-    if (url.includes('/playlist/') || url.includes('/album/')) {
-      return this._resolveSpotifyCollection(url, requestedBy, limit);
-    }
-    return this._resolveSpotifyTrack(url, requestedBy);
-  },
-
   async _resolveFromUrlFallbackSearch(url: string, requestedBy: string | null, source: string) {
     if (!this.enableYtSearch) {
       throw new ValidationError(`Could not resolve ${source} URL because YouTube search is disabled.`);
@@ -796,9 +767,5 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
     return trimmed;
   },
 
-  async _resolveTidalByGuess(_url: string, _requestedBy: string | null, _limit?: number | null) {
-    throw new ValidationError('Tidal resolver is not attached.');
-  },
 };
-
 
