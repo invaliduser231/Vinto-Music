@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  postcss: '>=8.5.23'
+  postcss: '>=8.5.29'
 
 importers:
 
@@ -34,7 +34,7 @@ importers:
         specifier: ^19.2.5
         version: 19.2.5(@types/react@19.2.18)
       postcss:
-        specifier: ^8.5.29
+        specifier: '>=8.5.29'
         version: 8.5.29
       tsx:
         specifier: ^4.23.12
