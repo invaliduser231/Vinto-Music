@@ -1,5 +1,7 @@
 import { PassThrough } from 'node:stream';
+import type { ReadableStreamReadResult } from 'node:stream/web';
 import playdl from 'play-dl';
+import type { Deezer, DeezerAlbum, DeezerPlaylist } from 'play-dl';
 import { ValidationError } from '../../core/errors.ts';
 import type { Track } from '../../types/domain.ts';
 import {
@@ -17,12 +19,9 @@ import {
   parseContentRangeStart,
 } from './deezer.ts';
 import { extractDeezerTrackId, isHttpUrl, pickThumbnailUrlFromItem, toDeezerDurationLabel } from './trackUtils.ts';
+import type { MusicPlayer } from '../MusicPlayer.ts';
+import { asRecord, readNested } from '../../utils/unknownData.ts';
 
-type LooseMethodMap = Record<string, (this: any, ...args: any[]) => any>;
-type DeezerPlayableCollection = {
-  all_tracks: () => Promise<unknown[]>;
-  type: 'playlist' | 'album';
-};
 type DeezerResponseLike = {
   headers?: {
     getSetCookie?: () => string[];
@@ -30,16 +29,73 @@ type DeezerResponseLike = {
   } | null;
 };
 
-type DeezerTrackMeta = Record<string, unknown> & {
-  id?: unknown;
-  title?: unknown;
-  artist?: { name?: unknown } | null;
-  duration?: unknown;
-  link?: unknown;
-  preview?: unknown;
+export type DeezerSessionTokens = {
+  apiToken: string;
+  licenseToken: string;
+  sessionId: string | null;
+  dzrUniqId: string | null;
+  expiresAtMs: number;
 };
 
-export const deezerMethods: LooseMethodMap = {
+export type DeezerStreamMeta = {
+  url: string;
+  cipherType: string;
+  format: string | null;
+};
+
+type DeezerResolvedStream = DeezerStreamMeta & {
+  trackId: string;
+};
+
+type DeezerSongData = {
+  MD5_ORIGIN: string;
+  SNG_ID: string;
+  MEDIA_VERSION: string;
+};
+
+type DeezerStreamConnection = {
+  response: Response;
+  controller: AbortController;
+};
+
+export interface DeezerMethodMembers {
+  _resolveDeezerTrack(url: string, requestedBy: string | null): Promise<Track[]>;
+  _resolveDeezerCollection(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
+  _deezerApiRequest(pathname: string, timeoutMs?: number): Promise<unknown>;
+  _buildDeezerTrackFromMetadata(meta: unknown, requestedBy: string | null, source?: string): Track | null;
+  _resolveDeezerTrackDirect(url: string, requestedBy: string | null): Promise<Track[]>;
+  _resolveDeezerCollectionDirect(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
+  _deezerGatewayCall(method: string, apiToken?: string, args?: Record<string, unknown>, timeoutMs?: number): Promise<unknown>;
+  _getDeezerCookieHeader(): string;
+  _updateDeezerCookieHeader(response: DeezerResponseLike | null | undefined): void;
+  _readDeezerCookieValue(name: unknown): string | null;
+  _getDeezerSessionTokens(forceRefresh?: boolean): Promise<DeezerSessionTokens>;
+  _extractDeezerError(errorValue: unknown): string | null;
+  _extractFirstHttpUrl(value: unknown): string | null;
+  _pickDeezerPreferredFormat(candidate: unknown): string;
+  _resolveDeezerMediaVariantFromResponse(body: unknown): DeezerStreamMeta | null;
+  _extractFirstStringByKey(value: unknown, targetKey: unknown): string | null;
+  _resolveDeezerSongData(apiToken: string, trackId: unknown): Promise<DeezerSongData | null>;
+  _resolveDeezerLegacyEncryptedStreamUrl(apiToken: string, trackId: unknown, preferredFormat?: unknown): Promise<DeezerStreamMeta | null>;
+  _resolveDeezerFullStreamUrlWithArl(trackId: unknown): Promise<string>;
+  _resolveDeezerTrackToken(apiToken: string, trackId: unknown): Promise<string | null>;
+  _resolveDeezerStreamUrl(track: Partial<Track> | null | undefined): Promise<DeezerResolvedStream>;
+  _sleep(ms: unknown): Promise<void>;
+  _openDeezerStreamConnection(streamUrl: string, offset?: number): Promise<DeezerStreamConnection>;
+  _readDeezerStreamChunkWithTimeout(
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+    controller: AbortController | null
+  ): Promise<ReadableStreamReadResult<Uint8Array>>;
+  _createDeezerResilientReadable(streamUrl: string): PassThrough;
+  _startDeezerEncryptedPipeline(streamUrl: string, trackId: unknown, seekSec?: number): Promise<void>;
+  _startDeezerPipeline(track: Partial<Track> | null | undefined, seekSec?: number): Promise<void>;
+}
+
+function isDeezerCollection(data: Deezer): data is DeezerPlaylist | DeezerAlbum {
+  return data.type === 'playlist' || data.type === 'album';
+}
+
+export const deezerMethods: DeezerMethodMembers & ThisType<MusicPlayer> = {
   async _resolveDeezerTrack(url: string, requestedBy: string | null) {
     if (!this.enableDeezerImport) {
       throw new ValidationError('Deezer import is currently disabled by bot configuration.');
@@ -80,10 +136,10 @@ export const deezerMethods: LooseMethodMap = {
     }
 
     const data = await playdl.deezer(url);
-    if (!data || (data.type !== 'playlist' && data.type !== 'album')) return [];
+    if (!data || !isDeezerCollection(data)) return [];
 
     const safeLimit = Math.max(1, Math.min(this.maxPlaylistTracks, Number.parseInt(String(limit), 10) || this.maxPlaylistTracks));
-    const tracks = await (data as DeezerPlayableCollection).all_tracks();
+    const tracks = await data.all_tracks();
     return this._resolveCrossSourceToYouTube(tracks.slice(0, safeLimit), requestedBy, `deezer-${data.type}`);
   },
 
@@ -102,15 +158,16 @@ export const deezerMethods: LooseMethodMap = {
     return response.json();
   },
 
-  _buildDeezerTrackFromMetadata(meta: DeezerTrackMeta, requestedBy: string | null, source = 'deezer-direct') {
-    const trackId = String(meta?.id ?? '').trim();
+  _buildDeezerTrackFromMetadata(meta: unknown, requestedBy: string | null, source = 'deezer-direct') {
+    const record = asRecord(meta);
+    const trackId = String(record?.id ?? '').trim();
     if (!trackId) return null;
 
-    const title = String(meta?.title ?? 'Deezer track').trim() || 'Deezer track';
-    const artist = String(meta?.artist?.name ?? '').trim() || null;
-    const duration = toDeezerDurationLabel(meta?.duration ?? null);
-    const deezerUrl = String(meta?.link ?? '').trim() || `https://www.deezer.com/track/${encodeURIComponent(trackId)}`;
-    const previewUrl = String(meta?.preview ?? '').trim() || null;
+    const title = String(record?.title ?? 'Deezer track').trim() || 'Deezer track';
+    const artist = String(readNested(record, ['artist', 'name']) ?? '').trim() || null;
+    const duration = toDeezerDurationLabel(record?.duration ?? null);
+    const deezerUrl = String(record?.link ?? '').trim() || `https://www.deezer.com/track/${encodeURIComponent(trackId)}`;
+    const previewUrl = String(record?.preview ?? '').trim() || null;
     const thumbnailUrl = pickThumbnailUrlFromItem(meta);
 
     return this._buildTrack({
@@ -143,7 +200,7 @@ export const deezerMethods: LooseMethodMap = {
   },
 
   async _resolveDeezerCollectionDirect(url: string, requestedBy: string | null, limit?: number | null) {
-    let payload = null;
+    let payload: unknown = null;
     let isPlaylist = false;
     const safeLimit = Math.max(1, Math.min(this.maxPlaylistTracks, Number.parseInt(String(limit), 10) || this.maxPlaylistTracks));
 
@@ -164,8 +221,9 @@ export const deezerMethods: LooseMethodMap = {
       throw new Error('Could not extract Deezer playlist/album id from URL.');
     }
 
-    const rawTracks = Array.isArray(payload?.tracks?.data) ? payload.tracks.data : [];
-    const tracks: unknown[] = [];
+    const rawData = readNested(payload, ['tracks', 'data']);
+    const rawTracks: unknown[] = Array.isArray(rawData) ? rawData : [];
+    const tracks: Track[] = [];
     for (const entry of rawTracks) {
       if (tracks.length >= safeLimit) break;
       const track = this._buildDeezerTrackFromMetadata(
@@ -220,8 +278,8 @@ export const deezerMethods: LooseMethodMap = {
     }
     this._updateDeezerCookieHeader(response);
 
-    const body = await response.json() as Record<string, unknown>;
-    const deezerError = this._extractDeezerError(body.error);
+    const body: unknown = await response.json();
+    const deezerError = this._extractDeezerError(readNested(body, ['error']));
     if (deezerError) {
       throw new Error(`Deezer gateway ${method} returned error: ${deezerError}`);
     }
@@ -233,7 +291,8 @@ export const deezerMethods: LooseMethodMap = {
   },
 
   _updateDeezerCookieHeader(response: DeezerResponseLike | null | undefined) {
-    if (!response?.headers || !this.deezerArl) return;
+    const arl = this.deezerArl;
+    if (!response?.headers || !arl) return;
 
     const setCookies = typeof response.headers.getSetCookie === 'function'
       ? response.headers.getSetCookie()
@@ -242,8 +301,8 @@ export const deezerMethods: LooseMethodMap = {
           return single ? [single] : [];
         })();
 
-    const cookieMap = new Map();
-    for (const pair of String(this._deezerCookieHeader || `arl=${this.deezerArl}`).split(';')) {
+    const cookieMap = new Map<string, string>();
+    for (const pair of String(this._deezerCookieHeader || `arl=${arl}`).split(';')) {
       const segment = pair.trim();
       if (!segment) continue;
       const eq = segment.indexOf('=');
@@ -253,7 +312,7 @@ export const deezerMethods: LooseMethodMap = {
       if (key && value) cookieMap.set(key, value);
     }
     if (!cookieMap.has('arl')) {
-      cookieMap.set('arl', this.deezerArl);
+      cookieMap.set('arl', arl);
     }
 
     for (const raw of setCookies) {
@@ -298,21 +357,24 @@ export const deezerMethods: LooseMethodMap = {
     }
 
     const userData = await this._deezerGatewayCall('deezer.getUserData', 'null', {});
-    const results = userData?.results ?? {};
-    const apiToken = String(results?.checkForm ?? '').trim();
-    const licenseToken = String(results?.USER?.OPTIONS?.license_token ?? results?.OPTIONS?.license_token ?? '').trim();
+    const results = readNested(userData, ['results']);
+    const apiToken = String(readNested(results, ['checkForm']) ?? '').trim();
+    const licenseToken = String(
+      readNested(results, ['USER', 'OPTIONS', 'license_token']) ?? readNested(results, ['OPTIONS', 'license_token']) ?? ''
+    ).trim();
     if (!apiToken || !licenseToken) {
       throw new Error('Deezer ARL session did not provide API/license tokens.');
     }
 
-    this._deezerSessionTokens = {
+    const tokens: DeezerSessionTokens = {
       apiToken,
       licenseToken,
       sessionId: this._readDeezerCookieValue('sid'),
       dzrUniqId: this._readDeezerCookieValue('dzr_uniq_id'),
       expiresAtMs: now + DEEZER_SESSION_TOKEN_TTL_MS,
     };
-    return this._deezerSessionTokens;
+    this._deezerSessionTokens = tokens;
+    return tokens;
   },
 
   _extractDeezerError(errorValue: unknown) {
@@ -326,9 +388,9 @@ export const deezerMethods: LooseMethodMap = {
       return errorValue.trim() || null;
     }
     if (typeof errorValue === 'object') {
-      const entries = Object.entries(errorValue);
-      if (!entries.length) return null;
-      const [key, val] = entries[0]!;
+      const firstEntry = Object.entries(errorValue)[0];
+      if (!firstEntry) return null;
+      const [key, val] = firstEntry;
       if (typeof val === 'string' && val.trim()) {
         return `${key}: ${val.trim()}`;
       }
@@ -365,28 +427,30 @@ export const deezerMethods: LooseMethodMap = {
   },
 
   _resolveDeezerMediaVariantFromResponse(body: unknown) {
-    const typedBody = body && typeof body === 'object' ? body as { data?: unknown } : null;
-    const firstItem = Array.isArray(typedBody?.data) ? typedBody.data[0] : null;
-    const firstMedia = Array.isArray(firstItem?.media) ? firstItem.media[0] : null;
-    if (!firstMedia || typeof firstMedia !== 'object') return null;
+    const data = readNested(body, ['data']);
+    const firstItem: unknown = Array.isArray(data) ? data[0] : null;
+    const media = readNested(firstItem, ['media']);
+    const firstMedia = asRecord(Array.isArray(media) ? media[0] : null);
+    if (!firstMedia) return null;
 
-    const firstSource = Array.isArray(firstMedia.sources) ? firstMedia.sources[0] : null;
-    let selectedSource = firstSource ?? null;
-    let url = String(selectedSource?.url ?? '').trim();
-    if (!isHttpUrl(url) && Array.isArray(firstMedia.sources)) {
-      selectedSource = firstMedia.sources.find((entry: unknown) => {
-        if (!entry || typeof entry !== 'object') return false;
-        const url = String((entry as { url?: unknown }).url ?? '').trim();
+    const sources: unknown[] | null = Array.isArray(firstMedia.sources) ? firstMedia.sources : null;
+    let selectedSource: unknown = sources ? sources[0] ?? null : null;
+    let url = String(readNested(selectedSource, ['url']) ?? '').trim();
+    if (!isHttpUrl(url) && sources) {
+      selectedSource = sources.find((entry) => {
+        const entryRecord = asRecord(entry);
+        if (!entryRecord) return false;
+        const url = String(entryRecord.url ?? '').trim();
         return isHttpUrl(url);
       }) ?? null;
-      url = String(selectedSource?.url ?? '').trim();
+      url = String(readNested(selectedSource, ['url']) ?? '').trim();
     }
     if (!isHttpUrl(url)) return null;
 
     return {
       url,
-      cipherType: String(firstMedia?.cipher?.type ?? firstMedia?.cipher ?? 'BF_CBC_STRIPE').trim().toUpperCase() || 'BF_CBC_STRIPE',
-      format: String(firstMedia?.format ?? selectedSource?.format ?? '').trim().toUpperCase() || null,
+      cipherType: String(readNested(firstMedia, ['cipher', 'type']) ?? firstMedia.cipher ?? 'BF_CBC_STRIPE').trim().toUpperCase() || 'BF_CBC_STRIPE',
+      format: String(firstMedia.format ?? readNested(selectedSource, ['format']) ?? '').trim().toUpperCase() || null,
     };
   },
 
@@ -414,7 +478,7 @@ export const deezerMethods: LooseMethodMap = {
     return null;
   },
 
-  async _resolveDeezerSongData(apiToken: unknown, trackId: unknown) {
+  async _resolveDeezerSongData(apiToken: string, trackId: unknown) {
     const safeTrackId = String(trackId ?? '').trim();
     if (!safeTrackId) return null;
 
@@ -427,11 +491,11 @@ export const deezerMethods: LooseMethodMap = {
     for (const request of requests) {
       const payload = await request;
       if (!payload) continue;
-      const results = payload?.results ?? {};
-      const dataCandidate = results?.DATA ?? results?.data?.[0] ?? results ?? null;
-      const md5Origin = String(dataCandidate?.MD5_ORIGIN ?? '').trim();
-      const songId = String(dataCandidate?.SNG_ID ?? safeTrackId).trim();
-      const mediaVersion = String(dataCandidate?.MEDIA_VERSION ?? '').trim();
+      const results = readNested(payload, ['results']) ?? {};
+      const dataCandidate = readNested(results, ['DATA']) ?? readNested(results, ['data', '0']) ?? results;
+      const md5Origin = String(readNested(dataCandidate, ['MD5_ORIGIN']) ?? '').trim();
+      const songId = String(readNested(dataCandidate, ['SNG_ID']) ?? safeTrackId).trim();
+      const mediaVersion = String(readNested(dataCandidate, ['MEDIA_VERSION']) ?? '').trim();
 
       if (md5Origin && songId && mediaVersion) {
         return { MD5_ORIGIN: md5Origin, SNG_ID: songId, MEDIA_VERSION: mediaVersion };
@@ -441,13 +505,13 @@ export const deezerMethods: LooseMethodMap = {
     return null;
   },
 
-  async _resolveDeezerLegacyEncryptedStreamUrl(apiToken: unknown, trackId: unknown, preferredFormat: unknown = null) {
+  async _resolveDeezerLegacyEncryptedStreamUrl(apiToken: string, trackId: unknown, preferredFormat: unknown = null) {
     const track = await this._resolveDeezerSongData(apiToken, trackId);
     if (!track) return null;
 
     const preferred = this._pickDeezerPreferredFormat(preferredFormat);
     const qualityOrder = [preferred, 'MP3_320', 'MP3_128', 'FLAC'];
-    const seen = new Set();
+    const seen = new Set<string>();
 
     for (const format of qualityOrder) {
       if (seen.has(format)) continue;
@@ -455,7 +519,7 @@ export const deezerMethods: LooseMethodMap = {
       const quality = DEEZER_MEDIA_QUALITY_MAP.get(format);
       if (!quality) continue;
       const url = buildDeezerLegacyDownloadUrl(track, quality);
-      if (isHttpUrl(url)) {
+      if (url && isHttpUrl(url)) {
         return { url, cipherType: 'BF_CBC_STRIPE', format };
       }
     }
@@ -463,14 +527,14 @@ export const deezerMethods: LooseMethodMap = {
     return null;
   },
 
-  async _resolveDeezerFullStreamUrlWithArl(trackId) {
+  async _resolveDeezerFullStreamUrlWithArl(trackId: unknown) {
     const safeTrackId = String(trackId ?? '').trim();
     if (!safeTrackId) {
       throw new Error('Missing Deezer track id.');
     }
 
-    const formats = this.deezerTrackFormats.map((format: string) => ({ cipher: 'BF_CBC_STRIPE', format }));
-    let lastMediaError = null;
+    const formats = this.deezerTrackFormats.map((format) => ({ cipher: 'BF_CBC_STRIPE', format }));
+    let lastMediaError: Error | null = null;
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const tokens = await this._getDeezerSessionTokens(attempt > 0);
@@ -510,7 +574,7 @@ export const deezerMethods: LooseMethodMap = {
       }
       this._updateDeezerCookieHeader(response);
 
-      const body = await response.json().catch(() => null);
+      const body: unknown = await response.json().catch(() => null);
       const variant = this._resolveDeezerMediaVariantFromResponse(body);
       if (variant?.url) {
         this._setDeezerStreamMeta(safeTrackId, {
@@ -545,26 +609,24 @@ export const deezerMethods: LooseMethodMap = {
     throw lastMediaError ?? new Error('No Deezer stream URL available from media API or legacy fallback.');
   },
 
-  async _resolveDeezerTrackToken(apiToken: unknown, trackId: unknown) {
+  async _resolveDeezerTrackToken(apiToken: string, trackId: unknown) {
     const safeTrackId = String(trackId ?? '').trim();
     if (!safeTrackId) return null;
 
     const payload = await this._deezerGatewayCall('song.getData', apiToken, { sng_id: safeTrackId }).catch(() => null);
     if (!payload) return null;
 
-    const direct = String(payload?.results?.TRACK_TOKEN ?? '').trim();
+    const direct = String(readNested(payload, ['results', 'TRACK_TOKEN']) ?? '').trim();
     if (direct) return direct;
 
-    const recursive = this._extractFirstStringByKey(payload?.results ?? payload, 'TRACK_TOKEN');
+    const recursive = this._extractFirstStringByKey(readNested(payload, ['results']) ?? payload, 'TRACK_TOKEN');
     return recursive || null;
   },
 
   async _resolveDeezerStreamUrl(track: Partial<Track> | null | undefined) {
     const trackId = String(track?.deezerTrackId ?? '').trim() || String(extractDeezerTrackId(track?.url) ?? '').trim();
     const pinned = String(track?.deezerFullStreamUrl ?? '').trim();
-    const cachedMeta = (trackId ? this._deezerStreamMetaByTrackId.get(trackId) : null) as
-      | { url?: string; cipherType?: string; format?: string | null }
-      | null;
+    const cachedMeta = trackId ? this._deezerStreamMetaByTrackId.get(trackId) : null;
 
     if (pinned && isHttpUrl(pinned)) {
       if (cachedMeta && cachedMeta.url === pinned) {
@@ -585,7 +647,7 @@ export const deezerMethods: LooseMethodMap = {
   async _sleep(ms: unknown) {
     const waitMs = Math.max(0, Number.parseInt(String(ms), 10) || 0);
     if (waitMs <= 0) return;
-    await new Promise((resolve) => setTimeout(resolve, waitMs));
+    await new Promise<void>((resolve) => setTimeout(resolve, waitMs));
   },
 
   async _openDeezerStreamConnection(streamUrl: string, offset = 0) {
@@ -642,8 +704,7 @@ export const deezerMethods: LooseMethodMap = {
         new Promise<never>((_, reject) => {
           timeoutHandle = setTimeout(() => {
             controller?.abort?.(new Error('Deezer stream body read timed out.'));
-            const timeoutError = new Error('Deezer stream body read timed out.');
-            (timeoutError as Error & { code?: string }).code = 'ETIMEDOUT';
+            const timeoutError = Object.assign(new Error('Deezer stream body read timed out.'), { code: 'ETIMEDOUT' });
             reject(timeoutError);
           }, DEEZER_STREAM_READ_TIMEOUT_MS);
         }),
@@ -750,23 +811,28 @@ export const deezerMethods: LooseMethodMap = {
     this.sourceStream = rawStream;
     this.deezerDecryptStream = decryptStream;
 
-    this.ffmpeg = await this._spawnProcess(this.ffmpegBin, this._ffmpegArgs(seekSec), {
+    const ffmpeg = await this._spawnProcess(this.ffmpegBin, this._ffmpegArgs(seekSec), {
       stdio: ['pipe', 'pipe', 'ignore'],
     });
+    this.ffmpeg = ffmpeg;
 
     this._bindPipelineErrorHandler(rawStream, 'deezer.raw');
     this._bindPipelineErrorHandler(decryptStream, 'deezer.decrypt');
-    this._bindPipelineErrorHandler(this.ffmpeg.stdin, 'ffmpeg.stdin');
-    this._bindPipelineErrorHandler(this.ffmpeg.stdout, 'ffmpeg.stdout');
+    this._bindPipelineErrorHandler(ffmpeg.stdin, 'ffmpeg.stdin');
+    this._bindPipelineErrorHandler(ffmpeg.stdout, 'ffmpeg.stdout');
 
     rawStream.on('error', () => {
-      this.ffmpeg?.kill('SIGKILL');
+      this.ffmpeg?.kill?.('SIGKILL');
     });
     decryptStream.on('error', () => {
-      this.ffmpeg?.kill('SIGKILL');
+      this.ffmpeg?.kill?.('SIGKILL');
     });
 
-    rawStream.pipe(decryptStream).pipe(this.ffmpeg.stdin);
+    const ffmpegStdin = ffmpeg.stdin;
+    if (!ffmpegStdin) {
+      throw new Error('ffmpeg stdin is not available for the Deezer pipeline.');
+    }
+    rawStream.pipe(decryptStream).pipe(ffmpegStdin);
   },
 
   async _startDeezerPipeline(track: Partial<Track> | null | undefined, seekSec = 0) {

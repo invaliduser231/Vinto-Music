@@ -26,7 +26,7 @@ import {
   toDurationLabel,
 } from './trackUtils.ts';
 type HeaderLike = { get?: (name: string) => string | null } | null | undefined;
-type CrossSourceTrack = Record<string, unknown> & {
+type CrossSourceTrack = {
   title?: unknown;
   name?: unknown;
   artist?: unknown;
@@ -37,7 +37,7 @@ type CrossSourceTrack = Record<string, unknown> & {
   durationInSec?: unknown;
   isrc?: unknown;
 };
-type UrlResolverMethods = {
+export type UrlResolverMethods = {
   _resolveSpotifyTrack(url: string, requestedBy: string | null): Promise<Track[]>;
   _resolveSpotifyCollection(url: string, requestedBy: string | null): Promise<Track[]>;
   _resolveCrossSourceToYouTube(sourceTracks: CrossSourceTrack[], requestedBy: string | null, source: string): Promise<Track[]>;

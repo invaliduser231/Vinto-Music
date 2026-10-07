@@ -1,38 +1,31 @@
 import playdl from 'play-dl';
+import type { SoundCloud, SoundCloudPlaylist } from 'play-dl';
 import { ValidationError } from '../../core/errors.ts';
 import { isSoundCloudAuthorizationError, soundCloudAuthorizationHelp } from './errorUtils.ts';
 import { isHttpUrl, normalizeThumbnailUrl, pickThumbnailUrlFromItem, toSoundCloudDurationLabel } from './trackUtils.ts';
 import type { Track } from '../../types/domain.ts';
+import type { MusicPlayer } from '../MusicPlayer.ts';
+import { asRecord, readField } from '../../utils/unknownData.ts';
 
-type LooseMethodMap = Record<string, (this: any, ...args: any[]) => any>;
-type SoundCloudPlaylist = { type: 'playlist'; all_tracks: () => Promise<unknown[]> };
-type SoundCloudTranscoding = {
-  url?: unknown;
-  format?: {
-    protocol?: unknown;
-  } | null;
-};
-type SoundCloudTranscodingLookup = {
-  url?: unknown;
-};
-type SoundCloudMetadata = Record<string, unknown> & {
-  id?: unknown;
-  title?: unknown;
-  duration?: unknown;
-  durationInSec?: unknown;
-  permalink_url?: unknown;
-  url?: unknown;
-  track_count?: unknown;
-  tracks_count?: unknown;
-  artwork_url?: unknown;
-  user?: { username?: unknown } | null;
-  publisher_metadata?: { artist?: unknown } | null;
-  media?: {
-    transcodings?: unknown;
-  } | null;
-};
+export interface SoundCloudMethodMembers {
+  _resolveSoundCloudTrack(url: string, requestedBy: string | null): Promise<Track[]>;
+  _resolveSoundCloudPlaylist(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
+  _ensureSoundCloudClientId(): Promise<string>;
+  _soundCloudResolve(url: string): Promise<unknown>;
+  _fetchSoundCloudTrackById(trackId: unknown): Promise<unknown>;
+  _resolveSoundCloudTranscodingUrl(trackPayload: unknown): Promise<string>;
+  _buildSoundCloudTrackFromMetadata(meta: unknown, requestedBy: string | null, source?: string): Track | null;
+  _resolveSoundCloudTrackDirect(url: string, requestedBy: string | null): Promise<Track[]>;
+  _resolveSoundCloudPlaylistDirect(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
+  _resolveSoundCloudStreamUrl(track: Partial<Track> | null | undefined): Promise<string>;
+  _startSoundCloudPipeline(track: Partial<Track> | null | undefined, seekSec?: number): Promise<void>;
+}
 
-export const soundcloudMethods: LooseMethodMap = {
+function isPlayDlSoundCloudPlaylist(data: SoundCloud): data is SoundCloudPlaylist {
+  return data.type === 'playlist';
+}
+
+export const soundcloudMethods: SoundCloudMethodMembers & ThisType<MusicPlayer> = {
   async _resolveSoundCloudTrack(url: string, requestedBy: string | null) {
     try {
       const direct = await this._resolveSoundCloudTrackDirect(url, requestedBy);
@@ -44,7 +37,7 @@ export const soundcloudMethods: LooseMethodMap = {
       });
     }
 
-    let data;
+    let data: SoundCloud;
     try {
       data = await playdl.soundcloud(url);
     } catch (err) {
@@ -59,7 +52,8 @@ export const soundcloudMethods: LooseMethodMap = {
       return this._resolveFromUrlFallbackSearch(url, requestedBy, 'soundcloud-fallback');
     }
 
-    return [this._buildSoundCloudTrackFromMetadata(data, requestedBy, 'soundcloud-direct')];
+    const track = this._buildSoundCloudTrackFromMetadata(data, requestedBy, 'soundcloud-direct');
+    return track ? [track] : [];
   },
 
   async _resolveSoundCloudPlaylist(url: string, requestedBy: string | null, limit?: number | null) {
@@ -73,7 +67,7 @@ export const soundcloudMethods: LooseMethodMap = {
       });
     }
 
-    let data;
+    let data: SoundCloud;
     try {
       data = await playdl.soundcloud(url);
     } catch (err) {
@@ -84,16 +78,16 @@ export const soundcloudMethods: LooseMethodMap = {
       throw err;
     }
 
-    if (!data || data.type !== 'playlist') {
+    if (!data || !isPlayDlSoundCloudPlaylist(data)) {
       return this._resolveFromUrlFallbackSearch(url, requestedBy, 'soundcloud-fallback');
     }
 
     const safeLimit = Math.max(1, Math.min(this.maxPlaylistTracks, Number.parseInt(String(limit), 10) || this.maxPlaylistTracks));
-    const tracks = await (data as SoundCloudPlaylist).all_tracks();
+    const tracks: unknown[] = await data.all_tracks();
     return tracks
       .slice(0, safeLimit)
-      .map((track: unknown) => this._buildSoundCloudTrackFromMetadata(track, requestedBy, 'soundcloud-playlist-direct'))
-      .filter(Boolean);
+      .map((track) => this._buildSoundCloudTrackFromMetadata(track, requestedBy, 'soundcloud-playlist-direct'))
+      .filter((track): track is Track => Boolean(track));
   },
 
   async _ensureSoundCloudClientId() {
@@ -151,26 +145,26 @@ export const soundcloudMethods: LooseMethodMap = {
     return response.json();
   },
 
-  async _resolveSoundCloudTranscodingUrl(trackPayload: SoundCloudMetadata | null | undefined) {
+  async _resolveSoundCloudTranscodingUrl(trackPayload: unknown) {
     const clientId = await this._ensureSoundCloudClientId();
-    const transcodings = Array.isArray(trackPayload?.media?.transcodings)
-      ? trackPayload.media.transcodings
-      : [];
+    const rawTranscodings = readField(readField(trackPayload, 'media'), 'transcodings');
+    const transcodings: unknown[] = Array.isArray(rawTranscodings) ? rawTranscodings : [];
     if (!transcodings.length) {
       throw new Error('no transcodings in SoundCloud payload');
     }
 
+    const readProtocol = (entry: unknown): unknown => readField(readField(entry, 'format'), 'protocol');
     const ranked = [
-      ...transcodings.filter((entry: SoundCloudTranscoding) => entry?.format?.protocol === 'progressive'),
-      ...transcodings.filter((entry: SoundCloudTranscoding) => entry?.format?.protocol === 'hls'),
+      ...transcodings.filter((entry) => readProtocol(entry) === 'progressive'),
+      ...transcodings.filter((entry) => readProtocol(entry) === 'hls'),
     ];
     if (!ranked.length) {
       throw new Error('no usable SoundCloud transcodings');
     }
 
-    let lastError = null;
+    let lastError: Error | null = null;
     for (const transcoding of ranked) {
-      const lookupUrl = String(transcoding?.url ?? '').trim();
+      const lookupUrl = String(readField(transcoding, 'url') ?? '').trim();
       if (!lookupUrl) continue;
 
       const endpoint = new URL(lookupUrl);
@@ -185,8 +179,8 @@ export const soundcloudMethods: LooseMethodMap = {
         continue;
       }
 
-      const body = await response.json().catch(() => null) as SoundCloudTranscodingLookup | null;
-      const streamUrl = String(body?.url ?? '').trim();
+      const body: unknown = await response.json().catch(() => null);
+      const streamUrl = String(readField(body, 'url') ?? '').trim();
       if (!streamUrl || !isHttpUrl(streamUrl)) {
         lastError = new Error('transcoding lookup returned no stream url');
         continue;
@@ -197,15 +191,16 @@ export const soundcloudMethods: LooseMethodMap = {
     throw lastError ?? new Error('no playable SoundCloud stream URL');
   },
 
-  _buildSoundCloudTrackFromMetadata(meta: SoundCloudMetadata | null | undefined, requestedBy: string | null, source = 'soundcloud-direct') {
-    const permalink = String(meta?.permalink_url ?? meta?.url ?? '').trim();
+  _buildSoundCloudTrackFromMetadata(meta: unknown, requestedBy: string | null, source = 'soundcloud-direct') {
+    const record = asRecord(meta);
+    const permalink = String(record?.permalink_url ?? record?.url ?? '').trim();
     if (!permalink || !isHttpUrl(permalink)) return null;
 
-    const title = String(meta?.title ?? 'SoundCloud track').trim() || 'SoundCloud track';
-    const duration = toSoundCloudDurationLabel(meta?.duration ?? meta?.durationInSec ?? null);
-    const artist = String(meta?.user?.username ?? meta?.publisher_metadata?.artist ?? '').trim() || null;
-    const thumbnailUrl = pickThumbnailUrlFromItem(meta) ?? normalizeThumbnailUrl(meta?.artwork_url);
-    const trackId = meta?.id != null ? String(meta.id) : null;
+    const title = String(record?.title ?? 'SoundCloud track').trim() || 'SoundCloud track';
+    const duration = toSoundCloudDurationLabel(record?.duration ?? record?.durationInSec ?? null);
+    const artist = String(readField(record?.user, 'username') ?? readField(record?.publisher_metadata, 'artist') ?? '').trim() || null;
+    const thumbnailUrl = pickThumbnailUrlFromItem(meta) ?? normalizeThumbnailUrl(record?.artwork_url);
+    const trackId = record?.id != null ? String(record.id) : null;
 
     return this._buildTrack({
       title,
@@ -221,7 +216,7 @@ export const soundcloudMethods: LooseMethodMap = {
 
   async _resolveSoundCloudTrackDirect(url: string, requestedBy: string | null) {
     const payload = await this._soundCloudResolve(url);
-    const kind = String(payload?.kind ?? '').toLowerCase();
+    const kind = String(readField(payload, 'kind') ?? '').toLowerCase();
     if (kind !== 'track') {
       throw new Error(`resolved object is not a track (${kind || 'unknown'})`);
     }
@@ -232,17 +227,19 @@ export const soundcloudMethods: LooseMethodMap = {
 
   async _resolveSoundCloudPlaylistDirect(url: string, requestedBy: string | null, limit?: number | null) {
     const payload = await this._soundCloudResolve(url);
-    const kind = String(payload?.kind ?? '').toLowerCase();
+    const record = asRecord(payload);
+    const kind = String(record?.kind ?? '').toLowerCase();
     if (kind !== 'playlist' && kind !== 'system-playlist') {
       throw new Error(`resolved object is not a playlist (${kind || 'unknown'})`);
     }
 
     const safeLimit = Math.max(1, Math.min(this.maxPlaylistTracks, Number.parseInt(String(limit), 10) || this.maxPlaylistTracks));
-    const tracks = Array.isArray(payload?.tracks) ? payload.tracks : [];
-    const resolved = [];
+    const rawTracks = record?.tracks;
+    const tracks: unknown[] = Array.isArray(rawTracks) ? rawTracks : [];
+    const resolved: Track[] = [];
     for (const entry of tracks) {
       if (resolved.length >= safeLimit) break;
-      const metadata = entry && typeof entry === 'object' ? entry as SoundCloudMetadata : null;
+      const metadata = asRecord(entry);
       const rawTitle = String(metadata?.title ?? '').trim();
       const trackId = metadata?.id ?? null;
       let track = this._buildSoundCloudTrackFromMetadata(metadata, requestedBy, 'soundcloud-playlist-direct');
@@ -262,7 +259,7 @@ export const soundcloudMethods: LooseMethodMap = {
 
     // SoundCloud's resolve endpoint can return only a small preview of large sets.
     // Let the play-dl fallback enumerate all tracks when the payload is visibly truncated.
-    const totalTracks = Number.parseInt(String(payload?.track_count ?? payload?.tracks_count ?? ''), 10);
+    const totalTracks = Number.parseInt(String(record?.track_count ?? record?.tracks_count ?? ''), 10);
     if (Number.isFinite(totalTracks) && totalTracks > resolved.length && resolved.length < safeLimit) {
       throw new Error(`direct playlist payload was truncated (${resolved.length}/${totalTracks})`);
     }
@@ -274,7 +271,7 @@ export const soundcloudMethods: LooseMethodMap = {
     const sourceUrl = String(track?.url ?? '').trim();
     const trackId = String(track?.soundcloudTrackId ?? '').trim() || null;
 
-    let payload = null;
+    let payload: unknown = null;
     if (trackId) {
       payload = await this._fetchSoundCloudTrackById(trackId).catch(() => null);
     }
@@ -290,11 +287,10 @@ export const soundcloudMethods: LooseMethodMap = {
 
   async _startSoundCloudPipeline(track: Partial<Track> | null | undefined, seekSec = 0) {
     const streamUrl = await this._resolveSoundCloudStreamUrl(track);
-    this.ffmpeg = await this._spawnProcess(this.ffmpegBin, this._ffmpegHttpArgs(streamUrl, seekSec), {
+    const ffmpeg = await this._spawnProcess(this.ffmpegBin, this._ffmpegHttpArgs(streamUrl, seekSec), {
       stdio: ['ignore', 'pipe', 'ignore'],
     });
-    this._bindPipelineErrorHandler(this.ffmpeg.stdout, 'ffmpeg.stdout');
+    this.ffmpeg = ffmpeg;
+    this._bindPipelineErrorHandler(ffmpeg.stdout, 'ffmpeg.stdout');
   },
 };
-
-

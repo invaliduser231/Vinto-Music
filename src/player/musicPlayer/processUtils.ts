@@ -28,13 +28,13 @@ export function cleanupProcesses(player: ProcessUtilsPlayer) {
 
   try {
     if (playbackSource && player.playbackOutputStream) {
-      playbackSource.unpipe?.(player.playbackOutputStream as unknown as NodeJS.WritableStream);
+      playbackSource.unpipe?.(player.playbackOutputStream);
     }
   } catch {}
 
   try {
     if (player.liveAudioProcessor && player.playbackOutputStream) {
-      player.liveAudioProcessor.unpipe?.(player.playbackOutputStream as unknown as NodeJS.WritableStream);
+      player.liveAudioProcessor.unpipe?.(player.playbackOutputStream);
     }
   } catch {}
 

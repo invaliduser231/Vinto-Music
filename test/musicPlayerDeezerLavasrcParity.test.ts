@@ -118,6 +118,8 @@ test('deezer media request uses BF_CBC_STRIPE formats like lavasrc', async () =>
   player._getDeezerSessionTokens = async () => ({
     apiToken: 'api-token',
     licenseToken: 'license-token',
+    sessionId: null,
+    dzrUniqId: null,
     expiresAtMs: Date.now() + 60_000,
   });
   player._resolveDeezerTrackToken = async () => 'track-token-123';

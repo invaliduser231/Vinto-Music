@@ -2,7 +2,6 @@ import { EventEmitter } from 'events';
 import { copyFileSync, existsSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import { PassThrough } from 'node:stream';
 import { sourceMethods } from './musicPlayer/sourceMethods.ts';
 import { AudiusClient } from './musicPlayer/AudiusClient.ts';
 import { DeezerClient } from './musicPlayer/DeezerClient.ts';
@@ -11,14 +10,26 @@ import { SoundCloudClient } from './musicPlayer/SoundCloudClient.ts';
 import { NodeLinkClient } from './musicPlayer/NodeLinkClient.ts';
 import type { NodeLinkLoadResult } from './musicPlayer/NodeLinkClient.ts';
 import { playbackStateMethods } from './musicPlayer/playbackStateMethods.ts';
+import type { PlaybackStateMethods } from './musicPlayer/playbackStateMethods.ts';
+import type { AudiusMethods } from './musicPlayer/audiusMethods.ts';
+import type { UrlResolverMethods } from './musicPlayer/urlResolverMethods.ts';
 import { queueLifecycleMethods } from './musicPlayer/queueLifecycleMethods.ts';
+import type { QueueLifecycleMethods } from './musicPlayer/queueLifecycleMethods.ts';
+import type { NodeLinkMethods } from './musicPlayer/nodeLinkMethods.ts';
+import type { TrackRuntimeMethods } from './musicPlayer/trackRuntimeMethods.ts';
+import type { TrackFactoryMethods } from './musicPlayer/trackFactoryMethods.ts';
 import { resolverMethods, shouldMirrorFailedStartup } from './musicPlayer/resolverMethods.ts';
+import type { ResolverMethodMembers } from './musicPlayer/resolverMethods.ts';
 import { nodeLinkMethods } from './musicPlayer/nodeLinkMethods.ts';
 import { pipelineMethods } from './musicPlayer/pipelineMethods.ts';
+import type { PipelineMethodMembers } from './musicPlayer/pipelineMethods.ts';
 import { trackRuntimeMethods } from './musicPlayer/trackRuntimeMethods.ts';
+import type { DeezerMethodMembers, DeezerSessionTokens, DeezerStreamMeta } from './musicPlayer/deezerMethods.ts';
+import type { SoundCloudMethodMembers } from './musicPlayer/soundcloudMethods.ts';
 import ffmpegPath from 'ffmpeg-static';
 import { Queue } from './Queue.ts';
 import { LiveAudioProcessor } from './LiveAudioProcessor.ts';
+import type { SpectrumAnalyzer } from './audio/SpectrumAnalyzer.ts';
 import { ValidationError } from '../core/errors.ts';
 import {
   LOOP_OFF,
@@ -42,8 +53,8 @@ import {
   startPlaybackClock,
   stopVoiceStream,
 } from './musicPlayer/processUtils.ts';
-import type { BivariantCallback, LoggerLike } from '../types/core.ts';
-import type { PipelineProcess, Track, TrackInput } from '../types/domain.ts';
+import type { LoggerLike } from '../types/core.ts';
+import type { PipelineProcess, Track } from '../types/domain.ts';
 
 const NORMALIZED_INPUT_URL_CACHE_MAX_SIZE = 500;
 const DEEZER_STREAM_META_CACHE_MAX_SIZE = 1_000;
@@ -174,29 +185,6 @@ interface EnqueueOptions {
 }
 
 type PipelineStreamLike = NonNullable<PipelineProcess['stdout']>;
-type BuiltTrackInput = {
-  title: string;
-  url: string;
-  duration: string | number | null | undefined;
-  metadataDeferred?: boolean;
-  thumbnailUrl?: string | null;
-  requestedBy?: string | null | undefined;
-  source: string;
-  artist?: string | null;
-  soundcloudTrackId?: string | null;
-  audiusTrackId?: string | null;
-  deezerTrackId?: string | null;
-  deezerPreviewUrl?: string | null;
-  deezerFullStreamUrl?: string | null;
-  spotifyTrackId?: string | null;
-  spotifyPreviewUrl?: string | null;
-  isrc?: string | null;
-  nodelinkEncodedTrack?: string | null;
-  nodelinkInfo?: Record<string, unknown> | null;
-  isPreview?: boolean;
-  isLive?: boolean;
-  seekStartSec?: number;
-};
 type SourceProcessCloseInfo = {
   code: number | null;
   signal: string | null;
@@ -207,156 +195,7 @@ type SourceProcessCloseInfo = {
 
 export class MusicPlayer extends EventEmitter {
   [key: string]: unknown;
-  declare stop: () => void;
-  declare clearQueue: () => void;
-  declare setVolumePercent: (value: number) => number;
-  declare setFilterPreset: (name: string) => string;
-  declare _getLiveAudioProcessorState: () => {
-    volumePercent: number;
-    filterPreset: string;
-    eqPreset: string;
-    tempoRatio: number;
-    pitchSemitones: number;
-  };
-  declare _applyAudioEffectsLive: () => boolean;
-  declare setSpectrumEnabled: (enabled: boolean) => boolean;
   spectrumEnabled = false;
-  declare setLoopMode: (mode: string) => string;
-  declare createTrackFromData: (track: TrackInput, requestedBy?: string | null) => Track;
-  declare hydrateTrackMetadata: (
-    track: TrackInput,
-    options?: { requestedBy?: string | null }
-  ) => Promise<Track | null>;
-  declare previewTracks: (
-    query: string,
-    options: { requestedBy?: string | null; limit?: number }
-  ) => Promise<Track[]>;
-  declare getDiagnostics: () => unknown;
-  declare getState: () => unknown;
-  declare canSeekCurrentTrack: () => boolean;
-  declare skip: () => boolean;
-  declare pause: () => boolean;
-  declare resume: () => boolean;
-  declare seekTo: (seconds: number) => number;
-  declare replayCurrentTrack: () => boolean;
-  declare moveQueueItem: (fromIndex: number, toIndex: number) => boolean;
-  declare refreshCurrentTrackProcessing: () => boolean;
-  declare queuePreviousTrack: () => Track | null;
-  declare searchCandidates: (
-    query: string,
-    limit?: number,
-    options?: { requestedBy?: string | null }
-  ) => Promise<Track[]>;
-  declare _buildTrack: (input: BuiltTrackInput) => Track;
-  declare _handleTrackClose: (track: Track, code: unknown, signal: unknown, playbackToken?: number | null) => Promise<void>;
-  declare _resolveTracks: (query: string, requestedBy: string | null, limit?: number | null) => Promise<Track[]>;
-  declare _resolveTracksFromSource: (url: string, requestedBy: string | null, limit?: number | null) => Promise<Track[]>;
-  declare _resolveNodeLinkTracks: (
-    query: string,
-    requestedBy: string | null,
-    limit?: number | null,
-    options?: { searchIdentifier?: string | null; urlQuery?: boolean }
-  ) => Promise<Track[]>;
-  declare _resolveYouTubeTrackViaNodeLink: (track: Partial<Track> | null | undefined) => Promise<Track | null>;
-  declare _resolveStartupMirrorFallbackTrack: (
-    track: Partial<Track> | null | undefined,
-    requestedBy: string | null,
-    exhaustedSources?: string[],
-  ) => Promise<Track | null>;
-  declare _isNodeLinkOnlyModeForSourceTrack: (track: Partial<Track> | null | undefined, trackUrl?: string | null) => boolean;
-  declare _shouldUseDirectDeezerMirror: () => boolean;
-  declare isNodeLinkStreamingEnabled: () => boolean;
-  declare _nodeLinkLoadResultToTracks: (result: unknown, requestedBy: string | null, limit?: number | null, options?: { urlQuery?: boolean }) => Track[];
-  declare _nodeLinkTrackDataToTrack: (data: unknown, requestedBy: string | null) => Track | null;
-  declare _resolveSearchTrack: (query: string, requestedBy: string | null) => Promise<Track[]>;
-  declare _resolveAmazonTrack: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
-  declare _resolveAmazonCollection: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
-  declare _resolveAppleTrack: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
-  declare _resolveAppleCollection: BivariantCallback<[string, (string | null | undefined)?, (number | null | undefined)?], Promise<Track[]>>;
-  declare _resolveAudiusByUrl: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
-  declare _resolveDeezerTrack: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
-  declare _resolveDeezerCollection: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
-  declare _resolveDeezerByGuess: BivariantCallback<[string, (string | null | undefined)?, (number | null | undefined)?], Promise<Track[]>>;
-  declare _resolveDeezerMediaVariantFromResponse: (body: unknown) => {
-    url?: string | null;
-    cipherType?: string | null;
-    format?: string | null;
-  } | null;
-  declare _getDeezerSessionTokens: (forceRefresh?: boolean) => Promise<{
-    apiToken: string | null;
-    licenseToken: string | null;
-    expiresAtMs: number;
-  }>;
-  declare _resolveDeezerFullStreamUrlWithArl: (trackId: unknown) => Promise<string | null>;
-  declare _resolveSpotifyTrack: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
-  declare _resolveSpotifyCollection: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
-  declare _resolveSpotifyArtist: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
-  declare _resolveSpotifyByGuess: BivariantCallback<[string, (string | null | undefined)?, (number | null | undefined)?], Promise<Track[]>>;
-  declare _spotifyApiRequest: (pathname: string, query?: Record<string, unknown>) => Promise<unknown>;
-  declare _resolveTidalTrack: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
-  declare _resolveTidalCollection: BivariantCallback<[string, (string | null | undefined)?, (number | null | undefined)?], Promise<Track[]>>;
-  declare _resolveTidalMix: BivariantCallback<[string, (string | null | undefined)?, (number | null | undefined)?], Promise<Track[]>>;
-  declare _resolveTidalByGuess: BivariantCallback<[string, (string | null | undefined)?, (number | null | undefined)?], Promise<Track[]>>;
-  declare _tidalApiRequest: (pathname: string, query?: Record<string, unknown>) => Promise<unknown>;
-  declare _resolveSingleYouTubeTrack: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
-  declare _resolveSingleYouTubeTrackViaYtDlp: BivariantCallback<[string, (string | null | undefined)?], Promise<Track>>;
-  declare _fetchSingleYouTubeTrackViaPlayDl: (url: string) => Promise<unknown>;
-  declare _resolveYouTubePlaylistTracks: BivariantCallback<
-    [string, (string | null | undefined)?, ({ fallbackWatchUrl?: string | null | undefined } | undefined)?],
-    Promise<Track[]>
-  >;
-  declare _resolveYouTubePlaylistTracksViaYtDlp: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
-  declare _resolveYouTubePlaylistTracksViaPlayDl: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
-  declare _resolveSingleUrlTrack: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
-  declare _resolveSoundCloudTrack: BivariantCallback<[string, (string | null | undefined)?], Promise<Track[]>>;
-  declare _resolveSoundCloudPlaylist: BivariantCallback<[string, (string | null | undefined)?, (number | null | undefined)?], Promise<Track[]>>;
-  declare _resolveSoundCloudPlaylistDirect: BivariantCallback<[string, (string | null | undefined)?, (number | null | undefined)?], Promise<Track[]>>;
-  declare _resolveSoundCloudByGuess: BivariantCallback<[string, (string | null | undefined)?, (number | null | undefined)?], Promise<Track[]>>;
-  declare _resolveCrossSourceToYouTube: BivariantCallback<[unknown[], string | null, string], Promise<Track[]>>;
-  declare _resolveDirectHttpAudioTrack: (url: string, requestedBy: string | null) => Promise<Track | null>;
-  declare _resolveRadioStreamTrack: (url: string, requestedBy: string | null, seen?: Set<string> | null) => Promise<Track | null>;
-  declare _resolveFromUrlFallbackSearch: (url: string, requestedBy: string | null, source: string) => Promise<Track[]>;
-  declare _normalizeInputUrl: (url: unknown) => Promise<string>;
-  declare _getYtDlpClientStrategies: () => Array<boolean | string>;
-  declare _withYtDlpProxyArgs: (args: string[], proxyUrl?: string | null) => string[];
-  declare _runYtDlpCommandWithProxyFallback: (
-    args: string[],
-    timeoutMs?: number,
-    options?: { context?: string | null }
-  ) => Promise<{ stdout?: string | Buffer | null; stderr?: string | Buffer | null; code?: number | null }>;
-  declare _resolveYtDlpStreamUrl: (
-    url: string,
-    formatSelector?: string | null,
-    includeClientArg?: boolean | string | null,
-    options?: { proxyUrl?: string | null }
-  ) => Promise<string | null>;
-  declare _startYtDlpPipeline: (
-    url: string,
-    seekSec?: number,
-    options?: { proxyOnly?: boolean }
-  ) => Promise<void>;
-  declare _startYtDlpSeekPipeline: (
-    url: string,
-    seekSec?: number,
-    formatSelector?: string | null,
-    includeClientArg?: boolean | string | null
-  ) => Promise<void>;
-  declare _cloneTrack: (track: Track, overrides?: Partial<Track> & { id?: string; queuedAt?: number }) => Track;
-  declare _trackKey: (track: Partial<Track> | null | undefined) => string | null;
-  declare _hasDuplicateTrack: (candidate: Track) => boolean;
-  declare _rememberTrack: (track: Track) => void;
-  declare _parseDurationSeconds: (value: unknown) => number | null;
-  declare _setPipelinePaused: (paused: boolean) => boolean;
-  declare _createLiveAudioProcessor: () => LiveAudioProcessor;
-  declare _createPlaybackOutputStream: () => PassThrough;
-  declare _shouldUseLiveAudioProcessor: () => boolean;
-  declare _canDelegateVolumeToStream: () => boolean;
-  declare _awaitInitialPlaybackChunk: BivariantCallback<[NonNullable<PipelineProcess['stdout']>, PipelineProcess, number], Promise<void>>;
-  declare _getInitialPlaybackChunkTimeoutMs: (track: Track, options?: { hint?: string | null }) => number;
-  declare _startPlayDlPipeline: (url: string, seekSec?: number) => Promise<void>;
-  declare _startHttpUrlPipeline: BivariantCallback<[string, number, ({ isLive?: boolean; proxyUrl?: string | null } | undefined)?], Promise<void>>;
-  declare _startYouTubePipeline: (url: string, seekSec?: number) => Promise<void>;
-  declare _probeHttpAudioTrack: (url: string, timeoutMs?: number) => Promise<{ durationSec: number | null; title: string | null; artist: string | null } | null>;
   voice: VoiceAdapterLike;
   queue: Queue<Track>;
   logger: LoggerLike | undefined;
@@ -400,7 +239,7 @@ export class MusicPlayer extends EventEmitter {
   _appleMusicMediaApiTokenFetchedAtMs: number;
   deezerArl: string | null;
   _deezerCookieHeader: string | null;
-  _deezerSessionTokens: unknown;
+  _deezerSessionTokens: DeezerSessionTokens | null;
   _spotifyAccessToken: string | null;
   _spotifyAccessTokenExpiresAtMs: number;
   soundcloudClientId: string | null;
@@ -421,8 +260,8 @@ export class MusicPlayer extends EventEmitter {
   playbackSourceStream: PipelineStreamLike | null;
   deezerDecryptStream: PipelineStreamLike | null;
   liveAudioProcessor: LiveAudioProcessor | null;
-  playbackOutputStream: PassThrough | null;
-  _deezerStreamMetaByTrackId: Map<unknown, unknown>;
+  playbackOutputStream: SpectrumAnalyzer | null;
+  _deezerStreamMetaByTrackId: Map<string, DeezerStreamMeta>;
   pipelineErrorHandlers: Array<unknown>;
   sources: Readonly<{
     audius: AudiusClient;
@@ -688,7 +527,7 @@ export class MusicPlayer extends EventEmitter {
     }
   }
 
-  _setDeezerStreamMeta(trackId: string, meta: { url: string; cipherType: string; format: string | null }): void {
+  _setDeezerStreamMeta(trackId: string, meta: DeezerStreamMeta): void {
     this._deezerStreamMetaByTrackId.delete(trackId);
     this._deezerStreamMetaByTrackId.set(trackId, meta);
     while (this._deezerStreamMetaByTrackId.size > DEEZER_STREAM_META_CACHE_MAX_SIZE) {
@@ -1756,6 +1595,19 @@ export class MusicPlayer extends EventEmitter {
     return normalizePlaybackError(this, err);
   }
 }
+
+export interface MusicPlayer
+  extends PlaybackStateMethods,
+    PipelineMethodMembers,
+    ResolverMethodMembers,
+    DeezerMethodMembers,
+    SoundCloudMethodMembers,
+    AudiusMethods,
+    UrlResolverMethods,
+    QueueLifecycleMethods,
+    NodeLinkMethods,
+    TrackRuntimeMethods,
+    TrackFactoryMethods {}
 
 Object.assign(
   MusicPlayer.prototype,

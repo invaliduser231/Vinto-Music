@@ -25,7 +25,7 @@ type AudiusPlayer = MusicPlayer & {
   _bindPipelineErrorHandler: (stream: unknown, label: string) => void;
   _pickAudiusTrackIdFromTrack: (track: Partial<Track> | null | undefined) => string | null;
 };
-type AudiusMethods = {
+export type AudiusMethods = {
   _audiusApiRequest(pathname: string, query?: Record<string, unknown>, timeoutMs?: number): Promise<unknown>;
   _pickAudiusEntity(payload: AudiusApiPayload): AudiusEntity | null;
   _pickAudiusTrackIdFromTrack(track: Partial<Track> | null | undefined): string | null;

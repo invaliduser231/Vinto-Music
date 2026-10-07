@@ -3,7 +3,7 @@ import { EQ_PRESETS, FILTER_PRESETS, LOOP_MODES } from './constants.ts';
 import type { MusicPlayer } from '../MusicPlayer.ts';
 
 type EqPresetName = keyof typeof EQ_PRESETS;
-type PlaybackStateMethods = {
+export type PlaybackStateMethods = {
   getState(): {
     playing: boolean;
     paused: boolean;

@@ -1,29 +1,26 @@
-export class SoundCloudClient {
-  host: object;
+import type { MusicPlayer } from '../MusicPlayer.ts';
+import type { Track } from '../../types/domain.ts';
 
-  constructor(host: object) {
+export class SoundCloudClient {
+  readonly host: MusicPlayer;
+
+  constructor(host: MusicPlayer) {
     this.host = host;
   }
 
-  resolveTrack(url: string, requestedBy?: string | null) {
-    const api = this.host as { _resolveSoundCloudTrack: (url: string, requestedBy?: string | null) => unknown };
-    return api._resolveSoundCloudTrack(url, requestedBy);
+  resolveTrack(url: string, requestedBy: string | null): Promise<Track[]> {
+    return this.host._resolveSoundCloudTrack(url, requestedBy);
   }
 
-  resolvePlaylist(url: string, requestedBy?: string | null, limit?: number | null) {
-    const api = this.host as { _resolveSoundCloudPlaylist: (url: string, requestedBy?: string | null, limit?: number | null) => unknown };
-    return api._resolveSoundCloudPlaylist(url, requestedBy, limit);
+  resolvePlaylist(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]> {
+    return this.host._resolveSoundCloudPlaylist(url, requestedBy, limit);
   }
 
-  resolveByGuess(url: string, requestedBy?: string | null, limit?: number | null) {
-    const api = this.host as { _resolveSoundCloudByGuess: (url: string, requestedBy?: string | null, limit?: number | null) => unknown };
-    return api._resolveSoundCloudByGuess(url, requestedBy, limit);
+  resolveByGuess(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]> {
+    return this.host._resolveSoundCloudByGuess(url, requestedBy, limit);
   }
 
-  startPipeline(track: unknown, seekSec = 0) {
-    const api = this.host as { _startSoundCloudPipeline: (track: unknown, seekSec?: number) => unknown };
-    return api._startSoundCloudPipeline(track, seekSec);
+  startPipeline(track: Partial<Track> | null | undefined, seekSec = 0): Promise<void> {
+    return this.host._startSoundCloudPipeline(track, seekSec);
   }
 }
-
-

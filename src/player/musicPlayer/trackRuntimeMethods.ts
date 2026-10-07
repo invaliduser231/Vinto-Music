@@ -2,7 +2,7 @@ import { buildTrackId } from './trackUtils.ts';
 import type { MusicPlayer } from '../MusicPlayer.ts';
 import type { Track } from '../../types/domain.ts';
 
-type TrackRuntimeMethods = {
+export type TrackRuntimeMethods = {
   _cloneTrack(track: Track | null | undefined, overrides?: Partial<Track> & { id?: string; queuedAt?: number }): Track;
   _trackKey(track: Partial<Track> | null | undefined): string | null;
   _hasDuplicateTrack(candidate: Track | null | undefined): boolean;

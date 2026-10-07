@@ -1,12 +1,13 @@
+import type { Track } from '../../types/domain.ts';
 import { buildTrackId, buildYouTubeThumbnailFromUrl, normalizeThumbnailUrl, toDurationLabel } from './trackUtils.ts';
 
-type TrackFactoryInput = {
+export type TrackFactoryInput = {
   title: string;
   url: string;
   duration: string | number | null | undefined;
   metadataDeferred?: boolean;
   thumbnailUrl?: string | null;
-  requestedBy?: string | null;
+  requestedBy?: string | null | undefined;
   source: string;
   artist?: string | null;
   soundcloudTrackId?: string | null;
@@ -24,7 +25,11 @@ type TrackFactoryInput = {
   seekStartSec?: number;
 };
 
-export const trackFactoryMethods = {
+export type TrackFactoryMethods = {
+  _buildTrack(input: TrackFactoryInput): Track;
+};
+
+export const trackFactoryMethods: TrackFactoryMethods = {
   _buildTrack({
     title,
     url,
@@ -59,7 +64,7 @@ export const trackFactoryMethods = {
       duration: toDurationLabel(duration),
       metadataDeferred: Boolean(metadataDeferred),
       thumbnailUrl: normalizedThumbnail,
-      requestedBy,
+      requestedBy: requestedBy ?? null,
       source,
       artist: artist ? String(artist).slice(0, 128) : null,
       soundcloudTrackId: soundcloudTrackId ? String(soundcloudTrackId) : null,

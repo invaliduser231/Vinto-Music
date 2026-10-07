@@ -28,7 +28,7 @@ type RecoverableTrack = Track & {
   recoveryWindowStartedAtMs?: unknown;
 };
 
-type QueueLifecycleMethods = {
+export type QueueLifecycleMethods = {
   clearQueue(): number;
   shuffleQueue(): number;
   removeFromQueue(index: number): unknown;

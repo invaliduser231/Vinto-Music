@@ -1,18 +1,4 @@
-type UnknownRecord = Record<string, unknown>;
-
-function asRecord(value: unknown): UnknownRecord | null {
-  return value && typeof value === 'object' ? (value as UnknownRecord) : null;
-}
-
-function readNested(value: unknown, path: string[]): unknown {
-  let current: unknown = value;
-  for (const segment of path) {
-    const record = asRecord(current);
-    if (!record) return undefined;
-    current = record[segment];
-  }
-  return current;
-}
+import { asRecord, readNested } from '../../utils/unknownData.ts';
 
 function normalizeHost(value: unknown) {
   return String(value ?? '').trim().toLowerCase();

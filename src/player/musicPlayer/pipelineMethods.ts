@@ -1,9 +1,12 @@
-import { spawn } from 'child_process';
+import { spawn } from 'node:child_process';
+import type { SpawnOptions } from 'node:child_process';
 import playdl from 'play-dl';
 import { LiveAudioProcessor, isLiveFilterPresetSupported } from '../LiveAudioProcessor.ts';
 import { SpectrumAnalyzer } from '../audio/SpectrumAnalyzer.ts';
 import { ValidationError } from '../../core/errors.ts';
 import { FILTER_PRESETS } from './constants.ts';
+import type { MusicPlayer } from '../MusicPlayer.ts';
+import { readField } from '../../utils/unknownData.ts';
 
 const MAX_LIVE_VOLUME_COMPENSATION_PERCENT = 400;
 const LIVE_RECONNECT_DELAY_MAX_SEC = 10;
@@ -18,33 +21,161 @@ import {
 } from './trackUtils.ts';
 import type { PipelineProcess } from '../../types/domain.ts';
 
-type LooseMethodMap = Record<string, (this: any, ...args: any[]) => any>;
-type YtDlpSearchEntry = Record<string, unknown> & {
-  id?: unknown;
-  webpage_url?: unknown;
+type ProcessEventListener = (...args: unknown[]) => void;
+
+export interface ProcessEventEmitterLike {
+  on?: (event: string, listener: ProcessEventListener) => unknown;
+  off?: (event: string, listener: ProcessEventListener) => unknown;
+  once?: (event: string, listener: ProcessEventListener) => unknown;
+}
+
+export interface ProcessOutputStreamLike extends ProcessEventEmitterLike {
+  setEncoding?: (encoding: BufferEncoding) => unknown;
+}
+
+export interface ProcessOutputSource extends ProcessEventEmitterLike {
+  kill?: (signal?: NodeJS.Signals | number) => unknown;
+  stdout?: ProcessOutputStreamLike | null;
+  stderr?: ProcessOutputStreamLike | null;
+}
+
+export type SpawnedProcess = PipelineProcess & ProcessEventEmitterLike & {
+  stdin?: (NonNullable<PipelineProcess['stdin']> & NodeJS.WritableStream) | null;
+};
+
+export interface ProcessOutput {
+  code: number;
+  stdout: string;
+  stderr: string;
+}
+
+export interface HttpPipelineOptions {
+  isLive?: boolean;
+  proxyUrl?: string | null;
+}
+
+export interface LiveVolumeCompensation {
+  required: number;
+  reachable: boolean;
+}
+
+export interface LiveAudioProcessorState {
+  volumePercent: number;
+  filterPreset: string;
+  eqPreset: string;
+  tempoRatio: number;
+  pitchSemitones: number;
+}
+
+export interface YtDlpSearchResult {
+  title: string;
+  url: string;
+  duration: unknown;
+  thumbnailUrl: string | null;
+  artist: string | null;
+}
+
+export interface HttpAudioProbeResult {
+  durationSec: number | null;
+  title: string | null;
+  artist: string | null;
+}
+
+export interface InitialPlaybackChunkTrack {
+  seekStartSec?: unknown;
+  source?: unknown;
   url?: unknown;
-  title?: unknown;
-  duration?: unknown;
-};
-type ProcessOutputProc = PipelineProcess & {
-  on?: (event: string, listener: (...args: unknown[]) => void) => unknown;
-  off?: (event: string, listener: (...args: unknown[]) => void) => unknown;
-  once?: (event: string, listener: (...args: unknown[]) => void) => unknown;
-  stdout?: (NonNullable<PipelineProcess['stdout']> & {
-    once?: (event: string, listener: (...args: unknown[]) => void) => unknown;
-  }) | null;
-};
+  startupRetryCount?: unknown;
+}
+
+export interface PipelineMethodMembers {
+  _lastSpectrumFrameAtMs?: number;
+  _spectrumFrameCount?: number;
+  _spectrumMaxGapMs?: number;
+  _lastSpectrumLeadLogAtMs?: number;
+  _spectrumBaselineSec?: number | null;
+  _getYtDlpClientStrategies(): Array<boolean | string>;
+  _resolveYtDlpClientArg(includeClientArg: boolean | string | null | undefined): string | null;
+  _withYtDlpProxyArgs(args: string[], proxyUrl?: string | null): string[];
+  _ffmpegHttpArgs(inputUrl: string, seekSec?: number, options?: HttpPipelineOptions): string[];
+  _startPlayDlPipeline(url: string, seekSec?: number): Promise<void>;
+  _startHttpUrlPipeline(url: string, seekSec?: number, options?: HttpPipelineOptions): Promise<void>;
+  _startYouTubePipeline(url: string, seekSec?: number): Promise<void>;
+  _startYtDlpPipeline(url: string, seekSec?: number, options?: { proxyOnly?: boolean }): Promise<void>;
+  _startYtDlpSeekPipeline(
+    url: string,
+    seekSec?: number,
+    formatSelector?: string | null,
+    includeClientArg?: boolean | string | null
+  ): Promise<void>;
+  _startYtDlpPipelineWithFormat(
+    url: string,
+    seekSec?: number,
+    formatSelector?: string | null,
+    includeClientArg?: boolean | string | null,
+    proxyUrl?: string | null
+  ): Promise<void>;
+  _ffmpegArgs(seekSec?: number, options?: { realtimeInput?: boolean }): string[];
+  _buildTranscodeFilterChain(): string;
+  isLiveFilterPresetSupported(name?: string): boolean;
+  _liveVolumeCompensation(): LiveVolumeCompensation;
+  _getLiveAudioProcessorState(): LiveAudioProcessorState;
+  _createLiveAudioProcessor(): LiveAudioProcessor;
+  _createPlaybackOutputStream(): SpectrumAnalyzer;
+  _reportSpectrumLead(analyzer: { analyzedSamples?: number }): void;
+  setSpectrumEnabled(enabled: unknown): boolean;
+  _shouldUseLiveAudioProcessor(): boolean;
+  _applyAudioEffectsLive(): boolean;
+  _canDelegateVolumeToStream(): boolean;
+  _syncLiveAudioProcessor(): boolean;
+  _enableLiveAudioProcessorDuringPlayback(): boolean;
+  _spawnYtDlp(
+    url: string,
+    formatSelector?: string | null,
+    includeClientArg?: boolean | string | null,
+    proxyUrl?: string | null
+  ): Promise<SpawnedProcess>;
+  _isYtDlpVerboseEnabled(): boolean;
+  _trackYtDlpFormatSelection(stderrChunk: unknown): void;
+  _searchWithYtDlp(query: string, limit?: number): Promise<YtDlpSearchResult[]>;
+  _runYtDlpCommand(args: string[], timeoutMs?: number): Promise<ProcessOutput>;
+  _runYtDlpCommandWithProxyFallback(
+    args: string[],
+    timeoutMs?: number,
+    options?: { context?: string | null }
+  ): Promise<ProcessOutput>;
+  _probeHttpAudioTrack(url: string, timeoutMs?: number): Promise<HttpAudioProbeResult | null>;
+  _resolveYtDlpStreamUrl(
+    url: string,
+    formatSelector?: string | null,
+    includeClientArg?: boolean | string | null,
+    options?: { proxyUrl?: string | null }
+  ): Promise<string | null>;
+  _collectProcessOutput(proc: ProcessOutputSource, timeoutMs?: number): Promise<ProcessOutput>;
+  _awaitProcessOutput(proc: ProcessOutputSource, timeoutMs?: number): Promise<void>;
+  _awaitYtDlpStartupGrace(proc: ProcessOutputSource, timeoutMs?: number): Promise<void>;
+  _awaitInitialPlaybackChunk(
+    stream: ProcessEventEmitterLike | null | undefined,
+    proc: ProcessEventEmitterLike | null | undefined,
+    timeoutMs?: number
+  ): Promise<void>;
+  _getInitialPlaybackChunkTimeoutMs(
+    track: InitialPlaybackChunkTrack | null | undefined,
+    options?: { hint?: string | null }
+  ): number;
+  _spawnProcess(cmd: string, args: string[], options: SpawnOptions): Promise<SpawnedProcess>;
+}
 
 function isErrnoException(err: unknown): err is NodeJS.ErrnoException {
   return Boolean(err && typeof err === 'object' && 'code' in err);
 }
 
-function isPythonModuleCommand(cmd: string) {
+function isPythonModuleCommand(cmd: string): boolean {
   const normalized = String(cmd ?? '').trim().toLowerCase();
   return normalized === 'py' || normalized === 'python' || normalized === 'python3';
 }
 
-export const pipelineMethods: LooseMethodMap = {
+export const pipelineMethods: PipelineMethodMembers & ThisType<MusicPlayer> = {
   _getYtDlpClientStrategies() {
     const configured = String(this.ytdlpYoutubeClient ?? '').trim();
     if (!configured) return [false];
@@ -80,7 +211,7 @@ export const pipelineMethods: LooseMethodMap = {
     return ['--proxy', proxy, ...args];
   },
 
-  _ffmpegHttpArgs(inputUrl: string, seekSec = 0, options: { isLive?: boolean; proxyUrl?: string | null } = {}) {
+  _ffmpegHttpArgs(inputUrl: string, seekSec = 0, options: HttpPipelineOptions = {}) {
     const filterChain = this._buildTranscodeFilterChain();
     const seek = Math.max(0, Number.parseInt(String(seekSec), 10) || 0);
     const isLive = options?.isLive === true;
@@ -133,36 +264,43 @@ export const pipelineMethods: LooseMethodMap = {
     const stream = await playdl.stream(url, options);
     this.sourceStream = stream.stream;
 
-    this.ffmpeg = await this._spawnProcess(this.ffmpegBin, this._ffmpegArgs(), {
+    const ffmpeg = await this._spawnProcess(this.ffmpegBin, this._ffmpegArgs(), {
       stdio: ['pipe', 'pipe', 'ignore'],
     });
+    this.ffmpeg = ffmpeg;
 
-    this._bindPipelineErrorHandler(this.sourceStream, 'source.stream');
-    this._bindPipelineErrorHandler(this.ffmpeg.stdin, 'ffmpeg.stdin');
-    this._bindPipelineErrorHandler(this.ffmpeg.stdout, 'ffmpeg.stdout');
+    const sourceStream = this.sourceStream;
+    this._bindPipelineErrorHandler(sourceStream, 'source.stream');
+    this._bindPipelineErrorHandler(ffmpeg.stdin, 'ffmpeg.stdin');
+    this._bindPipelineErrorHandler(ffmpeg.stdout, 'ffmpeg.stdout');
+
+    if (!sourceStream?.on || !sourceStream.pipe) {
+      throw new Error('play-dl source stream was released before the pipeline was connected.');
+    }
 
     const onSourceStreamError = () => {
-      this.ffmpeg?.kill('SIGKILL');
+      this.ffmpeg?.kill?.('SIGKILL');
     };
-    this.sourceStream.on('error', onSourceStreamError);
+    sourceStream.on('error', onSourceStreamError);
     this.pipelineErrorHandlers.push(() => {
       this.sourceStream?.off?.('error', onSourceStreamError);
     });
 
-    this.sourceStream.pipe(this.ffmpeg.stdin);
+    sourceStream.pipe(ffmpeg.stdin);
   },
 
-  async _startHttpUrlPipeline(url: string, seekSec = 0, options: { isLive?: boolean; proxyUrl?: string | null } = {}) {
-    this.ffmpeg = await this._spawnProcess(this.ffmpegBin, this._ffmpegHttpArgs(url, seekSec, options), {
+  async _startHttpUrlPipeline(url: string, seekSec = 0, options: HttpPipelineOptions = {}) {
+    const ffmpeg = await this._spawnProcess(this.ffmpegBin, this._ffmpegHttpArgs(url, seekSec, options), {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
+    this.ffmpeg = ffmpeg;
 
-    this._bindPipelineErrorHandler(this.ffmpeg.stdout, 'ffmpeg.stdout');
-    this._bindPipelineErrorHandler(this.ffmpeg.stderr, 'ffmpeg.stderr');
+    this._bindPipelineErrorHandler(ffmpeg.stdout, 'ffmpeg.stdout');
+    this._bindPipelineErrorHandler(ffmpeg.stderr, 'ffmpeg.stderr');
 
     this.liveStreamStderrTail = null;
     if (options?.isLive === true) {
-      this.ffmpeg.stderr?.on?.('data', (chunk: unknown) => {
+      ffmpeg.stderr?.on?.('data', (chunk: unknown) => {
         this.liveStreamStderrTail = `${this.liveStreamStderrTail ?? ''}${String(chunk ?? '')}`.slice(-LIVE_STDERR_TAIL_CHARS);
       });
     }
@@ -215,7 +353,7 @@ export const pipelineMethods: LooseMethodMap = {
       appendAttempts(this.ytdlpProxyUrl);
     }
 
-    let lastErr = null;
+    let lastErr: unknown = null;
 
     for (const attempt of attempts) {
       try {
@@ -263,11 +401,12 @@ export const pipelineMethods: LooseMethodMap = {
 
     const ffmpegArgs = this._ffmpegHttpArgs(streamUrl, seekSec);
     this._lastFfmpegArgs = [...ffmpegArgs];
-    this.ffmpeg = await this._spawnProcess(this.ffmpegBin, ffmpegArgs, {
+    const ffmpeg = await this._spawnProcess(this.ffmpegBin, ffmpegArgs, {
       stdio: ['ignore', 'pipe', 'ignore'],
     });
+    this.ffmpeg = ffmpeg;
 
-    this._bindPipelineErrorHandler(this.ffmpeg.stdout, 'ffmpeg.stdout');
+    this._bindPipelineErrorHandler(ffmpeg.stdout, 'ffmpeg.stdout');
   },
 
   async _startYtDlpPipelineWithFormat(
@@ -286,8 +425,9 @@ export const pipelineMethods: LooseMethodMap = {
       updatedAt: new Date().toISOString(),
     };
 
-    this.sourceProc = await this._spawnYtDlp(url, formatSelector, includeClientArg, proxyUrl);
-    this.sourceProc.stderr?.setEncoding?.('utf8');
+    const sourceProc = await this._spawnYtDlp(url, formatSelector, includeClientArg, proxyUrl);
+    this.sourceProc = sourceProc;
+    sourceProc.stderr?.setEncoding?.('utf8');
 
     let stderr = '';
     let stderrBuffer = '';
@@ -308,8 +448,8 @@ export const pipelineMethods: LooseMethodMap = {
         }
       }
     };
-    this.sourceProc.stderr?.on?.('data', onStderr);
-    this.sourceProc.once?.('close', (code: unknown, signal: unknown) => {
+    sourceProc.stderr?.on?.('data', onStderr);
+    sourceProc.once?.('close', (code: unknown, signal: unknown) => {
       const normalizedCode = typeof code === 'number' && Number.isFinite(code) ? code : null;
       const normalizedSignal = signal ? String(signal) : null;
       const stderrTail = stderr.trim().split(/\r?\n/).map((line) => line.trim()).filter(Boolean).slice(-4).join(' | ') || null;
@@ -325,27 +465,37 @@ export const pipelineMethods: LooseMethodMap = {
 
     const ffmpegArgs = this._ffmpegArgs(seekSec);
     this._lastFfmpegArgs = [...ffmpegArgs];
-    this.ffmpeg = await this._spawnProcess(this.ffmpegBin, ffmpegArgs, {
+    const ffmpeg = await this._spawnProcess(this.ffmpegBin, ffmpegArgs, {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
+    this.ffmpeg = ffmpeg;
 
-    this._bindPipelineErrorHandler(this.sourceProc.stdout, 'sourceProc.stdout');
-    this._bindPipelineErrorHandler(this.sourceProc.stderr, 'sourceProc.stderr');
-    this._bindPipelineErrorHandler(this.ffmpeg.stdin, 'ffmpeg.stdin');
-    this._bindPipelineErrorHandler(this.ffmpeg.stdout, 'ffmpeg.stdout');
-    this._bindPipelineErrorHandler(this.ffmpeg.stderr, 'ffmpeg.stderr');
+    const activeSourceProc = this.sourceProc;
+    if (!activeSourceProc) {
+      throw new Error('yt-dlp process was released before the pipeline was connected.');
+    }
 
-    this.sourceProc.stdout.pipe(this.ffmpeg.stdin);
-    this.sourceProc.once('close', () => {
-      this.ffmpeg?.stdin?.end();
+    this._bindPipelineErrorHandler(activeSourceProc.stdout, 'sourceProc.stdout');
+    this._bindPipelineErrorHandler(activeSourceProc.stderr, 'sourceProc.stderr');
+    this._bindPipelineErrorHandler(ffmpeg.stdin, 'ffmpeg.stdin');
+    this._bindPipelineErrorHandler(ffmpeg.stdout, 'ffmpeg.stdout');
+    this._bindPipelineErrorHandler(ffmpeg.stderr, 'ffmpeg.stderr');
+
+    const sourceStdout = activeSourceProc.stdout;
+    if (!sourceStdout?.pipe || !activeSourceProc.once) {
+      throw new Error('yt-dlp process has no readable output stream.');
+    }
+    sourceStdout.pipe(ffmpeg.stdin);
+    activeSourceProc.once('close', () => {
+      this.ffmpeg?.stdin?.end?.();
     });
 
     try {
       if (seekSec > 0) {
         const waitTimeoutMs = Math.min(45_000, 10_000 + (Math.max(0, Number.parseInt(String(seekSec), 10) || 0) * 50));
-        await this._awaitProcessOutput(this.sourceProc, waitTimeoutMs);
+        await this._awaitProcessOutput(activeSourceProc, waitTimeoutMs);
       } else {
-        await this._awaitYtDlpStartupGrace(this.sourceProc, 750);
+        await this._awaitYtDlpStartupGrace(activeSourceProc, 750);
       }
     } catch (err: unknown) {
       if (stderr.trim()) {
@@ -466,10 +616,10 @@ export const pipelineMethods: LooseMethodMap = {
   setSpectrumEnabled(enabled: unknown) {
     const next = Boolean(enabled);
     this.spectrumEnabled = next;
-    const stream = this.playbackOutputStream as { enabled?: boolean; reset?: () => void } | null;
-    if (stream && typeof stream.enabled === 'boolean') {
+    const stream = this.playbackOutputStream;
+    if (stream) {
       if (next && !stream.enabled) {
-        stream.reset?.();
+        stream.reset();
         this._spectrumBaselineSec = null;
         this._lastSpectrumLeadLogAtMs = 0;
       }
@@ -599,7 +749,7 @@ export const pipelineMethods: LooseMethodMap = {
       commonArgs.push('--cookies-from-browser', this.ytdlpCookiesFromBrowser);
     }
     if (this.ytdlpExtraArgs.length) {
-      commonArgs.push(...(this.ytdlpExtraArgs as string[]));
+      commonArgs.push(...this.ytdlpExtraArgs);
     }
 
     const effectiveArgs = this._withYtDlpProxyArgs(commonArgs, proxyUrl);
@@ -693,7 +843,7 @@ export const pipelineMethods: LooseMethodMap = {
       commonArgs.push('--cookies-from-browser', this.ytdlpCookiesFromBrowser);
     }
     if (this.ytdlpExtraArgs.length) {
-      commonArgs.push(...(this.ytdlpExtraArgs as string[]));
+      commonArgs.push(...this.ytdlpExtraArgs);
     }
 
     commonArgs.push(searchExpr);
@@ -703,32 +853,33 @@ export const pipelineMethods: LooseMethodMap = {
     });
 
     if (!stdout?.trim()) return [];
-    let payload;
+    let payload: unknown;
     try {
       payload = JSON.parse(stdout);
     } catch {
       return [];
     }
 
-    const entries = Array.isArray(payload?.entries)
-      ? payload.entries
+    const payloadEntries = readField(payload, 'entries');
+    const entries: unknown[] = Array.isArray(payloadEntries)
+      ? payloadEntries
       : (payload ? [payload] : []);
 
     return entries
-      .map((entry: YtDlpSearchEntry) => {
-        const id = String(entry?.id ?? '').trim();
-        const url = String(entry?.webpage_url ?? entry?.url ?? '').trim() || (id ? `https://www.youtube.com/watch?v=${id}` : null);
-        const title = String(entry?.title ?? '').trim();
+      .map((entry): YtDlpSearchResult | null => {
+        const id = String(readField(entry, 'id') ?? '').trim();
+        const url = String(readField(entry, 'webpage_url') ?? readField(entry, 'url') ?? '').trim() || (id ? `https://www.youtube.com/watch?v=${id}` : null);
+        const title = String(readField(entry, 'title') ?? '').trim();
         if (!url || !title) return null;
         return {
           title,
           url,
-          duration: entry?.duration ?? null,
+          duration: readField(entry, 'duration') ?? null,
           thumbnailUrl: pickThumbnailUrlFromItem(entry),
           artist: pickTrackArtistFromMetadata(entry),
         };
       })
-      .filter(Boolean);
+      .filter((result): result is YtDlpSearchResult => result !== null);
   },
 
   async _runYtDlpCommand(args: string[], timeoutMs = 12_000) {
@@ -742,7 +893,7 @@ export const pipelineMethods: LooseMethodMap = {
       let lastErr: Error | null = null;
 
       for (const cmd of candidates) {
-        let proc;
+        let proc: SpawnedProcess;
         try {
           if (isPythonModuleCommand(cmd)) {
             proc = await this._spawnProcess(cmd, ['-m', 'yt_dlp', ...args], {
@@ -824,19 +975,21 @@ export const pipelineMethods: LooseMethodMap = {
     const { stdout } = await this._collectProcessOutput(proc, timeoutMs).catch(() => ({ stdout: '' }));
     if (!stdout?.trim()) return null;
 
-    let payload;
+    let payload: unknown;
     try {
       payload = JSON.parse(stdout);
     } catch {
       return null;
     }
 
-    const durationCandidates = [
-      payload?.format?.duration,
-      ...(Array.isArray(payload?.streams) ? payload.streams.map((stream: unknown) => {
-        if (!stream || typeof stream !== 'object') return null;
-        return (stream as { duration?: unknown }).duration ?? null;
-      }) : []),
+    const format = readField(payload, 'format');
+    const streams = readField(payload, 'streams');
+    const streamList: unknown[] = Array.isArray(streams) ? streams : [];
+    const formatTags = readField(format, 'tags');
+    const firstStreamTags = readField(readField(streams, '0'), 'tags');
+    const durationCandidates: unknown[] = [
+      readField(format, 'duration'),
+      ...streamList.map((stream) => readField(stream, 'duration') ?? null),
     ];
     const durationRaw = durationCandidates
       .map((value) => Number.parseFloat(String(value ?? '')))
@@ -847,8 +1000,8 @@ export const pipelineMethods: LooseMethodMap = {
 
     return {
       durationSec,
-      title: String(payload?.format?.tags?.title ?? payload?.streams?.[0]?.tags?.title ?? '').trim() || null,
-      artist: String(payload?.format?.tags?.artist ?? payload?.streams?.[0]?.tags?.artist ?? '').trim() || null,
+      title: String(readField(formatTags, 'title') ?? readField(firstStreamTags, 'title') ?? '').trim() || null,
+      artist: String(readField(formatTags, 'artist') ?? readField(firstStreamTags, 'artist') ?? '').trim() || null,
     };
   },
 
@@ -880,7 +1033,7 @@ export const pipelineMethods: LooseMethodMap = {
       args.push('--cookies-from-browser', this.ytdlpCookiesFromBrowser);
     }
     if (this.ytdlpExtraArgs.length) {
-      args.push(...(this.ytdlpExtraArgs as string[]));
+      args.push(...this.ytdlpExtraArgs);
     }
 
     const effectiveArgs = this._withYtDlpProxyArgs(args, options.proxyUrl);
@@ -895,8 +1048,8 @@ export const pipelineMethods: LooseMethodMap = {
     return lines[0] ?? null;
   },
 
-  _collectProcessOutput(proc: ProcessOutputProc, timeoutMs = 12_000): Promise<{ code: number; stdout: string; stderr: string }> {
-    return new Promise((resolve, reject) => {
+  _collectProcessOutput(proc: ProcessOutputSource, timeoutMs = 12_000) {
+    return new Promise<ProcessOutput>((resolve, reject) => {
       let settled = false;
       let stdout = '';
       let stderr = '';
@@ -938,7 +1091,7 @@ export const pipelineMethods: LooseMethodMap = {
     });
   },
 
-  _awaitProcessOutput(proc: ProcessOutputProc, timeoutMs = 5_000) {
+  _awaitProcessOutput(proc: ProcessOutputSource, timeoutMs = 5_000) {
     return new Promise<void>((resolve, reject) => {
       let settled = false;
       let sawOutput = false;
@@ -983,7 +1136,7 @@ export const pipelineMethods: LooseMethodMap = {
     });
   },
 
-  _awaitYtDlpStartupGrace(proc: ProcessOutputProc, timeoutMs = 750) {
+  _awaitYtDlpStartupGrace(proc: ProcessOutputSource, timeoutMs = 750) {
     return new Promise<void>((resolve, reject) => {
       let settled = false;
 
@@ -1027,7 +1180,11 @@ export const pipelineMethods: LooseMethodMap = {
     });
   },
 
-  _awaitInitialPlaybackChunk(stream: ProcessOutputProc['stdout'], proc: ProcessOutputProc | null | undefined, timeoutMs = 8_000) {
+  _awaitInitialPlaybackChunk(
+    stream: ProcessEventEmitterLike | null | undefined,
+    proc: ProcessEventEmitterLike | null | undefined,
+    timeoutMs = 8_000
+  ) {
     if (!stream?.once || !stream?.off) {
       return Promise.resolve();
     }
@@ -1083,7 +1240,7 @@ export const pipelineMethods: LooseMethodMap = {
   },
 
   _getInitialPlaybackChunkTimeoutMs(
-    track: { seekStartSec?: unknown; source?: unknown; url?: unknown; startupRetryCount?: unknown } | null | undefined,
+    track: InitialPlaybackChunkTrack | null | undefined,
     options: { hint?: string | null } = { hint: null }
   ) {
     const seekSec = Math.max(0, Number.parseInt(String(track?.seekStartSec ?? 0), 10) || 0);
@@ -1105,14 +1262,14 @@ export const pipelineMethods: LooseMethodMap = {
     return Math.min(60_000, 8_000 + (seekSec * 10));
   },
 
-  _spawnProcess(cmd: string, args: string[], options: Parameters<typeof spawn>[2]): Promise<ProcessOutputProc> {
-    return new Promise((resolve, reject) => {
+  _spawnProcess(cmd: string, args: string[], options: SpawnOptions) {
+    return new Promise<SpawnedProcess>((resolve, reject) => {
       const proc = spawn(cmd, args, options);
       let settled = false;
 
       proc.once('spawn', () => {
         settled = true;
-        resolve(proc as ProcessOutputProc);
+        resolve(proc);
       });
 
       proc.once('error', (err: unknown) => {

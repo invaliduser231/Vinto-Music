@@ -1,7 +1,8 @@
 import playdl from 'play-dl';
+import type { InfoData, YouTubePlayList } from 'play-dl';
 import { ValidationError } from '../../core/errors.ts';
 import { isPlayDlBrowseFailure } from './errorUtils.ts';
-import type { Track } from '../../types/domain.ts';
+import type { Track, TrackInput } from '../../types/domain.ts';
 import {
   inferYouTubeWatchUrlFromPlaylist,
   isAudiomackUrl,
@@ -25,14 +26,66 @@ import {
   toCanonicalYouTubePlaylistUrl,
   toCanonicalYouTubeWatchUrl,
 } from './trackUtils.ts';
+import type { MusicPlayer } from '../MusicPlayer.ts';
+import { asRecord, isRecord, isUnknownArray, type UnknownRecord } from '../../utils/unknownData.ts';
 
-type LooseMethodMap = Record<string, (this: any, ...args: any[]) => any>;
-type SearchResultLike = Record<string, unknown> & {
-  title?: unknown;
-  url?: unknown;
-  durationRaw?: unknown;
-  duration?: unknown;
+type ResolverDiagnostics = {
+  playing: boolean;
+  paused: boolean;
+  skipRequested: boolean;
+  loopMode: string;
+  progressSec: number;
+  volumePercent: number;
+  filterPreset: string;
+  eqPreset: string;
+  tempoRatio: number;
+  pitchSemitones: number;
+  deezerTrackFormats: string[];
+  pendingCount: number;
+  hasCurrentTrack: boolean;
+  sourceProcPid: number | null;
+  ffmpegPid: number | null;
+  ffmpegArgs: string[] | null;
+  ytdlp: UnknownRecord | null;
+  nodeLink: UnknownRecord;
 };
+
+type YouTubePlaylistResolveOptions = {
+  fallbackWatchUrl?: string | null;
+  limit?: number | null;
+};
+
+export interface ResolverMethodMembers {
+  _resolveYouTubeTrackViaNodeLink(track: Partial<Track> | null | undefined): Promise<Track | null>;
+  _resolveStartupMirrorFallbackTrack(
+    track: Partial<Track> | null | undefined,
+    requestedBy: string | null,
+    exhaustedSources?: readonly string[],
+  ): Promise<Track | null>;
+  _shouldUseDirectDeezerMirror(): boolean;
+  _isNodeLinkOnlyModeForSourceTrack(track: Partial<Track> | null | undefined, trackUrl?: string | null): boolean;
+  _resolveTracks(query: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
+  _resolveTracksFromSource(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
+  _resolveSearchTrack(query: string, requestedBy: string | null): Promise<Track[]>;
+  getDiagnostics(): ResolverDiagnostics;
+  searchCandidates(query: string, limit?: number, options?: { requestedBy?: string | null }): Promise<Track[]>;
+  _searchYouTubeTracks(query: string, limit: number, requestedBy: string | null): Promise<Track[]>;
+  _searchDeezerTracks(query: string, limit: number, requestedBy: string | null): Promise<Track[]>;
+  previewTracks(query: string, options?: { requestedBy?: string | null; limit?: number }): Promise<Track[]>;
+  createTrackFromData(data: TrackInput, requestedBy?: string | null): Track;
+  hydrateTrackMetadata(data: TrackInput, options?: { requestedBy?: string | null }): Promise<Track | null>;
+  _resolveSingleYouTubeTrack(url: string, requestedBy: string | null): Promise<Track[]>;
+  _fetchSingleYouTubeTrackViaPlayDl(url: string): Promise<InfoData>;
+  _resolveSingleYouTubeTrackViaYtDlp(url: string, requestedBy: string | null): Promise<Track>;
+  _resolveYouTubePlaylistTracks(
+    url: string,
+    requestedBy: string | null,
+    options?: YouTubePlaylistResolveOptions,
+  ): Promise<Track[]>;
+  _fetchYouTubePlaylistInfo(url: string): Promise<YouTubePlayList>;
+  _resolveYouTubePlaylistTracksViaPlayDl(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
+  _resolveYouTubePlaylistTracksViaYtDlp(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
+}
 
 const MIRROR_TOTAL_BUDGET_MS = 20_000;
 
@@ -45,6 +98,33 @@ const MIRROR_SEARCH_SOURCES: Record<string, string> = {
   amsearch: 'applemusic',
   jssearch: 'jiosaavn',
 };
+
+function toText(value: unknown): string {
+  return value ? String(value) : '';
+}
+
+function toOptionalText(value: unknown): string | null {
+  return value ? String(value) : null;
+}
+
+function toNullableText(value: unknown): string | null {
+  return value == null ? null : String(value);
+}
+
+function toDurationValue(value: unknown): string | number | null {
+  if (value == null) return null;
+  if (typeof value === 'string' || typeof value === 'number') return value;
+  return String(value);
+}
+
+function toSeekStartValue(value: unknown): number {
+  if (typeof value === 'number') return value;
+  return Number.parseInt(String(value), 10) || 0;
+}
+
+function readPlaylistVideos(playlist: object): unknown {
+  return 'videos' in playlist ? playlist.videos : undefined;
+}
 
 function normalizeResolveLimit(limit: number | null | undefined, fallback: number) {
   const parsed = Number.parseInt(String(limit ?? ''), 10);
@@ -120,7 +200,7 @@ export function shouldMirrorFailedStartup(options: {
   return true;
 }
 
-export const resolverMethods: LooseMethodMap = {
+export const resolverMethods: ResolverMethodMembers & ThisType<MusicPlayer> = {
   async _resolveYouTubeTrackViaNodeLink(track: Partial<Track> | null | undefined) {
     const url = String(track?.url ?? '').trim();
     if (!url || !isYouTubeUrl(url)) return null;
@@ -149,7 +229,7 @@ export const resolverMethods: LooseMethodMap = {
   async _resolveStartupMirrorFallbackTrack(
     track: Partial<Track> | null | undefined,
     requestedBy: string | null,
-    exhaustedSources: string[] = [],
+    exhaustedSources: readonly string[] = [],
   ) {
     const title = String(track?.title ?? '').trim();
     if (!title) return null;
@@ -355,7 +435,7 @@ export const resolverMethods: LooseMethodMap = {
     return [];
   },
 
-  getDiagnostics() {
+  getDiagnostics(): ResolverDiagnostics {
     return {
       playing: this.playing,
       paused: this.paused,
@@ -408,7 +488,7 @@ export const resolverMethods: LooseMethodMap = {
   },
 
   async _searchYouTubeTracks(query: string, limit: number, requestedBy: string | null) {
-    let results = [];
+    let results: unknown[] = [];
     try {
       results = await this._searchWithYtDlp(query, limit);
     } catch (err) {
@@ -420,7 +500,7 @@ export const resolverMethods: LooseMethodMap = {
     }
 
     if (!results.length) {
-      results = await playdl.search(query, { source: { youtube: 'video' }, limit }).catch(async (err) => {
+      results = await playdl.search(query, { source: { youtube: 'video' }, limit }).catch(async (err: unknown) => {
         if (!isPlayDlBrowseFailure(err)) throw err;
         this.logger?.warn?.('play-dl searchCandidates failed after yt-dlp attempt', {
           query,
@@ -431,16 +511,16 @@ export const resolverMethods: LooseMethodMap = {
       });
     }
 
-    return results.map((item: unknown) => {
-      const typedItem = item as SearchResultLike;
+    return results.map((item) => {
+      const record = asRecord(item);
       return this._buildTrack({
-      title: typedItem.title,
-      url: typedItem.url,
-      duration: typedItem.durationRaw ?? typedItem.duration,
-      thumbnailUrl: pickThumbnailUrlFromItem(typedItem),
+      title: toText(record?.title),
+      url: toText(record?.url),
+      duration: toDurationValue(record?.durationRaw ?? record?.duration),
+      thumbnailUrl: pickThumbnailUrlFromItem(item),
       requestedBy,
       source: 'youtube-search',
-      artist: pickTrackArtistFromMetadata(typedItem),
+      artist: pickTrackArtistFromMetadata(item),
     });
     });
   },
@@ -451,8 +531,9 @@ export const resolverMethods: LooseMethodMap = {
     if (!safeQuery || !this.deezerArl || !this.enableDeezerImport) return [];
 
     const payload = await this._deezerApiRequest(`/search/track?q=${encodeURIComponent(safeQuery)}`).catch(() => null);
-    const items = Array.isArray(payload?.data) ? payload.data : [];
-    const tracks = [];
+    const data = isRecord(payload) ? payload.data : undefined;
+    const items = isUnknownArray(data) ? data : [];
+    const tracks: Track[] = [];
     for (const item of items) {
       if (tracks.length >= safeLimit) break;
       const track = this._buildDeezerTrackFromMetadata(item, requestedBy, 'deezer-search-direct');
@@ -470,7 +551,7 @@ export const resolverMethods: LooseMethodMap = {
     return this._resolveTracks(query, requestedBy, Number.isFinite(limit) && limit > 0 ? limit : null);
   },
 
-  createTrackFromData(data: Record<string, unknown>, requestedBy: string | null = null) {
+  createTrackFromData(data: TrackInput, requestedBy: string | null = null) {
     const normalizedThumbnailUrl = (
       data?.thumbnailUrl
       ?? data?.thumbnail_url
@@ -523,33 +604,34 @@ export const resolverMethods: LooseMethodMap = {
       }
     }
 
+    const nodelinkInfo = data?.nodelinkInfo ?? data?.nodelink_info ?? null;
     return this._buildTrack({
-      title: data?.title,
+      title: toText(data?.title),
       url: normalizedUrl,
-      duration: data?.duration,
-      metadataDeferred: data?.metadataDeferred ?? false,
-      thumbnailUrl: normalizedThumbnailUrl,
-      requestedBy: requestedBy ?? data?.requestedBy ?? null,
+      duration: toDurationValue(data?.duration),
+      metadataDeferred: Boolean(data?.metadataDeferred),
+      thumbnailUrl: toNullableText(normalizedThumbnailUrl),
+      requestedBy: requestedBy ?? toNullableText(data?.requestedBy),
       source: effectiveSource,
-      artist: data?.artist ?? data?.artist_name ?? pickTrackArtistFromMetadata(data),
-      soundcloudTrackId: data?.soundcloudTrackId ?? data?.soundcloud_track_id ?? null,
-      audiusTrackId: data?.audiusTrackId ?? data?.audius_track_id ?? null,
-      deezerTrackId: data?.deezerTrackId ?? data?.deezer_track_id ?? null,
-      deezerPreviewUrl: data?.deezerPreviewUrl ?? data?.deezer_preview_url ?? null,
-      deezerFullStreamUrl: data?.deezerFullStreamUrl ?? data?.deezer_full_stream_url ?? null,
-      spotifyTrackId: data?.spotifyTrackId ?? data?.spotify_track_id ?? null,
-      spotifyPreviewUrl: data?.spotifyPreviewUrl ?? data?.spotify_preview_url ?? null,
-      isrc: data?.isrc ?? null,
-      nodelinkEncodedTrack: data?.nodelinkEncodedTrack ?? data?.nodelink_encoded_track ?? null,
-      nodelinkInfo: data?.nodelinkInfo ?? data?.nodelink_info ?? null,
-      isPreview: data?.isPreview ?? data?.is_preview ?? false,
+      artist: toOptionalText(data?.artist ?? data?.artist_name ?? pickTrackArtistFromMetadata(data)),
+      soundcloudTrackId: toOptionalText(data?.soundcloudTrackId ?? data?.soundcloud_track_id),
+      audiusTrackId: toOptionalText(data?.audiusTrackId ?? data?.audius_track_id),
+      deezerTrackId: toOptionalText(data?.deezerTrackId ?? data?.deezer_track_id),
+      deezerPreviewUrl: toNullableText(data?.deezerPreviewUrl ?? data?.deezer_preview_url),
+      deezerFullStreamUrl: toNullableText(data?.deezerFullStreamUrl ?? data?.deezer_full_stream_url),
+      spotifyTrackId: toOptionalText(data?.spotifyTrackId ?? data?.spotify_track_id),
+      spotifyPreviewUrl: toNullableText(data?.spotifyPreviewUrl ?? data?.spotify_preview_url),
+      isrc: toOptionalText(data?.isrc),
+      nodelinkEncodedTrack: toOptionalText(data?.nodelinkEncodedTrack ?? data?.nodelink_encoded_track),
+      nodelinkInfo: asRecord(nodelinkInfo),
+      isPreview: Boolean(data?.isPreview ?? data?.is_preview),
       isLive: inferredIsLive || effectiveSource === 'radio-stream',
-      seekStartSec: data?.seekStartSec ?? data?.seek_start_sec ?? 0,
+      seekStartSec: toSeekStartValue(data?.seekStartSec ?? data?.seek_start_sec ?? 0),
     });
   },
 
   async hydrateTrackMetadata(
-    data: Record<string, unknown>,
+    data: TrackInput,
     options: { requestedBy?: string | null } = { requestedBy: null },
   ) {
     const url = String(data?.url ?? '').trim();
@@ -571,7 +653,7 @@ export const resolverMethods: LooseMethodMap = {
     try {
       const info = await this._fetchSingleYouTubeTrackViaPlayDl(url);
       return this._buildTrack({
-        title: info.video_details.title,
+        title: info.video_details.title ?? '',
         url,
         duration: info.video_details.durationRaw,
         thumbnailUrl: pickThumbnailUrlFromItem(info.video_details),
@@ -607,7 +689,7 @@ export const resolverMethods: LooseMethodMap = {
     try {
       const info = await this._fetchSingleYouTubeTrackViaPlayDl(url);
       return [this._buildTrack({
-        title: info.video_details.title,
+        title: info.video_details.title ?? '',
         url,
         duration: info.video_details.durationRaw,
         thumbnailUrl: pickThumbnailUrlFromItem(info.video_details),
@@ -637,7 +719,7 @@ export const resolverMethods: LooseMethodMap = {
 
   async _resolveSingleYouTubeTrackViaYtDlp(url: string, requestedBy: string | null) {
     const strategies = this._getYtDlpClientStrategies?.() ?? [false];
-    let lastErr = null;
+    let lastErr: unknown = null;
 
     for (const strategy of strategies) {
       const args = [
@@ -673,24 +755,25 @@ export const resolverMethods: LooseMethodMap = {
           throw new Error('yt-dlp returned empty metadata payload.');
         }
 
-        let payload;
+        let payload: unknown;
         try {
           payload = JSON.parse(stdout);
         } catch {
           throw new Error('yt-dlp returned invalid JSON metadata.');
         }
 
-        const resolvedUrl = String(payload?.webpage_url ?? '').trim() || toCanonicalYouTubeWatchUrl(url) || url;
-        const title = String(payload?.title ?? '').trim() || resolvedUrl;
+        const record = asRecord(payload);
+        const resolvedUrl = String(record?.webpage_url ?? '').trim() || toCanonicalYouTubeWatchUrl(url) || url;
+        const title = String(record?.title ?? '').trim() || resolvedUrl;
 
         return this._buildTrack({
           title,
           url: resolvedUrl,
-          duration: payload?.duration_string ?? payload?.duration ?? 'Unknown',
+          duration: toDurationValue(record?.duration_string ?? record?.duration ?? 'Unknown'),
           thumbnailUrl: pickThumbnailUrlFromItem(payload),
           requestedBy,
           source: 'youtube',
-          artist: pickTrackArtistFromMetadata(payload) || String(payload?.channel ?? payload?.uploader ?? '').trim() || null,
+          artist: pickTrackArtistFromMetadata(payload) || String(record?.channel ?? record?.uploader ?? '').trim() || null,
         });
       } catch (err) {
         lastErr = err;
@@ -703,7 +786,7 @@ export const resolverMethods: LooseMethodMap = {
   async _resolveYouTubePlaylistTracks(
     url: string,
     requestedBy: string | null,
-    options: { fallbackWatchUrl?: string | null; limit?: number | null } = { fallbackWatchUrl: null, limit: null }
+    options: YouTubePlaylistResolveOptions = { fallbackWatchUrl: null, limit: null }
   ) {
     if (!this.enableYtPlayback) {
       throw new ValidationError('YouTube playback is currently disabled by bot configuration.');
@@ -728,7 +811,7 @@ export const resolverMethods: LooseMethodMap = {
     }
 
     const order = this.youtubePlaylistResolver === 'playdl' ? ['playdl', 'ytdlp'] : ['ytdlp', 'playdl'];
-    const resolverErrors = [];
+    const resolverErrors: Array<{ resolver: string; error: unknown }> = [];
 
     for (const resolver of order) {
       if (resolver === 'ytdlp') {
@@ -800,7 +883,7 @@ export const resolverMethods: LooseMethodMap = {
     const safeLimit = normalizeResolveLimit(limit, this.maxPlaylistTracks);
     const playlist = await this._fetchYouTubePlaylistInfo(url);
     await playlist.fetch(safeLimit);
-    const videos = [];
+    const videos: unknown[] = [];
 
     for (let page = 1; page <= playlist.total_pages && videos.length < safeLimit; page += 1) {
       const items = playlist.page(page) ?? [];
@@ -810,19 +893,23 @@ export const resolverMethods: LooseMethodMap = {
       }
     }
 
-    if (!videos.length && Array.isArray(playlist.videos)) {
-      videos.push(...playlist.videos.slice(0, safeLimit));
+    const initialVideos = readPlaylistVideos(playlist);
+    if (!videos.length && isUnknownArray(initialVideos)) {
+      videos.push(...initialVideos.slice(0, safeLimit));
     }
 
-    return videos.map((video) => this._buildTrack({
-      title: video.title,
-      url: video.url,
-      duration: video.durationRaw,
-      thumbnailUrl: pickThumbnailUrlFromItem(video),
-      requestedBy,
-      source: 'youtube-playlist',
-      artist: pickTrackArtistFromMetadata(video),
-    }));
+    return videos.map((video) => {
+      const record = asRecord(video);
+      return this._buildTrack({
+        title: toText(record?.title),
+        url: toText(record?.url),
+        duration: toDurationValue(record?.durationRaw),
+        thumbnailUrl: pickThumbnailUrlFromItem(video),
+        requestedBy,
+        source: 'youtube-playlist',
+        artist: pickTrackArtistFromMetadata(video),
+      });
+    });
   },
 
   async _resolveYouTubePlaylistTracksViaYtDlp(url: string, requestedBy: string | null, limit?: number | null) {
@@ -862,23 +949,26 @@ export const resolverMethods: LooseMethodMap = {
       }).catch(() => ({ stdout: '' }));
       if (!stdout?.trim()) continue;
 
-      let payload;
+      let payload: unknown;
       try {
         payload = JSON.parse(stdout);
       } catch {
         continue;
       }
 
-      const entries = Array.isArray(payload?.entries) ? payload.entries : [];
-      const tracks = [];
+      const rawEntries = isRecord(payload) ? payload.entries : undefined;
+      const entries = isUnknownArray(rawEntries) ? rawEntries : [];
+      const tracks: Track[] = [];
 
       for (const entry of entries) {
         if (tracks.length >= safeLimit) break;
         const videoUrl = normalizeYouTubeVideoUrlFromEntry(entry);
         if (!videoUrl) continue;
 
-        const title = String(entry?.title ?? '').trim() || videoUrl;
-        const duration = Number.isFinite(entry?.duration) ? entry.duration : 'Unknown';
+        const entryRecord = asRecord(entry);
+        const title = String(entryRecord?.title ?? '').trim() || videoUrl;
+        const entryDuration = entryRecord?.duration;
+        const duration = typeof entryDuration === 'number' && Number.isFinite(entryDuration) ? entryDuration : 'Unknown';
         tracks.push(this._buildTrack({
           title,
           url: videoUrl,

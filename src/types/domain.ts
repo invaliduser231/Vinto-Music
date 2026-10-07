@@ -318,7 +318,7 @@ export interface VoiceStateStoreLike {
 }
 
 export interface PipelineProcess {
-  pid?: number;
+  pid?: number | undefined;
   stdin?: {
     destroy?: (error?: Error) => unknown;
     on?: (event: string, listener: BivariantCallback<unknown[], void>) => unknown;
@@ -345,6 +345,6 @@ export interface PipelineProcess {
     setEncoding?: (encoding: BufferEncoding) => unknown;
     [Symbol.asyncIterator]?: () => AsyncIterator<unknown>;
   } | null;
-  kill?: (signal?: NodeJS.Signals | number | string) => unknown;
+  kill?: (signal?: NodeJS.Signals | number) => unknown;
   once?: (event: string, listener: BivariantCallback<unknown[], void>) => unknown;
 }

@@ -1,19 +1,18 @@
-export class AudiusClient {
-  host: object;
+import type { MusicPlayer } from '../MusicPlayer.ts';
+import type { Track } from '../../types/domain.ts';
 
-  constructor(host: object) {
+export class AudiusClient {
+  readonly host: MusicPlayer;
+
+  constructor(host: MusicPlayer) {
     this.host = host;
   }
 
-  resolveByUrl(url: string, requestedBy?: string | null) {
-    const api = this.host as { _resolveAudiusByUrl: (url: string, requestedBy?: string | null) => unknown };
-    return api._resolveAudiusByUrl(url, requestedBy);
+  resolveByUrl(url: string, requestedBy: string | null): Promise<Track[]> {
+    return this.host._resolveAudiusByUrl(url, requestedBy);
   }
 
-  startPipeline(track: unknown, seekSec = 0) {
-    const api = this.host as { _startAudiusPipeline: (track: unknown, seekSec?: number) => unknown };
-    return api._startAudiusPipeline(track, seekSec);
+  startPipeline(track: Partial<Track> | null | undefined, seekSec = 0): Promise<void> {
+    return this.host._startAudiusPipeline(track, seekSec);
   }
 }
-
-
