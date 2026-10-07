@@ -240,6 +240,33 @@ test('play-dl playlist fallback maps fetched tracks to api metadata', async () =
   assert.equal(tracks[0]!.source, 'soundcloud-playlist-direct');
 });
 
+test('transcoding lookup skips an entry with an invalid url and tries the next one', async (t) => {
+  const player = createPlayer();
+  player._ensureSoundCloudClientId = async () => 'client-id';
+  const requested: string[] = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input: string | URL | Request) => {
+    requested.push(String(input));
+    return new Response(JSON.stringify({ url: 'https://cf-hls-media.sndcdn.com/playlist.m3u8' }), { status: 200 });
+  };
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const streamUrl = await player._resolveSoundCloudTranscodingUrl({
+    media: {
+      transcodings: [
+        { url: 'not a url', format: { protocol: 'progressive' } },
+        { url: 'https://api-v2.soundcloud.com/media/soundcloud:tracks:1/abc/stream/hls', format: { protocol: 'hls' } },
+      ],
+    },
+  });
+
+  assert.equal(streamUrl, 'https://cf-hls-media.sndcdn.com/playlist.m3u8');
+  assert.equal(requested.length, 1);
+  assert.ok(requested[0]!.startsWith('https://api-v2.soundcloud.com/media/soundcloud:tracks:1/abc/stream/hls'));
+});
+
 
 
 

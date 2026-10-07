@@ -180,7 +180,10 @@ export const soundcloudMethods: SoundCloudMethodMembers & ThisType<MusicPlayer> 
     let lastError: Error | null = null;
     for (const transcoding of ranked) {
       const lookupUrl = String(readField(transcoding, 'url') ?? '').trim();
-      if (!lookupUrl) continue;
+      if (!isHttpUrl(lookupUrl)) {
+        lastError = new Error('transcoding entry has no usable lookup url');
+        continue;
+      }
 
       const endpoint = new URL(lookupUrl);
       endpoint.searchParams.set('client_id', clientId);
