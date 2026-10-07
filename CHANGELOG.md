@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.12.11] - 2026-10-07
+
+- Security:
+  - updated the dashboard to Next.js 16.4.0, which closes the advisories up to 16.3.8, among them remote code execution in `next/og`, SSRF in image optimization and cache poisoning of static pages. The dashboard does not use `next/og`
+  - updated `sharp` to 0.35.5 for the bundled librsvg fix and `postcss` to 8.5.29, which pulls in `source-map-js` 1.2.2
+  - updated `fast-copy` to 4.1.2 in the bot, used through `pino-pretty`
+
 ## [0.12.10] - 2026-10-07
 
 - Fixes:
