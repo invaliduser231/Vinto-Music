@@ -46,6 +46,14 @@ Operationally that means:
 6. `VoiceConnection` publishes PCM frames into the platform voice session.
 7. Persistent features write through Mongo-backed stores where needed.
 
+## Player Composition
+
+`MusicPlayer` is assembled from method objects in `src/player/musicPlayer/*Methods.ts`, which are copied onto its prototype with `Object.assign`. Each file exports an interface that describes its methods and the fields only it owns, and types its object as `<Name>Methods & ThisType<MusicPlayer>`. `MusicPlayer.ts` merges these interfaces into the class through `export interface MusicPlayer extends ... {}`.
+
+The interface is the single contract for those methods. The compiler checks the implementation against it and rejects methods that are missing from it, so the class must not repeat them as `declare` members. `MusicPlayer` has no index signature, so every member has to come from the class body or one of the merged interfaces. The provider clients (`DeezerClient`, `SoundCloudClient`, `AudiusClient`, `ResolverClient`) hold a typed `MusicPlayer` reference and delegate without casts.
+
+External payloads (provider APIs, `yt-dlp` and `ffprobe` JSON) are read as `unknown` and narrowed with the helpers in `src/utils/unknownData.ts`.
+
 A track is only closed once its audio has actually been played, not when the source stream ends. The pump deliberately keeps up to `MAX_QUEUE_MS` buffered, so both moments are up to a second apart, and tearing the pump down at the source-stream end would cut off the tail. `MusicPlayer` therefore awaits `VoiceConnection.waitForPlaybackDrain()` before `_handleTrackClose`, bounded by a timeout and skipped for skips and seeks, where the buffer is meant to be discarded.
 
 ## Playback Resolution Strategy
