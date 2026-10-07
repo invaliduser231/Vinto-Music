@@ -1,15 +1,17 @@
 import playdl from 'play-dl';
-import type { SoundCloud, SoundCloudPlaylist } from 'play-dl';
+import { SoundCloudPlaylist, SoundCloudTrack } from 'play-dl';
+import type { SoundCloud } from 'play-dl';
 import { ValidationError } from '../../core/errors.ts';
 import { isSoundCloudAuthorizationError, soundCloudAuthorizationHelp } from './errorUtils.ts';
 import { isHttpUrl, normalizeThumbnailUrl, pickThumbnailUrlFromItem, toSoundCloudDurationLabel } from './trackUtils.ts';
 import type { Track } from '../../types/domain.ts';
 import type { MusicPlayer } from '../MusicPlayer.ts';
-import { asRecord, readField } from '../../utils/unknownData.ts';
+import { asRecord, readField, type UnknownRecord } from '../../utils/unknownData.ts';
 
 export interface SoundCloudMethodMembers {
   _resolveSoundCloudTrack(url: string, requestedBy: string | null): Promise<Track[]>;
   _resolveSoundCloudPlaylist(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
+  _loadPlayDlSoundCloud(url: string): Promise<SoundCloud>;
   _ensureSoundCloudClientId(): Promise<string>;
   _soundCloudResolve(url: string): Promise<unknown>;
   _fetchSoundCloudTrackById(trackId: unknown): Promise<unknown>;
@@ -21,8 +23,16 @@ export interface SoundCloudMethodMembers {
   _startSoundCloudPipeline(track: Partial<Track> | null | undefined, seekSec?: number): Promise<void>;
 }
 
-function isPlayDlSoundCloudPlaylist(data: SoundCloud): data is SoundCloudPlaylist {
-  return data.type === 'playlist';
+function playDlTrackToApiMetadata(track: SoundCloudTrack): UnknownRecord {
+  return {
+    id: track.id,
+    title: track.name,
+    permalink_url: track.permalink,
+    duration: track.durationInMs,
+    artwork_url: track.thumbnail,
+    user: { username: track.user.name },
+    publisher_metadata: { artist: track.publisher?.artist },
+  };
 }
 
 export const soundcloudMethods: SoundCloudMethodMembers & ThisType<MusicPlayer> = {
@@ -39,7 +49,7 @@ export const soundcloudMethods: SoundCloudMethodMembers & ThisType<MusicPlayer> 
 
     let data: SoundCloud;
     try {
-      data = await playdl.soundcloud(url);
+      data = await this._loadPlayDlSoundCloud(url);
     } catch (err) {
       if (isSoundCloudAuthorizationError(err)) {
         this.logger?.warn?.(soundCloudAuthorizationHelp(), { url });
@@ -48,11 +58,11 @@ export const soundcloudMethods: SoundCloudMethodMembers & ThisType<MusicPlayer> 
       throw err;
     }
 
-    if (!data || data.type !== 'track') {
+    if (!(data instanceof SoundCloudTrack)) {
       return this._resolveFromUrlFallbackSearch(url, requestedBy, 'soundcloud-fallback');
     }
 
-    const track = this._buildSoundCloudTrackFromMetadata(data, requestedBy, 'soundcloud-direct');
+    const track = this._buildSoundCloudTrackFromMetadata(playDlTrackToApiMetadata(data), requestedBy, 'soundcloud-direct');
     return track ? [track] : [];
   },
 
@@ -69,7 +79,7 @@ export const soundcloudMethods: SoundCloudMethodMembers & ThisType<MusicPlayer> 
 
     let data: SoundCloud;
     try {
-      data = await playdl.soundcloud(url);
+      data = await this._loadPlayDlSoundCloud(url);
     } catch (err) {
       if (isSoundCloudAuthorizationError(err)) {
         this.logger?.warn?.(soundCloudAuthorizationHelp(), { url });
@@ -78,16 +88,21 @@ export const soundcloudMethods: SoundCloudMethodMembers & ThisType<MusicPlayer> 
       throw err;
     }
 
-    if (!data || !isPlayDlSoundCloudPlaylist(data)) {
+    if (!(data instanceof SoundCloudPlaylist)) {
       return this._resolveFromUrlFallbackSearch(url, requestedBy, 'soundcloud-fallback');
     }
 
     const safeLimit = Math.max(1, Math.min(this.maxPlaylistTracks, Number.parseInt(String(limit), 10) || this.maxPlaylistTracks));
-    const tracks: unknown[] = await data.all_tracks();
+    const tracks = await data.all_tracks();
     return tracks
+      .filter((track) => track instanceof SoundCloudTrack)
       .slice(0, safeLimit)
-      .map((track) => this._buildSoundCloudTrackFromMetadata(track, requestedBy, 'soundcloud-playlist-direct'))
+      .map((track) => this._buildSoundCloudTrackFromMetadata(playDlTrackToApiMetadata(track), requestedBy, 'soundcloud-playlist-direct'))
       .filter((track): track is Track => Boolean(track));
+  },
+
+  _loadPlayDlSoundCloud(url: string) {
+    return playdl.soundcloud(url);
   },
 
   async _ensureSoundCloudClientId() {

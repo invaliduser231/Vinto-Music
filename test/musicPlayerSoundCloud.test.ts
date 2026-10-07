@@ -1,7 +1,34 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { SoundCloudPlaylist, SoundCloudTrack } from 'play-dl';
 
 import { MusicPlayer } from '../src/player/MusicPlayer.ts';
+
+const RAW_SOUNDCLOUD_TRACK = {
+  kind: 'track',
+  id: 123456789,
+  title: 'Real Title',
+  duration: 3 * 3600 * 1000,
+  uri: 'https://api.soundcloud.com/tracks/123456789',
+  permalink_url: 'https://soundcloud.com/artist-name/real-title',
+  artwork_url: 'https://i1.sndcdn.com/artworks-abc-large.jpg',
+  user: { id: 1, username: 'Artist Name', permalink_url: 'https://soundcloud.com/artist-name' },
+  publisher_metadata: { id: 9, artist: 'Publisher Artist' },
+  media: { transcodings: [] },
+};
+
+function createPlayDlPlaylist() {
+  return new SoundCloudPlaylist({
+    kind: 'playlist',
+    id: 1,
+    title: 'Set',
+    uri: 'https://api.soundcloud.com/playlists/1',
+    duration: RAW_SOUNDCLOUD_TRACK.duration,
+    user: RAW_SOUNDCLOUD_TRACK.user,
+    track_count: 2,
+    tracks: [RAW_SOUNDCLOUD_TRACK, { id: 987, kind: 'track' }],
+  }, 'client-id');
+}
 
 function createPlayer() {
   return new MusicPlayer({
@@ -163,6 +190,54 @@ test('play() uses SoundCloud pipeline for soundcloud source tracks', async () =>
 
   await player.play();
   assert.equal(soundCloudPipelineCalled, true);
+});
+
+test('play-dl track fallback keeps title, artist, permalink and long durations', async () => {
+  const player = createPlayer();
+  player._resolveSoundCloudTrackDirect = async () => {
+    throw new Error('resolve failed (429)');
+  };
+  player._loadPlayDlSoundCloud = async () => new SoundCloudTrack(RAW_SOUNDCLOUD_TRACK);
+
+  const tracks = await player._resolveSoundCloudTrack(RAW_SOUNDCLOUD_TRACK.permalink_url, 'user-1');
+
+  assert.equal(tracks.length, 1);
+  assert.equal(tracks[0]!.title, 'Real Title');
+  assert.equal(tracks[0]!.artist, 'Artist Name');
+  assert.equal(tracks[0]!.url, RAW_SOUNDCLOUD_TRACK.permalink_url);
+  assert.equal(tracks[0]!.duration, '3:00:00');
+  assert.equal(tracks[0]!.soundcloudTrackId, '123456789');
+});
+
+test('play-dl track fallback returns no tracks instead of null when the permalink is missing', async () => {
+  const player = createPlayer();
+  player._resolveSoundCloudTrackDirect = async () => {
+    throw new Error('resolve failed (network)');
+  };
+  player._loadPlayDlSoundCloud = async () => new SoundCloudTrack({ ...RAW_SOUNDCLOUD_TRACK, permalink_url: undefined });
+
+  const tracks = await player._resolveSoundCloudTrack('https://soundcloud.com/artist-name/real-title', 'user-1');
+
+  assert.deepEqual(tracks, []);
+});
+
+test('play-dl playlist fallback maps fetched tracks to api metadata', async () => {
+  const player = createPlayer();
+  player.maxPlaylistTracks = 10;
+  player._resolveSoundCloudPlaylistDirect = async () => {
+    throw new Error('direct playlist payload was truncated (1/2)');
+  };
+  const playlist = createPlayDlPlaylist();
+  playlist.all_tracks = async () => [new SoundCloudTrack(RAW_SOUNDCLOUD_TRACK)];
+  player._loadPlayDlSoundCloud = async () => playlist;
+
+  const tracks = await player._resolveSoundCloudPlaylist('https://soundcloud.com/artist-name/sets/set', 'user-1');
+
+  assert.equal(tracks.length, 1);
+  assert.equal(tracks[0]!.title, 'Real Title');
+  assert.equal(tracks[0]!.artist, 'Artist Name');
+  assert.equal(tracks[0]!.url, RAW_SOUNDCLOUD_TRACK.permalink_url);
+  assert.equal(tracks[0]!.source, 'soundcloud-playlist-direct');
 });
 
 
