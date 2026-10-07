@@ -240,6 +240,28 @@ test('play-dl playlist fallback maps fetched tracks to api metadata', async () =
   assert.equal(tracks[0]!.source, 'soundcloud-playlist-direct');
 });
 
+test('play-dl playlist fallback uses the fetched tracks when all_tracks never settles', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const player = createPlayer();
+  player.maxPlaylistTracks = 10;
+  player._resolveSoundCloudPlaylistDirect = async () => {
+    throw new Error('direct playlist payload was truncated (1/2)');
+  };
+  const playlist = createPlayDlPlaylist();
+  playlist.all_tracks = () => new Promise<never>(() => {});
+  player._loadPlayDlSoundCloud = async () => playlist;
+
+  const pending = player._resolveSoundCloudPlaylist('https://soundcloud.com/artist-name/sets/set', 'user-1');
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  t.mock.timers.tick(20_000);
+  const tracks = await pending;
+
+  assert.equal(tracks.length, 1);
+  assert.equal(tracks[0]!.title, 'Real Title');
+});
+
 test('transcoding lookup skips an entry with an invalid url and tries the next one', async (t) => {
   const player = createPlayer();
   player._ensureSoundCloudClientId = async () => 'client-id';

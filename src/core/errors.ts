@@ -44,6 +44,13 @@ export class ValidationError extends AppError {
   }
 }
 
+export class TimeoutError extends AppError {
+  constructor(message: string, options: AppErrorOptions = {}) {
+    super(message, { ...options, code: options.code ?? 'ETIMEDOUT' });
+    this.name = 'TimeoutError';
+  }
+}
+
 
 
 

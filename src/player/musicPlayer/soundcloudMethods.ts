@@ -1,12 +1,15 @@
 import playdl from 'play-dl';
 import { SoundCloudPlaylist, SoundCloudTrack } from 'play-dl';
 import type { SoundCloud } from 'play-dl';
-import { ValidationError } from '../../core/errors.ts';
+import { TimeoutError, ValidationError } from '../../core/errors.ts';
 import { isSoundCloudAuthorizationError, soundCloudAuthorizationHelp } from './errorUtils.ts';
 import { isHttpUrl, normalizeThumbnailUrl, pickThumbnailUrlFromItem, toSoundCloudDurationLabel } from './trackUtils.ts';
 import type { Track } from '../../types/domain.ts';
 import type { MusicPlayer } from '../MusicPlayer.ts';
 import { asRecord, readField, type UnknownRecord } from '../../utils/unknownData.ts';
+import { withTimeout } from '../../utils/timeout.ts';
+
+const PLAY_DL_PLAYLIST_FETCH_TIMEOUT_MS = 20_000;
 
 export interface SoundCloudMethodMembers {
   _resolveSoundCloudTrack(url: string, requestedBy: string | null): Promise<Track[]>;
@@ -93,7 +96,19 @@ export const soundcloudMethods: SoundCloudMethodMembers & ThisType<MusicPlayer> 
     }
 
     const safeLimit = Math.max(1, Math.min(this.maxPlaylistTracks, Number.parseInt(String(limit), 10) || this.maxPlaylistTracks));
-    const tracks = await data.all_tracks();
+    const tracks: readonly unknown[] = await withTimeout(
+      data.all_tracks(),
+      PLAY_DL_PLAYLIST_FETCH_TIMEOUT_MS,
+      'play-dl SoundCloud playlist fetch timed out.',
+    ).catch((err: unknown) => {
+      if (!(err instanceof TimeoutError)) throw err;
+      this.logger?.warn?.('play-dl SoundCloud playlist fetch timed out, using the tracks fetched so far', {
+        url,
+        fetched: data.total_tracks,
+        total: data.tracksCount,
+      });
+      return data.tracks;
+    });
     return tracks
       .filter((track) => track instanceof SoundCloudTrack)
       .slice(0, safeLimit)
