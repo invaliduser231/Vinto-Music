@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.12.10] - 2026-10-07
+
+- Fixes:
+  - skipping a track while it is still starting moves on to the next one instead of playing the skipped track again, and `stop` during startup no longer restarts the track. Errors from the torn down stream used to count as a failed start, which also posted an error in the channel and counted a failure against the mirror source
+  - SoundCloud tracks from the play-dl fallback keep their title, artist, permalink and duration. They used to show up as "SoundCloud track" without an artist, linked to the API address, and a three hour mix was listed as ten seconds. A fallback track without a permalink no longer adds an empty entry to the queue
+  - a SoundCloud playlist whose track fetch stalls inside play-dl is loaded with the tracks fetched so far after 20 seconds instead of waiting forever
+  - a SoundCloud transcoding entry without a usable lookup URL is skipped and the next format is tried
+  - the NodeLink load cache key is built with an escaped separator instead of a raw NUL byte, which made git treat `nodeLinkMethods.ts` as a binary file
+- Code quality:
+  - each `MusicPlayer` method file describes its methods in an interface that the compiler checks the implementation against. The hand-written `declare` members and the index signature on the class are gone, including several declarations whose signatures no longer matched the code
+  - the provider clients call the player through a typed reference instead of casting it
+  - removed leftover stubs of the local Spotify, Tidal, Apple Music and Amazon Music resolvers
+  - helpers for reading untyped payloads are shared in `src/utils/unknownData.ts`
+- Tests: covered the startup abort on skip and stop, the play-dl SoundCloud fallback mapping, the stalled playlist fetch, the transcoding fallback, the timeout helper and the payload helpers
+
 ## [0.12.9] - 2026-10-04
 
 - Fixes:
