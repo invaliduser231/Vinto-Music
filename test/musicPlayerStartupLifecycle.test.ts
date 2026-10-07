@@ -383,7 +383,105 @@ test('play() retries failed YouTube startup through NodeLink before local yt-dlp
   assert.equal(player.currentTrack?.nodelinkEncodedTrack, 'encoded-node-retry');
 });
 
+test('stop() during startup is not counted as a failed startup when the torn down pipeline rejects', async () => {
+  const voice = createVoice();
+  const player = new MusicPlayer(voice, { logger: null });
+  const pendingChunk: { reject?: (err: Error) => void } = {};
+  let pipelineStarts = 0;
 
+  player._startYouTubePipeline = async () => {
+    pipelineStarts += 1;
+    player.sourceProc = createFakeProcess();
+    player.ffmpeg = createFakeProcess();
+  };
+  player._awaitInitialPlaybackChunk = () => new Promise<void>((_resolve, reject) => {
+    pendingChunk.reject = reject;
+  });
 
+  let trackStartCount = 0;
+  let trackErrorCount = 0;
+  player.on('trackStart', () => {
+    trackStartCount += 1;
+  });
+  player.on('trackError', () => {
+    trackErrorCount += 1;
+  });
 
+  player.enqueueResolvedTracks([
+    player._buildTrack({
+      title: 'Stopped During Startup',
+      url: 'https://www.youtube.com/watch?v=stop1234567',
+      duration: '03:00',
+      source: 'youtube',
+      requestedBy: 'user-1',
+    }),
+  ]);
 
+  const playPromise = player.play();
+  await new Promise((resolve) => setImmediate(resolve));
+  player.stop();
+  pendingChunk.reject?.(new Error('Playback pipeline exited before audio output (signal=SIGKILL).'));
+  await playPromise;
+
+  assert.equal(pipelineStarts, 1);
+  assert.equal(trackStartCount, 0);
+  assert.equal(trackErrorCount, 0);
+  assert.equal(player.playing, false);
+});
+
+test('skip() during a NodeLink startup moves on instead of replaying the skipped track', async () => {
+  const voice = createVoice();
+  const player = new MusicPlayer(voice, {
+    logger: null,
+    nodeLinkEnabled: true,
+    nodeLinkBaseUrl: 'http://nodelink:3000',
+    nodeLinkRoutingMode: 'all',
+  });
+  const pendingStream: { reject?: (err: Error) => void } = {};
+  const startedTitles: string[] = [];
+  let mirrorFailures = 0;
+
+  player._noteMirrorSourceFailure = () => {
+    mirrorFailures += 1;
+  };
+  player._startNodeLinkStream = async (track) => {
+    startedTitles.push(String(track.title));
+    if (startedTitles.length === 1) {
+      await new Promise<void>((_resolve, reject) => {
+        pendingStream.reject = reject;
+      });
+    }
+    player.queue.current = track;
+  };
+
+  player.enqueueResolvedTracks([
+    player.createTrackFromData({
+      title: 'Skipped Track',
+      url: 'https://www.youtube.com/watch?v=skip1234567',
+      duration: '03:00',
+      source: 'youtube',
+      nodelinkEncodedTrack: 'encoded-skipped',
+      requestedBy: 'user-1',
+    }),
+    player.createTrackFromData({
+      title: 'Next Track',
+      url: 'https://www.youtube.com/watch?v=next1234567',
+      duration: '03:00',
+      source: 'youtube',
+      nodelinkEncodedTrack: 'encoded-next',
+      requestedBy: 'user-1',
+    }),
+  ]);
+
+  const playPromise = player.play();
+  await new Promise((resolve) => setImmediate(resolve));
+  player.skip();
+  pendingStream.reject?.(new Error('NodeLink stream closed before audio output'));
+  await playPromise;
+  for (let attempt = 0; attempt < 20 && startedTitles.length < 2; attempt += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+
+  assert.deepEqual(startedTitles, ['Skipped Track', 'Next Track']);
+  assert.equal(mirrorFailures, 0);
+});

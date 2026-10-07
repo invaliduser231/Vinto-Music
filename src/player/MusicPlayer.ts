@@ -808,6 +808,7 @@ export class MusicPlayer extends EventEmitter {
           await this._startNodeLinkStream(track, startupToken, playbackToken);
           return;
         } catch (nodeLinkErr) {
+          this._ensurePlaybackStartupActive(startupToken);
           if (this._isPlaybackStartupAbortedError(nodeLinkErr)) {
             throw nodeLinkErr;
           }
@@ -941,7 +942,7 @@ export class MusicPlayer extends EventEmitter {
         channelId: String((this.voice as { channelId?: unknown } | null | undefined)?.channelId ?? '').trim() || null,
       });
     } catch (err) {
-      const startupAborted = this._isPlaybackStartupAbortedError(err);
+      const startupAborted = this._isPlaybackStartupAbortedError(err) || startupToken !== this.playbackStartupToken;
       let normalizedMessage = '';
       if (!startupAborted) {
         const normalized = this._normalizePlaybackError(this._withStartupStderr(err, ffmpegStartupStderr));
