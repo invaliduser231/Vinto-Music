@@ -232,9 +232,14 @@ export async function createProgressReporter(
 
   return {
     messageId,
-    replace: async (payload: MessagePayload) => {
+    replace: async (payload: MessagePayload): Promise<string | null> => {
       if (!messageId) return null;
-      return rest.editMessage!(safeChannelId, messageId, payload);
+      try {
+        await rest.editMessage!(safeChannelId, messageId, payload);
+        return messageId;
+      } catch {
+        return null;
+      }
     },
     success: (text: string, nextFields: EmbedField[] | null = null, nextOptions: StatusPayloadOptions | null = null) => editOrReply('success', text, nextFields, nextOptions),
     warning: (text: string, nextFields: EmbedField[] | null = null, nextOptions: StatusPayloadOptions | null = null) => editOrReply('warning', text, nextFields, nextOptions),
