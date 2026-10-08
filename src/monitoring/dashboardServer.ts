@@ -836,11 +836,11 @@ export class DashboardServer {
 
     const guildId = String(body.guildId ?? '').trim();
     const voiceChannelId = String(body.voiceChannelId ?? '').trim();
-    const userId = String(body.userId ?? req.headers['x-user-id'] ?? '').trim();
+    const userId = String(req.headers['x-user-id'] ?? '').trim();
     const roleIds = await this._resolveRoleIds(
       guildId,
       userId,
-      parseRoleIds(body.roleIds ?? req.headers['x-user-role-ids']),
+      parseRoleIds(req.headers['x-user-role-ids']),
     );
     const action = this._parseAction(body, userId);
 
