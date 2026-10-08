@@ -21,6 +21,22 @@ export const BOT_API_ALLOWED_PATHS = new Set([
 
 export const TICKET_LIFETIME_MS = 60_000;
 
+const CLIENT_IDENTITY_FIELDS = new Set(['userId', 'roleIds']);
+
+export function stripClientIdentity(rawBody: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawBody);
+  } catch {
+    return rawBody;
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return rawBody;
+  const sanitized = Object.fromEntries(
+    Object.entries(parsed).filter(([key]) => !CLIENT_IDENTITY_FIELDS.has(key)),
+  );
+  return JSON.stringify(sanitized);
+}
+
 export function readBotApiConfig(): BotApiConfig | null {
   const baseUrl = String(process.env.DASHBOARD_API_URL ?? 'http://127.0.0.1:9092').trim();
   const secret = String(process.env.DASHBOARD_API_SECRET ?? '').trim();

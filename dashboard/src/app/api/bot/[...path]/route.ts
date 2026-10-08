@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { getAuthSession } from '@/lib/auth-server';
-import { BOT_API_ALLOWED_PATHS, readBotApiConfig } from '@/lib/bot-api';
+import { BOT_API_ALLOWED_PATHS, readBotApiConfig, stripClientIdentity } from '@/lib/bot-api';
 
 type RouteContext = { params: Promise<{ path: string[] }> };
 
@@ -31,7 +31,7 @@ async function forward(req: NextRequest, context: RouteContext): Promise<NextRes
 
   let body: string | undefined;
   if (req.method !== 'GET') {
-    body = await req.text();
+    body = stripClientIdentity(await req.text());
     headers.set('content-type', 'application/json');
   }
 
