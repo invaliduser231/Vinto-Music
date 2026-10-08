@@ -1306,6 +1306,13 @@ export class DashboardServer {
       return;
     }
 
+    const member = await this._resolveMemberProfile(guildId, userId);
+    if (!member && this.getGuildMember) {
+      res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: 'guild access denied' }));
+      return;
+    }
+
     const roleIds = await this._resolveRoleIds(
       guildId,
       userId,

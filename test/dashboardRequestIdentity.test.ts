@@ -6,7 +6,9 @@ import { DashboardServer } from '../src/monitoring/dashboardServer.ts';
 import type { Session } from '../src/types/domain.ts';
 import type { SessionManager } from '../src/bot/sessionManager.ts';
 import { VoiceStateStore } from '../src/bot/voiceStateStore.ts';
+import type { GuildConfigStore } from '../src/bot/services/guildConfigStore.ts';
 import type { GuildStateCache } from '../src/bot/services/guildStateCache.ts';
+import type { MusicLibraryStore } from '../src/bot/services/musicLibraryStore.ts';
 
 type MockSessions = EventEmitter & {
   listByGuild: (guildId: string) => Session[];
@@ -73,6 +75,12 @@ function createServer(port: number) {
       resolveOwnerId: () => '100000000000000003',
       computeManageGuildPermission: () => false,
     } as unknown as GuildStateCache,
+    guildConfigs: {
+      get: async () => ({ guildId: 'guild-1', prefix: '!', settings: { djRoleIds: ['dj-role'] } }),
+    } as unknown as GuildConfigStore,
+    library: {
+      getGuildFeatureConfig: async () => ({ webhookUrl: 'https://fluxer.example/api/webhooks/1/secret-token' }),
+    } as unknown as MusicLibraryStore,
   });
 
   return { server, pauseCalls };
@@ -123,6 +131,48 @@ test('session actions still work for a DJ identified by the proxy', async () => 
 
     assert.equal(response.status, 200);
     assert.equal(pauseCalls.length, 1);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('guild settings are denied to users outside the guild', async () => {
+  const { server } = createServer(19113);
+  await server.start();
+
+  try {
+    const response = await fetch('http://127.0.0.1:19113/api/v1/guild/settings?guildId=guild-1', {
+      headers: { Authorization: 'Bearer local-secret', 'X-User-Id': '100000000000000009' },
+    });
+
+    assert.equal(response.status, 403);
+    const payload = await response.json() as { settings?: unknown };
+    assert.equal(payload.settings, undefined);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('guild settings hide the webhook url from members who cannot manage the guild', async () => {
+  const { server } = createServer(19114);
+  await server.start();
+
+  try {
+    const memberResponse = await fetch('http://127.0.0.1:19114/api/v1/guild/settings?guildId=guild-1', {
+      headers: { Authorization: 'Bearer local-secret', 'X-User-Id': '100000000000000002' },
+    });
+    const memberPayload = await memberResponse.json() as { settings?: { canManage?: boolean; webhookUrl?: string | null } };
+    assert.equal(memberResponse.status, 200);
+    assert.equal(memberPayload.settings?.canManage, false);
+    assert.equal(memberPayload.settings?.webhookUrl, null);
+
+    const ownerResponse = await fetch('http://127.0.0.1:19114/api/v1/guild/settings?guildId=guild-1', {
+      headers: { Authorization: 'Bearer local-secret', 'X-User-Id': '100000000000000003' },
+    });
+    const ownerPayload = await ownerResponse.json() as { settings?: { canManage?: boolean; webhookUrl?: string | null } };
+    assert.equal(ownerResponse.status, 200);
+    assert.equal(ownerPayload.settings?.canManage, true);
+    assert.equal(ownerPayload.settings?.webhookUrl, 'https://fluxer.example/api/webhooks/1/secret-token');
   } finally {
     await server.stop();
   }

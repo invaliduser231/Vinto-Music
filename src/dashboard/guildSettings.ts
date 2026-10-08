@@ -123,7 +123,7 @@ export function buildGuildSettingsPayload(
       : settings.djRoleIds ?? [])],
     musicLogChannelId: settings.musicLogChannelId ?? null,
     autoplayEnabled: Boolean(settings.autoplayEnabled),
-    webhookUrl: features.webhookUrl ?? null,
+    webhookUrl: canManage ? features.webhookUrl ?? null : null,
     recapChannelId: features.recapChannelId ?? null,
     queueGuard: {
       enabled: Boolean(queueGuard.enabled),
