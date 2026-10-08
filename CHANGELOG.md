@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.12.12] - 2026-10-08
+
+- Security:
+  - dashboard session actions take the acting user only from the signed-in session. The bot used to prefer a user id from the request body, so any signed-in user could act as another member, for example a DJ in the voice channel, and control that session in any server
+  - guild settings are only returned to members of that server, and the webhook URL only to members who can manage it. Any signed-in user could previously read the settings of any server by its id, including the webhook URL
+  - the dashboard proxy removes user and role ids from request bodies before forwarding them to the bot
+- Tests: covered the ignored body identity, the membership check for settings, the hidden webhook URL and the proxy body filter
+
 ## [0.12.11] - 2026-10-07
 
 - Security:
