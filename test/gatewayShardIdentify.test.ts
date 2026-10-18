@@ -43,3 +43,8 @@ test('the token and intents survive next to the shard', () => {
   assert.equal(payload.intents, 512);
   assert.deepEqual(payload.shard, [0, 2]);
 });
+
+test('identify asks fluxer to skip typing events the bot never reads', () => {
+  const payload = captureIdentify({});
+  assert.deepEqual(payload.ignored_events, ['TYPING_START']);
+});

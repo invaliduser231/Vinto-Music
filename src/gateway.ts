@@ -89,7 +89,10 @@ type GatewayIdentifyPayload = {
   };
   presence?: GatewayPresence;
   shard?: [number, number];
+  ignored_events: string[];
 };
+
+const IGNORED_DISPATCH_EVENTS = ['TYPING_START'];
 
 function withGatewayQuery(url: string) {
   const parsed = new URL(url);
@@ -488,6 +491,7 @@ export class Gateway extends EventEmitter {
         browser: 'fluxer-music-bot',
         device: 'fluxer-music-bot',
       },
+      ignored_events: IGNORED_DISPATCH_EVENTS,
     };
 
     if (this.initialPresence && typeof this.initialPresence === 'object') {
