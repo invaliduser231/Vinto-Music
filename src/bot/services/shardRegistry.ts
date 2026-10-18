@@ -98,6 +98,7 @@ export class ShardRegistry {
   private readonly now: () => Date;
   private readonly startedAt: Date;
   private heartbeatHandle: NodeJS.Timeout | null = null;
+  private hasWritten = false;
   private reportedConflictInstanceId: string | null = null;
 
   constructor(options: ShardRegistryOptions) {
@@ -137,7 +138,7 @@ export class ShardRegistry {
   async heartbeat(): Promise<void> {
     const now = this.now();
     const existing = toRecord(await this.collection.findOne({ _id: this.assignment.shardId }));
-    if (existing && existing.instanceId !== this.instanceId && this.isFresh(existing, now)) {
+    if (this.hasWritten && existing && existing.instanceId !== this.instanceId && this.isFresh(existing, now)) {
       this.reportConflict(existing);
     }
 
@@ -156,6 +157,7 @@ export class ShardRegistry {
       },
       { upsert: true },
     );
+    this.hasWritten = true;
   }
 
   async list(): Promise<ShardRecord[]> {

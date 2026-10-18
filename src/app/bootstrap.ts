@@ -839,6 +839,11 @@ export async function startApp() {
 
     logger.warn('Shutdown requested', { signal });
 
+    await shardRegistry.stop().catch((err) => {
+      logger.warn('Shard registry shutdown failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
     await sessions.shutdown().catch((err) => {
       logger.error('Session shutdown failed', {
         error: err instanceof Error ? err.message : String(err),
@@ -875,11 +880,6 @@ export async function startApp() {
     gateway.disconnect();
     await monitoringServer.stop().catch((err) => {
       logger.error('Monitoring server shutdown failed', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    });
-    await shardRegistry.stop().catch((err) => {
-      logger.warn('Shard registry shutdown failed', {
         error: err instanceof Error ? err.message : String(err),
       });
     });

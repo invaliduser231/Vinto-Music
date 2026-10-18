@@ -91,6 +91,21 @@ test('a shard without a recent heartbeat drops out of the directory', async () =
   assert.deepEqual((await zero.list()).map((record) => record.shardId), [0]);
 });
 
+test('a leftover record from a stopped process is not reported as a conflict', async () => {
+  const { collection } = createCollection();
+  const clock = { now: new Date('2026-10-18T12:00:00Z') };
+  const logged: string[] = [];
+  await createRegistry(collection, 0, clock).heartbeat();
+
+  const restarted = createRegistry(collection, 0, clock, logged);
+  clock.now = new Date('2026-10-18T12:00:05Z');
+  await restarted.heartbeat();
+  clock.now = new Date('2026-10-18T12:00:15Z');
+  await restarted.heartbeat();
+
+  assert.deepEqual(logged, []);
+});
+
 test('a second process with the same shard id is reported once', async () => {
   const { collection } = createCollection();
   const clock = { now: new Date('2026-10-18T12:00:00Z') };
