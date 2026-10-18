@@ -7,6 +7,8 @@ function parsePositiveInt(value: unknown, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+const FLUXERLIST_MIN_INTERVAL_MS = 5 * 60 * 1000;
+
 function parseNonNegativeInt(value: unknown, fallback: number): number {
   const parsed = Number.parseInt(String(value ?? ''), 10);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
@@ -270,9 +272,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     fluxerlistApiKey: env.FLUXERLIST_API_KEY?.trim() || null,
     fluxerlistBotId: env.FLUXERLIST_BOT_ID?.trim() || null,
     fluxerlistApiBase: (env.FLUXERLIST_API_BASE?.trim() || 'https://fluxerlist.com').replace(/\/+$/, ''),
-    fluxerlistStatsIntervalMs: parsePositiveInt(env.FLUXERLIST_STATS_INTERVAL_MS, 600_000),
+    fluxerlistStatsIntervalMs: Math.max(FLUXERLIST_MIN_INTERVAL_MS, parsePositiveInt(env.FLUXERLIST_STATS_INTERVAL_MS, 1_800_000)),
     voteRewardsEnabled: parseBool(env.VOTE_REWARDS_ENABLED, false),
-    voteRefreshIntervalMs: parsePositiveInt(env.VOTE_REFRESH_INTERVAL_MS, 600_000),
+    voteRefreshIntervalMs: Math.max(FLUXERLIST_MIN_INTERVAL_MS, parsePositiveInt(env.VOTE_REFRESH_INTERVAL_MS, 3_600_000)),
     voteUrl: env.VOTE_URL?.trim() || null,
     memoryTelemetryIntervalMs: parsePositiveInt(env.MEMORY_TELEMETRY_INTERVAL_MS, 15_000),
     memoryTelemetryLogIntervalMs: parseNonNegativeInt(env.MEMORY_TELEMETRY_LOG_INTERVAL_MS, 300_000),
