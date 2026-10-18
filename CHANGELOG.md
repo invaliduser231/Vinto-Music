@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.13.0] - 2026-10-18
+
+- Sharding:
+  - each shard ignores gateway events for guilds it does not own. Fluxer connects every session to a guild the bot joins after startup, and shard 0 received those events without a filter, so two shards answered the same command, posted every reply twice and both joined the voice channel. Events without a guild, such as direct messages, are handled on shard 0 only
+  - the weekly recap sweep handles only the shard's own guilds, and the Last.fm retry queue and the FluxerList stats push run on shard 0 only. Every shard used to post the same recap and resend the same failed scrobbles
+  - every process records its shard and dashboard address in a shared directory with a heartbeat, and reports a second process that runs with the same shard id
+- Dashboard:
+  - works for guilds on every shard. It reads the shard directory from the bot and sends each request and the live connection to the shard that owns the guild. Each shard answers `421` for guilds it does not serve
+  - serves the live connection itself on `/ws` and forwards it to the bot, so the reverse proxy forwards the whole hostname to the dashboard and no bot port needs to be reachable from outside. The separate `/ws` route to the bot still works with a single process
+  - runs behind its own Node server instead of the standalone Next.js server, since Next.js route handlers cannot accept WebSocket upgrades
+- Stats: `stats` shows the shard, and with several shards also the guilds and sessions on it
+- Wording: servers are called guilds in every reply, help text and dashboard label. `language server` and `lastfm leaderboard server` keep working next to `guild`. The manage permission carries the name Fluxer shows in its role editor, "Manage Community"
+- Fixes:
+  - picking a search result by reaction works again. The selection was registered under the edit response instead of the message id, so number reactions on `search` results did nothing
+- Configuration: added `DASHBOARD_API_ADVERTISE_URL`, the address under which the dashboard reaches a process. The bundled compose file sets it per shard, and `SHARD_COUNT=2` with the `sharded` profile is all a second shard needs
+- Tests: covered the gateway shard filter, the per-shard background jobs, the shard directory on both sides, the shard routing in the bot API and the dashboard, the WebSocket forwarding, the stats shard fields and the reaction pick message id
+
 ## [0.12.12] - 2026-10-08
 
 - Security:
