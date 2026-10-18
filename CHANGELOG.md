@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.13.1] - 2026-10-18
+
+- Stats:
+  - guild and user totals come from the shard heartbeats. Each shard keeps the member count of its guilds from `GUILD_CREATE` and member join and leave events, so `stats` answers at once and makes no REST call. It used to page through the member list of every guild, roughly 2,000 requests per count and shard
+  - while a shard has not reported yet, the totals come from the guild list with `with_counts`, which takes about ten requests
+  - the shard reads "1 of 2" for the first shard instead of "0 of 2"
+  - the user total is a sum of guild memberships, so a person in several guilds counts more than once
+- FluxerList:
+  - the stats push uses the documented `/api/v1` endpoint, runs every 30 minutes instead of every 10 and is sent once at startup instead of on every gateway reconnect
+  - the voter list is read hourly by shard 0 only and stops at the first page with a known voter. New voters are stored in MongoDB for the other shards, which polled the list themselves before. Together with the stats push this stays under the monthly limit of 3,000 requests per key, which the old intervals exceeded several times over
+  - `vote` checks a single user right away, so a fresh vote unlocks the perks without waiting for the next poll
+  - a guild count from an incomplete guild list is no longer posted. A failed page used to end the count early and send a number that was too low
+- Presence: right after a sharded start the presence shows the total guild count instead of the shard's own
+- Gateway: the bot asks Fluxer to skip `TYPING_START`, which it never reads
+- Configuration: `FLUXERLIST_STATS_INTERVAL_MS` defaults to 30 minutes and `VOTE_REFRESH_INTERVAL_MS` to 60 minutes, both with a floor of five minutes. All FluxerList variables are documented in `docs/CONFIGURATION.md`
+- Tests: covered the member counts in the guild cache, the shard totals, the stats fallback, the guild list counting, the shared voter store, the single vote check, the FluxerList endpoint and the ignored gateway events
+
 ## [0.13.0] - 2026-10-18
 
 - Sharding:
