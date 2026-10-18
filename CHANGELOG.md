@@ -5,42 +5,42 @@ All notable changes to this project are documented in this file.
 ## [0.13.2] - 2026-10-18
 
 - Fixes:
-  - a restarted shard no longer reports "Another process is running with the same shard id". The old process removed its heartbeat only at the end of shutdown, after Docker had already stopped it, and the new process took the leftover record for a second live process. The heartbeat is now removed first, and a conflict is only reported when another process overwrites the record after this one wrote it
-- Tests: covered a leftover heartbeat after a restart
+  - restarted shard no longer reported as a duplicate shard id
+- Tests: leftover heartbeat after a restart
 
 ## [0.13.1] - 2026-10-18
 
 - Stats:
-  - guild and user totals come from the shard heartbeats. Each shard keeps the member count of its guilds from `GUILD_CREATE` and member join and leave events, so `stats` answers at once and makes no REST call. It used to page through the member list of every guild, roughly 2,000 requests per count and shard
-  - while a shard has not reported yet, the totals come from the guild list with `with_counts`, which takes about ten requests
-  - the shard reads "1 of 2" for the first shard instead of "0 of 2"
-  - the user total is a sum of guild memberships, so a person in several guilds counts more than once
+  - guild and user totals from the shard heartbeats, no REST calls
+  - REST fallback via `with_counts` instead of paging every member list
+  - shard shown as "1 of 2" instead of "0 of 2"
 - FluxerList:
-  - the stats push uses the documented `/api/v1` endpoint, runs every 30 minutes instead of every 10 and is sent once at startup instead of on every gateway reconnect
-  - the voter list is read hourly by shard 0 only and stops at the first page with a known voter. New voters are stored in MongoDB for the other shards, which polled the list themselves before. Together with the stats push this stays under the monthly limit of 3,000 requests per key, which the old intervals exceeded several times over
-  - `vote` checks a single user right away, so a fresh vote unlocks the perks without waiting for the next poll
-  - a guild count from an incomplete guild list is no longer posted. A failed page used to end the count early and send a number that was too low
-- Presence: right after a sharded start the presence shows the total guild count instead of the shard's own
-- Gateway: the bot asks Fluxer to skip `TYPING_START`, which it never reads
-- Configuration: `FLUXERLIST_STATS_INTERVAL_MS` defaults to 30 minutes and `VOTE_REFRESH_INTERVAL_MS` to 60 minutes, both with a floor of five minutes. All FluxerList variables are documented in `docs/CONFIGURATION.md`
-- Tests: covered the member counts in the guild cache, the shard totals, the stats fallback, the guild list counting, the shared voter store, the single vote check, the FluxerList endpoint and the ignored gateway events
+  - stats push on `/api/v1`, every 30 minutes and once at startup
+  - voter list polled hourly by shard 0 only, shared via MongoDB
+  - `vote` checks a fresh vote right away
+  - stays under the 3,000 requests per month limit
+  - no more too low guild counts after a failed page
+- Presence: total guild count right after a sharded start
+- Gateway: `TYPING_START` ignored at identify
+- Configuration: new defaults for `FLUXERLIST_STATS_INTERVAL_MS` (30 min) and `VOTE_REFRESH_INTERVAL_MS` (60 min), minimum 5 min
+- Tests: member counts, shard totals, voter store, vote check, FluxerList endpoint
 
 ## [0.13.0] - 2026-10-18
 
 - Sharding:
-  - each shard ignores gateway events for guilds it does not own. Fluxer connects every session to a guild the bot joins after startup, and shard 0 received those events without a filter, so two shards answered the same command, posted every reply twice and both joined the voice channel. Events without a guild, such as direct messages, are handled on shard 0 only
-  - the weekly recap sweep handles only the shard's own guilds, and the Last.fm retry queue and the FluxerList stats push run on shard 0 only. Every shard used to post the same recap and resend the same failed scrobbles
-  - every process records its shard and dashboard address in a shared directory with a heartbeat, and reports a second process that runs with the same shard id
+  - shards ignore events for guilds they do not own, no more double replies and double voice joins
+  - recap sweep per shard, Last.fm retries and FluxerList push on shard 0 only
+  - shared shard directory with heartbeat and duplicate detection
 - Dashboard:
-  - works for guilds on every shard. It reads the shard directory from the bot and sends each request and the live connection to the shard that owns the guild. Each shard answers `421` for guilds it does not serve
-  - serves the live connection itself on `/ws` and forwards it to the bot, so the reverse proxy forwards the whole hostname to the dashboard and no bot port needs to be reachable from outside. The separate `/ws` route to the bot still works with a single process
-  - runs behind its own Node server instead of the standalone Next.js server, since Next.js route handlers cannot accept WebSocket upgrades
-- Stats: `stats` shows the shard, and with several shards also the guilds and sessions on it
-- Wording: servers are called guilds in every reply, help text and dashboard label. `language server` and `lastfm leaderboard server` keep working next to `guild`. The manage permission carries the name Fluxer shows in its role editor, "Manage Community"
+  - works for guilds on every shard
+  - serves `/ws` itself, the proxy only needs the dashboard
+  - runs on its own Node server instead of standalone Next.js
+- Stats: shows the shard and its guilds and sessions
+- Wording: "guild" instead of "server" everywhere, permission named "Manage Community"
 - Fixes:
-  - picking a search result by reaction works again. The selection was registered under the edit response instead of the message id, so number reactions on `search` results did nothing
-- Configuration: added `DASHBOARD_API_ADVERTISE_URL`, the address under which the dashboard reaches a process. The bundled compose file sets it per shard, and `SHARD_COUNT=2` with the `sharded` profile is all a second shard needs
-- Tests: covered the gateway shard filter, the per-shard background jobs, the shard directory on both sides, the shard routing in the bot API and the dashboard, the WebSocket forwarding, the stats shard fields and the reaction pick message id
+  - picking a search result by reaction works again
+- Configuration: added `DASHBOARD_API_ADVERTISE_URL`
+- Tests: shard filter, background jobs, shard directory, routing, WebSocket forwarding, stats fields, reaction pick
 
 ## [0.12.12] - 2026-10-08
 
