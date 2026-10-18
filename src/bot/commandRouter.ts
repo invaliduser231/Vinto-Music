@@ -32,6 +32,7 @@ import type { BivariantCallback, CommandDefinition, MessagePayload, ReplyOptions
 import type { LastFmBundle } from './commands/helpers/types.ts';
 import { toLastFmTrack, trackIdentity } from '../integrations/lastfm/trackMetadata.ts';
 import { evaluateMirrorCandidate, normalizeMirrorText } from '../player/musicPlayer/mirrorMatch.ts';
+import type { ShardTotals } from './services/shardRegistry.ts';
 
 type RouterContextOptions = {
   prefix?: string;
@@ -217,6 +218,7 @@ type CommandRouterOptions = {
   library?: LibraryLike | null;
   permissionService?: PermissionServiceLike | null;
   guildStateCache?: unknown;
+  shardTotals?: (() => Promise<ShardTotals | null>) | null;
   botUserId?: string | null;
   startedAt?: number | Date | null;
   metrics?: MetricsLike | null;
@@ -238,6 +240,7 @@ export class CommandRouter {
   library: LibraryLike | null;
   permissionService: PermissionServiceLike | null;
   guildStateCache: unknown;
+  shardTotals: (() => Promise<ShardTotals | null>) | null;
   botUserId: string | null;
   startedAt: number | Date | null | undefined;
   metrics: MetricsLike | null;
@@ -267,6 +270,7 @@ export class CommandRouter {
     this.library = options.library ?? null;
     this.permissionService = options.permissionService ?? null;
     this.guildStateCache = options.guildStateCache ?? null;
+    this.shardTotals = options.shardTotals ?? null;
     this.botUserId = options.botUserId ?? null;
     this.startedAt = options.startedAt;
     this.metrics = options.metrics ?? null;
@@ -499,6 +503,7 @@ export class CommandRouter {
       lastfm: this.lastfm,
       permissionService: this.permissionService,
       guildStateCache: this.guildStateCache,
+      shardTotals: this.shardTotals,
       botUserId: this.botUserId,
       registry: this.registry,
       startedAt: this.startedAt,

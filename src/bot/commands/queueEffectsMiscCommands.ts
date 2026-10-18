@@ -9,8 +9,7 @@ import {
   trackLabel,
   ensureSessionTrack,
   computeVoteSkipRequirement,
-  fetchCachedGlobalGuildAndUserCounts,
-  fetchGlobalGuildCount,
+  fetchGlobalGuildAndUserCounts,
   getCachedGlobalGuildAndUserCounts,
   formatUptimeCompact,
   formatSeconds,
@@ -917,7 +916,6 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
       const progress = await createProgressReporter(typedCtx, typedCtx.t('stats.collecting'), null, null, { replyReference: true });
       const uptimeSeconds = Math.floor((Date.now() - (typedCtx.startedAt ?? Date.now())) / 1000);
       const mem = process.memoryUsage();
-      const cachedCounts = getCachedGlobalGuildAndUserCounts(typedCtx.rest);
       const library = typedCtx.library as { getTotalPlays?: () => Promise<number> } | null;
       const totalPlays = library?.getTotalPlays ? await library.getTotalPlays().catch(() => null) : null;
       const { shardId, shardCount } = shardAssignmentFromConfig({
@@ -936,7 +934,7 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
         { name: typedCtx.t(shardCount > 1 ? 'stats.shardSessions' : 'stats.guildSessions'), value: String(typedCtx.sessions.sessions?.size ?? 0), inline: true },
         { name: typedCtx.t('stats.guildsTotal'), value: guildTotal, inline: true },
         { name: typedCtx.t('stats.usersTotal'), value: userTotal, inline: true },
-        { name: typedCtx.t('stats.shard'), value: typedCtx.t('stats.shardValue', { id: shardId, count: shardCount }), inline: true },
+        { name: typedCtx.t('stats.shard'), value: typedCtx.t('stats.shardValue', { position: shardId + 1, count: shardCount }), inline: true },
         ...(shardCount > 1 && shardGuildCount != null
           ? [{ name: typedCtx.t('stats.shardGuilds'), value: String(shardGuildCount), inline: true }]
           : []),
@@ -948,19 +946,26 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
         },
       ];
 
-      await progress.info(typedCtx.t('stats.title'), buildFields(
-        cachedCounts?.guildCount == null ? typedCtx.t('stats.counting') : String(cachedCounts.guildCount),
-        userCountLabel(cachedCounts, typedCtx.t('stats.counting')),
-      ));
-
-      if (cachedCounts?.guildCount == null) {
-        const fastGuildCount = await fetchGlobalGuildCount(typedCtx.rest).catch(() => null);
-        if (fastGuildCount != null) {
-          await progress.info(typedCtx.t('stats.title'), buildFields(String(fastGuildCount), typedCtx.t('stats.counting')));
-        }
+      const shardTotals = await (typedCtx.shardTotals?.() ?? Promise.resolve(null)).catch(() => null);
+      if (shardTotals) {
+        await progress.info(typedCtx.t('stats.title'), buildFields(
+          String(shardTotals.guildCount),
+          userCountLabel({ userCount: shardTotals.memberCount, incompleteGuildCount: shardTotals.uncountedGuildCount }, typedCtx.t('common.notAvailable')),
+        ));
+        return;
       }
 
-      const globalCounts = await fetchCachedGlobalGuildAndUserCounts(typedCtx.rest).catch(() => null);
+      const cachedCounts = getCachedGlobalGuildAndUserCounts(typedCtx.rest);
+      if (cachedCounts) {
+        await progress.info(typedCtx.t('stats.title'), buildFields(
+          cachedCounts.guildCount == null ? typedCtx.t('common.notAvailable') : String(cachedCounts.guildCount),
+          userCountLabel(cachedCounts, typedCtx.t('common.notAvailable')),
+        ));
+        return;
+      }
+
+      await progress.info(typedCtx.t('stats.title'), buildFields(typedCtx.t('stats.counting'), typedCtx.t('stats.counting')));
+      const globalCounts = await fetchGlobalGuildAndUserCounts(typedCtx.rest).catch(() => null);
       await progress.info(typedCtx.t('stats.title'), buildFields(
         globalCounts?.guildCount == null ? typedCtx.t('common.notAvailable') : String(globalCounts.guildCount),
         userCountLabel(globalCounts, typedCtx.t('common.notAvailable')),

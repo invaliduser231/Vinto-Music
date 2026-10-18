@@ -201,7 +201,7 @@ export const ptBR: Catalog = {
   'stats.shardSessions': 'Sessões neste shard',
   'stats.guildsTotal': 'Guilds no total',
   'stats.shard': 'Shard',
-  'stats.shardValue': '{id} de {count}',
+  'stats.shardValue': '{position} de {count}',
   'stats.shardGuilds': 'Guilds neste shard',
   'stats.usersTotal': 'Usuários no total',
   'stats.heapUsed': 'Heap usado',
@@ -737,7 +737,7 @@ export const ptBR: Catalog = {
 
   'lastfm.recentTitle': 'Envios recentes: {user}',
   'lastfm.nowPlayingTag': 'tocando agora',
-  'lastfm.noRecent': '{user} não tem envios.',
+  'lastfm.noRecent': '{user} não tem envios.',
 
   'lastfm.topTitle': 'Top {kind}: {user}, {period}',
   'lastfm.noTop': '{user} não tem nada nessa lista.',

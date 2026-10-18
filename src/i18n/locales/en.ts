@@ -199,7 +199,7 @@ export const en = {
   'stats.shardSessions': 'Sessions on this shard',
   'stats.guildsTotal': 'Guilds total',
   'stats.shard': 'Shard',
-  'stats.shardValue': '{id} of {count}',
+  'stats.shardValue': '{position} of {count}',
   'stats.shardGuilds': 'Guilds on this shard',
   'stats.usersTotal': 'Users total',
   'stats.heapUsed': 'Heap Used',
@@ -735,7 +735,7 @@ export const en = {
 
   'lastfm.recentTitle': 'Recent scrobbles: {user}',
   'lastfm.nowPlayingTag': 'playing now',
-  'lastfm.noRecent': '{user} has no scrobbles.',
+  'lastfm.noRecent': '{user} has no scrobbles.',
 
   'lastfm.topTitle': 'Top {kind}: {user}, {period}',
   'lastfm.noTop': '{user} has nothing in that chart.',

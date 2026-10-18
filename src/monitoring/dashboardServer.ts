@@ -422,12 +422,12 @@ export class DashboardServer {
       'Cache-Control': 'no-store',
     });
     res.end(JSON.stringify({
-      shards: records.map((record) => ({
+      shards: records.flatMap((record) => (record.dashboardUrl ? [{
         shardId: record.shardId,
         shardCount: record.shardCount,
         url: record.dashboardUrl,
         heartbeatAt: record.heartbeatAt.toISOString(),
-      })),
+      }] : [])),
       ts: Date.now(),
     }));
   }

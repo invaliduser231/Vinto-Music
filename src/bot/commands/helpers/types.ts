@@ -5,6 +5,7 @@ import type { BivariantCallback, CommandDefinition, MessagePayload } from '../..
 import type { LastFmClient } from '../../../integrations/lastfm/LastFmClient.ts';
 import type { LastFmAccountStore } from '../../services/lastFmAccountStore.ts';
 import type { ScrobbleService } from '../../services/scrobbleService.ts';
+import type { ShardTotals } from '../../services/shardRegistry.ts';
 
 export type LastFmBundle = {
   client: LastFmClient;
@@ -221,7 +222,11 @@ export type CommandContextLike = {
   };
   locale: Locale;
   t: Translator;
-  voteService?: { hasVoted?: (userId: string) => boolean; enabled?: boolean } | null;
+  voteService?: {
+    hasVoted?: (userId: string) => boolean;
+    checkVote?: (userId: string) => Promise<boolean>;
+    enabled?: boolean;
+  } | null;
   guildConfig?: GuildConfigLike | null;
   guildConfigs?: {
     get: (guildId: string) => Promise<GuildConfigLike>;
@@ -263,6 +268,7 @@ export type CommandContextLike = {
     computeManageGuildPermission?: (guildId: string, roleIds: string[], userId: string) => boolean | null;
     guildCount?: () => number;
   } | null;
+  shardTotals?: (() => Promise<ShardTotals | null>) | null;
   rest?: {
     sendMessage?: (channelId: string, payload: MessagePayload) => Promise<unknown>;
     sendFile?: (
@@ -273,6 +279,7 @@ export type CommandContextLike = {
     editMessage?: (channelId: string, messageId: string, payload: MessagePayload) => Promise<unknown>;
     getGuildMember?: (guildId: string, userId: string) => Promise<unknown>;
     getGuild?: (guildId: string) => Promise<unknown>;
+    listCurrentUserGuilds?: (options: { limit: number; after?: string; withCounts?: boolean }) => Promise<unknown>;
     listGuildRoles?: (guildId: string) => Promise<unknown>;
   } | null;
   reply: {

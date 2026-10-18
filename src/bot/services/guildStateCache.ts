@@ -42,7 +42,25 @@ function toPermissionBits(value: unknown): bigint | null {
   return null;
 }
 
+function readMemberCount(raw: unknown): number | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const typed = raw as LooseGuildPayload;
+  if (typed.unavailable === true || typed.member_count == null) return null;
+  const value = Number(typed.member_count);
+  return Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+function readGuildId(payload: unknown): string {
+  const typed = (payload ?? {}) as { guild_id?: unknown };
+  return String(typed.guild_id ?? '').trim();
+}
+
 import type { LoggerLike } from '../../types/core.ts';
+
+export interface GuildMemberTotals {
+  memberCount: number;
+  uncountedGuildCount: number;
+}
 
 type GuildRoleState = {
   ownerId: string | null;
@@ -52,10 +70,12 @@ type GuildRoleState = {
 export class GuildStateCache {
   logger?: LoggerLike | null;
   guilds: Map<string, GuildRoleState>;
+  memberCounts: Map<string, number>;
 
   constructor(logger: LoggerLike | null = null) {
     this.logger = logger;
     this.guilds = new Map();
+    this.memberCounts = new Map();
   }
 
   register(gateway: { on: (event: string, handler: (payload: unknown) => void) => void }) {
@@ -79,6 +99,15 @@ export class GuildStateCache {
       const guildId = String(typed.id ?? typed.guild_id ?? '').trim();
       if (!guildId) return;
       this.guilds.delete(guildId);
+      this.memberCounts.delete(guildId);
+    });
+
+    gateway.on('GUILD_MEMBER_ADD', (payload: unknown) => {
+      this._adjustMemberCount(readGuildId(payload), 1);
+    });
+
+    gateway.on('GUILD_MEMBER_REMOVE', (payload: unknown) => {
+      this._adjustMemberCount(readGuildId(payload), -1);
     });
 
     gateway.on('GUILD_ROLE_CREATE', (payload: unknown) => {
@@ -102,6 +131,17 @@ export class GuildStateCache {
 
   guildCount(): number {
     return this.guilds.size;
+  }
+
+  memberTotals(): GuildMemberTotals {
+    let memberCount = 0;
+    let uncountedGuildCount = 0;
+    for (const guildId of this.guilds.keys()) {
+      const count = this.memberCounts.get(guildId);
+      if (count == null) uncountedGuildCount += 1;
+      else memberCount += count;
+    }
+    return { memberCount, uncountedGuildCount };
   }
 
   resolveOwnerId(guildId: unknown): string | null {
@@ -163,6 +203,15 @@ export class GuildStateCache {
       ownerId,
       roles: nextRoles,
     });
+
+    const memberCount = readMemberCount(rawGuild);
+    if (memberCount != null) this.memberCounts.set(guildId, memberCount);
+  }
+
+  _adjustMemberCount(guildId: string, delta: number): void {
+    const current = guildId ? this.memberCounts.get(guildId) : undefined;
+    if (current == null) return;
+    this.memberCounts.set(guildId, Math.max(0, current + delta));
   }
 
   _upsertRole(guildId: unknown, role: unknown): void {

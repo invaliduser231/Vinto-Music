@@ -16,6 +16,8 @@ import { initializePlayDlAuth } from '../integrations/playDlAuth.ts';
 import { MusicLibraryStore } from '../bot/services/musicLibraryStore.ts';
 import { PermissionService } from '../bot/services/permissionService.ts';
 import { VoteService } from '../bot/services/voteService.ts';
+import { MongoVoterStore } from '../bot/services/voterStore.ts';
+import { pushFluxerListStats } from '../bot/services/fluxerListStats.ts';
 import { GuildStateCache } from '../bot/services/guildStateCache.ts';
 import { EarrapeProfileStore } from '../bot/services/earrapeProfileStore.ts';
 import { MonitoringServer } from '../monitoring/server.ts';
@@ -27,6 +29,7 @@ import { parseEncryptionKey } from '../integrations/lastfm/secretBox.ts';
 import { LastFmAccountStore } from '../bot/services/lastFmAccountStore.ts';
 import { ScrobbleService } from '../bot/services/scrobbleService.ts';
 import { ShardRegistry } from '../bot/services/shardRegistry.ts';
+import { fetchGlobalGuildCount } from '../bot/commands/helpers/guildStats.ts';
 import { sanitizeBrokenLocalProxyEnv } from './proxy.ts';
 import { verifyApiConnectivity, resolveGatewayUrl } from './connectivity.ts';
 import { bindGatewayMetrics, bindSessionMetrics, createAppMetrics } from './metrics.ts';
@@ -47,10 +50,6 @@ type DnsWithDefaultOrder = typeof dns & {
   setDefaultResultOrder?: (order: string) => void;
 };
 
-type GuildSummary = { id?: string };
-type GuildListRest = {
-  listCurrentUserGuilds?: RestClient['listCurrentUserGuilds'];
-};
 type ConnectivityRest = Parameters<typeof resolveGatewayUrl>[0]['rest'];
 type CommandRouterCtorOptions = ConstructorParameters<typeof CommandRouter>[0];
 type PermissionServiceCtorOptions = ConstructorParameters<typeof PermissionService>[0];
@@ -76,54 +75,6 @@ function buildGatewayPresence(statusText: string | null | undefined): GatewayPre
       text: String(statusText ?? '').trim() || 'online',
     },
   };
-}
-
-async function fetchCurrentGuildCount(rest: GuildListRest): Promise<number | null> {
-  if (!rest?.listCurrentUserGuilds) return null;
-
-  const guildIds = new Set();
-  let after: string | undefined;
-
-  for (let page = 0; page < 100; page += 1) {
-    const rawChunk = await rest.listCurrentUserGuilds({ limit: 200, ...(after ? { after } : {}) }).catch(() => null);
-    const chunk: GuildSummary[] = Array.isArray(rawChunk) ? rawChunk as GuildSummary[] : [];
-    if (chunk.length === 0) break;
-
-    for (const guild of chunk) {
-      const guildId = String(guild?.id ?? '').trim();
-      if (guildId) guildIds.add(guildId);
-    }
-
-    if (chunk.length < 200) break;
-
-    const lastGuild: GuildSummary | undefined = chunk[chunk.length - 1];
-    const lastId: string = String(lastGuild?.id ?? '').trim();
-    if (!lastId) break;
-    after = lastId;
-  }
-
-  return guildIds.size;
-}
-
-async function pushFluxerListStats(opts: {
-  apiBase: string;
-  botId: string;
-  apiKey: string;
-  guildCount: number;
-}): Promise<void> {
-  const url = `${opts.apiBase}/api/bots/${encodeURIComponent(opts.botId)}/stats`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${opts.apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ serverCount: opts.guildCount }),
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!res.ok) {
-    throw new Error(`FluxerList stats push failed: ${res.status} ${res.statusText}`);
-  }
 }
 
 function createPresenceText(guildCount: number | null, rotationIndex: number): string {
@@ -267,7 +218,7 @@ export async function startApp() {
 
   const connectivityRest = rest as ConnectivityRest;
   const gatewayUrl = await resolveGatewayUrl({ config, rest: connectivityRest, logger });
-  const initialGuildCount = await fetchCurrentGuildCount(rest).catch(() => null);
+  const initialGuildCount = await fetchGlobalGuildCount(rest).catch(() => null);
   let presenceRotationIndex = 0;
   let presenceUpdateHandle: NodeJS.Timeout | null = null;
   let fluxerlistStatsHandle: NodeJS.Timeout | null = null;
@@ -283,7 +234,7 @@ export async function startApp() {
 
     const guildCount = Number.isFinite(guildCountOverride)
       ? guildCountOverride
-      : await fetchCurrentGuildCount(rest).catch(() => null);
+      : await currentGuildCount();
     if (!Number.isFinite(guildCount)) return false;
 
     const nextText = createPresenceText(guildCount, presenceRotationIndex);
@@ -324,6 +275,21 @@ export async function startApp() {
   voiceStateStore.register(gateway);
   const guildStateCache = new GuildStateCache(logger.child('guild-state'));
   guildStateCache.register(gateway);
+  let guildStreamSettled = false;
+  const shardRegistry = new ShardRegistry({
+    collection: mongo.collection('bot_shards'),
+    assignment: { shardId: config.shardId, shardCount: config.shardCount },
+    dashboardUrl: config.dashboardApiEnabled ? config.dashboardApiAdvertiseUrl : null,
+    stats: () => (guildStreamSettled
+      ? { guildCount: guildStateCache.guildCount(), ...guildStateCache.memberTotals() }
+      : null),
+    logger: logger.child('shard-registry'),
+  });
+  const currentGuildCount = async (): Promise<number | null> => {
+    const totals = await shardRegistry.totals().catch(() => null);
+    if (totals) return totals.guildCount;
+    return fetchGlobalGuildCount(rest).catch(() => null);
+  };
 
   const sessionManagerOptions: SessionManagerOptions = {
     gateway,
@@ -489,12 +455,22 @@ export async function startApp() {
   } satisfies PermissionServiceCtorOptions;
   const permissions = new PermissionService(permissionOptions);
 
+  const voterStore = new MongoVoterStore(mongo.collection('fluxerlist_voters'));
+  if (config.voteRewardsEnabled) {
+    await voterStore.init().catch((err) => {
+      logger.warn('Voter store index setup failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }
   const voteService = new VoteService({
     apiBase: config.fluxerlistApiBase,
     apiKey: config.voteRewardsEnabled ? config.fluxerlistApiKey : null,
     botId: config.fluxerlistBotId,
     logger: logger.child('votes'),
     refreshIntervalMs: config.voteRefreshIntervalMs,
+    pollApi: isPrimaryShard(config),
+    store: voterStore,
   });
 
   const routerOptions = {
@@ -512,6 +488,7 @@ export async function startApp() {
     library: musicLibrary,
     permissionService: permissions,
     guildStateCache,
+    shardTotals: () => shardRegistry.totals(),
     metrics: {
       commandsTotal: metricSet.commandsTotal,
     },
@@ -526,6 +503,7 @@ export async function startApp() {
 
   let resolvedBotUserId: string | null = null;
   let persistentRestoreStarted = false;
+  let fluxerlistStartupPushDone = false;
   const setBotUserId = (botUserId: string | null | undefined, source: string) => {
     const normalized = botUserId ? String(botUserId) : null;
     if (!normalized || normalized === resolvedBotUserId) return;
@@ -551,7 +529,7 @@ export async function startApp() {
       fluxerlistLogger.debug('Skipping FluxerList stats push: bot id not resolved yet', { reason });
       return;
     }
-    const guildCount = await fetchCurrentGuildCount(rest).catch(() => null);
+    const guildCount = await fetchGlobalGuildCount(rest).catch(() => null);
     if (guildCount == null || !Number.isFinite(guildCount)) {
       fluxerlistLogger.debug('Skipping FluxerList stats push: guild count unavailable', { reason });
       return;
@@ -576,13 +554,18 @@ export async function startApp() {
   gateway.on('READY', (payload) => {
     setBotUserId(payload?.user?.id, 'gateway_ready');
     const readyGuildCount = Array.isArray(payload?.guilds) ? payload.guilds.length : null;
-    applyRotatingPresence('ready', readyGuildCount).catch(() => null);
-    pushFluxerListStatsSafe('ready').catch(() => null);
+    applyRotatingPresence('ready', config.shardCount > 1 ? null : readyGuildCount).catch(() => null);
+    if (!fluxerlistStartupPushDone) {
+      fluxerlistStartupPushDone = true;
+      pushFluxerListStatsSafe('startup').catch(() => null);
+    }
 
     if (!persistentRestoreStarted) {
       persistentRestoreStarted = true;
       waitForGuildStreamSettled(gateway, { expected: readyGuildCount ?? 0 })
         .then((settled) => {
+          guildStreamSettled = true;
+          shardRegistry.heartbeat().catch(() => null);
           logger.info('Guild stream settled, starting persistent voice session restore', settled);
           return sessions.restorePersistentVoiceSessions();
         })
@@ -669,18 +652,9 @@ export async function startApp() {
     });
   });
 
-  const shardRegistry = config.dashboardApiEnabled
-    ? new ShardRegistry({
-      collection: mongo.collection('bot_shards'),
-      assignment: { shardId: config.shardId, shardCount: config.shardCount },
-      dashboardUrl: config.dashboardApiAdvertiseUrl,
-      logger: logger.child('shard-registry'),
-    })
-    : null;
-
   const dashboardServer = new DashboardServer({
     enabled: config.dashboardApiEnabled,
-    listShards: shardRegistry ? () => shardRegistry.list() : null,
+    listShards: () => shardRegistry.list(),
     host: config.dashboardApiHost,
     port: config.dashboardApiPort,
     secret: config.dashboardApiSecret,
@@ -766,14 +740,12 @@ export async function startApp() {
       error: err instanceof Error ? err.message : String(err),
     });
   });
-  if (shardRegistry) {
-    await shardRegistry.init().catch((err) => {
-      logger.warn('Shard registry index setup failed', {
-        error: err instanceof Error ? err.message : String(err),
-      });
+  await shardRegistry.init().catch((err) => {
+    logger.warn('Shard registry index setup failed', {
+      error: err instanceof Error ? err.message : String(err),
     });
-    shardRegistry.start();
-  }
+  });
+  shardRegistry.start();
 
   const getRuntimeHealth = () => ({
     ok: !shuttingDown && (gatewayConnected || Date.now() - startedAt < 60_000),
@@ -906,7 +878,7 @@ export async function startApp() {
         error: err instanceof Error ? err.message : String(err),
       });
     });
-    await shardRegistry?.stop().catch((err) => {
+    await shardRegistry.stop().catch((err) => {
       logger.warn('Shard registry shutdown failed', {
         error: err instanceof Error ? err.message : String(err),
       });

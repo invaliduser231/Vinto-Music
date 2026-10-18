@@ -529,7 +529,9 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
     usage: 'vote',
     async execute(ctx: CommandContextLike) {
       const voteService = ctx.voteService ?? null;
-      const hasVoted = Boolean(voteService?.hasVoted?.(ctx.authorId));
+      const hasVoted = voteService?.checkVote
+        ? await voteService.checkVote(ctx.authorId)
+        : Boolean(voteService?.hasVoted?.(ctx.authorId));
       const available = Boolean(voteService?.enabled);
 
       const formatValue = (key: string, value: number | null): string => {

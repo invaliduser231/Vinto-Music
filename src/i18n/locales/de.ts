@@ -201,7 +201,7 @@ export const de: Catalog = {
   'stats.shardSessions': 'Sitzungen auf diesem Shard',
   'stats.guildsTotal': 'Guilds gesamt',
   'stats.shard': 'Shard',
-  'stats.shardValue': '{id} von {count}',
+  'stats.shardValue': '{position} von {count}',
   'stats.shardGuilds': 'Guilds auf diesem Shard',
   'stats.usersTotal': 'Nutzer gesamt',
   'stats.heapUsed': 'Heap belegt',
@@ -737,7 +737,7 @@ export const de: Catalog = {
 
   'lastfm.recentTitle': 'Letzte Scrobbles: {user}',
   'lastfm.nowPlayingTag': 'läuft gerade',
-  'lastfm.noRecent': '{user} hat keine Scrobbles.',
+  'lastfm.noRecent': '{user} hat keine Scrobbles.',
 
   'lastfm.topTitle': 'Top {kind}: {user}, {period}',
   'lastfm.noTop': '{user} hat in dieser Auswertung nichts.',

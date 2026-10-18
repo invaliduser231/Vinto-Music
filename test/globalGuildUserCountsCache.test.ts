@@ -3,58 +3,49 @@ import assert from 'node:assert/strict';
 
 import {
   clearGlobalGuildAndUserCountsCache,
-  fetchCachedGlobalGuildAndUserCounts,
+  fetchGlobalGuildAndUserCounts,
   fetchGlobalGuildCount,
   getCachedGlobalGuildAndUserCounts,
 } from '../src/bot/commands/commandHelpers.ts';
 
-test('fetchCachedGlobalGuildAndUserCounts reuses cached user totals for the same rest client', async () => {
+test('fetched totals are cached per rest client and reused for the guild count', async () => {
   clearGlobalGuildAndUserCountsCache();
 
   let guildListCalls = 0;
-  let memberCalls = 0;
   const rest = {
     async listCurrentUserGuilds() {
       guildListCalls += 1;
-      return [{ id: '1' }, { id: '2' }];
-    },
-    async listGuildMembers(guildId: string) {
-      memberCalls += 1;
-      if (guildId === '1') return [{ user: { id: '10' } }];
-      if (guildId === '2') return [{ user: { id: '20' } }, { user: { id: '21' } }];
-      return [];
+      return [
+        { id: '1', approximate_member_count: 1 },
+        { id: '2', approximate_member_count: 2 },
+      ];
     },
   };
 
-  const first = await fetchCachedGlobalGuildAndUserCounts(rest);
-  const second = await fetchCachedGlobalGuildAndUserCounts(rest);
+  const first = await fetchGlobalGuildAndUserCounts(rest);
+  const guildCount = await fetchGlobalGuildCount(rest);
 
   assert.deepEqual(first, { guildCount: 2, userCount: 3, incompleteGuildCount: 0 });
-  assert.deepEqual(second, first);
+  assert.equal(guildCount, 2);
   assert.equal(guildListCalls, 1);
-  assert.equal(memberCalls, 2);
   assert.deepEqual(getCachedGlobalGuildAndUserCounts(rest), first);
+  assert.equal(getCachedGlobalGuildAndUserCounts({}), null);
 });
 
-test('fetchGlobalGuildCount can return guild total before expensive user counting', async () => {
+test('fetchGlobalGuildCount lists guilds without asking for member counts', async () => {
   clearGlobalGuildAndUserCountsCache();
 
-  let guildListCalls = 0;
-  let memberCalls = 0;
+  const calls: Array<{ withCounts?: boolean }> = [];
   const rest = {
-    async listCurrentUserGuilds() {
-      guildListCalls += 1;
+    async listCurrentUserGuilds(options: { withCounts?: boolean }) {
+      calls.push(options);
       return [{ id: '1' }, { id: '2' }, { id: '3' }];
-    },
-    async listGuildMembers() {
-      memberCalls += 1;
-      throw new Error('should not be called');
     },
   };
 
   const guildCount = await fetchGlobalGuildCount(rest);
 
   assert.equal(guildCount, 3);
-  assert.equal(guildListCalls, 1);
-  assert.equal(memberCalls, 0);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]?.withCounts, undefined);
 });
