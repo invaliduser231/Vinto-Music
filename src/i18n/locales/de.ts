@@ -31,7 +31,7 @@ export const de: Catalog = {
   'language.guildUpdated': 'Die Guild-Sprache ist jetzt {flag} {label}.',
   'language.reset': 'Deine persönliche Sprache wurde entfernt. Antworten folgen jetzt der Guild-Sprache {flag} {label}.',
   'language.unsupported': 'Unbekannte Sprache „{value}". Verfügbar: {locales}',
-  'language.guildForbidden': 'Du brauchst die Berechtigung „Guild verwalten", um die Guild-Sprache zu ändern.',
+  'language.guildForbidden': 'Du brauchst die Berechtigung „Community verwalten", um die Guild-Sprache zu ändern.',
   'language.available': 'Verfügbare Sprachen',
   'language.hint': 'Setze deine eigene Sprache mit {prefix}language <code> oder die Guild-Vorgabe mit {prefix}language guild <code>.',
 
@@ -410,7 +410,7 @@ export const de: Catalog = {
   'field.volume': 'Lautstärke',
 
   'access.needDjRole': 'Du brauchst eine DJ-Rolle, um {action}.',
-  'access.needManageGuild': 'Du brauchst die Berechtigung „Guild verwalten", um {action}.',
+  'access.needManageGuild': 'Du brauchst die Berechtigung „Community verwalten", um {action}.',
   'access.playCooldown': 'Du nutzt play zu schnell. Bitte warte {seconds}s.',
   'access.applyMoodPresets': 'Stimmungs-Presets anzuwenden',
   'access.change247': 'den 24/7-Modus zu ändern',
@@ -612,7 +612,7 @@ export const de: Catalog = {
   'perm.BAN_MEMBERS': 'Mitglieder bannen',
   'perm.ADMINISTRATOR': 'Administrator',
   'perm.MANAGE_CHANNELS': 'Kanäle verwalten',
-  'perm.MANAGE_GUILD': 'Guild verwalten',
+  'perm.MANAGE_GUILD': 'Community verwalten',
   'perm.ADD_REACTIONS': 'Reaktionen hinzufügen',
   'perm.VIEW_AUDIT_LOG': 'Audit-Log ansehen',
   'perm.PRIORITY_SPEAKER': 'Prioritätssprecher',

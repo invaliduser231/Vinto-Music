@@ -90,7 +90,7 @@ test('config command rejects users without manage guild permission', async () =>
         async info() {},
       },
     } as unknown),
-    /Manage Guild/
+    /Manage Community/
   );
 });
 
@@ -177,7 +177,7 @@ test('config command rejects REST role fallback without manage guild bit', async
         async info() {},
       },
     } as unknown),
-    /Manage Guild/
+    /Manage Community/
   );
 });
 

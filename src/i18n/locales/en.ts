@@ -29,7 +29,7 @@ export const en = {
   'language.guildUpdated': 'The guild language is now {flag} {label}.',
   'language.reset': 'Your personal language was cleared. Replies now follow the guild language {flag} {label}.',
   'language.unsupported': 'Unknown language "{value}". Available: {locales}',
-  'language.guildForbidden': 'You need the Manage Guild permission to change the guild language.',
+  'language.guildForbidden': 'You need the Manage Community permission to change the guild language.',
   'language.available': 'Available languages',
   'language.hint': 'Set your own language with {prefix}language <code>, or the guild default with {prefix}language guild <code>.',
 
@@ -408,7 +408,7 @@ export const en = {
   'field.volume': 'Volume',
 
   'access.needDjRole': 'You need a DJ role to {action}.',
-  'access.needManageGuild': 'You need the "Manage Guild" permission to {action}.',
+  'access.needManageGuild': 'You need the "Manage Community" permission to {action}.',
   'access.playCooldown': 'You are using play too quickly. Please wait {seconds}s.',
   'access.applyMoodPresets': 'apply mood presets',
   'access.change247': 'change 24/7 mode',
@@ -610,7 +610,7 @@ export const en = {
   'perm.BAN_MEMBERS': 'Ban Members',
   'perm.ADMINISTRATOR': 'Administrator',
   'perm.MANAGE_CHANNELS': 'Manage Channels',
-  'perm.MANAGE_GUILD': 'Manage Guild',
+  'perm.MANAGE_GUILD': 'Manage Community',
   'perm.ADD_REACTIONS': 'Add Reactions',
   'perm.VIEW_AUDIT_LOG': 'View Audit Log',
   'perm.PRIORITY_SPEAKER': 'Priority Speaker',
