@@ -127,7 +127,8 @@ MongoDB collections used by the current code:
 - `guild_recaps`: recap send-state metadata
 - `user_lastfm_accounts`: linked Last.fm accounts, session keys encrypted with AES-256-GCM, scrobble counters and day streaks
 - `lastfm_scrobble_retries`: scrobbles that failed against the Last.fm API, expired by a TTL index after 14 days
-- `bot_shards`: one heartbeat record per running process with its shard id and dashboard API address, expired by a TTL index
+- `bot_shards`: one heartbeat record per running process with its shard id, dashboard API address and guild and member counts, expired by a TTL index
+- `fluxerlist_voters`: one record per FluxerList voter, shared by all shards
 
 Notes:
 
@@ -149,9 +150,9 @@ The dashboard runs behind its own Node server (`dashboard/server.ts`) instead of
 
 Each process owns the guilds where `(guild_id >> 22) % SHARD_COUNT` equals its `SHARD_ID`. `Gateway` drops every dispatch for a foreign guild before emitting it, so commands, reactions, voice state and guild caches only ever see owned guilds. Fluxer filters the guild list at identify but connects every session to a guild the bot joins later, and shard 0 has no per-dispatch filter, so this check is what keeps two shards from answering the same command. Events without a guild go to shard 0.
 
-Work that spans guilds follows the same split: the weekly recap sweep skips foreign guilds, and account-level jobs such as the Last.fm retry queue and the FluxerList stats push run on shard 0 only. Persistent voice sessions are restored by their owning shard.
+Work that spans guilds follows the same split: the weekly recap sweep skips foreign guilds, and account-level jobs such as the Last.fm retry queue, the FluxerList stats push and the FluxerList voter list run on shard 0 only. Shard 0 stores new voters in `fluxerlist_voters`, and the other shards read them from there. Persistent voice sessions are restored by their owning shard.
 
-`ShardRegistry` writes a heartbeat for its process into `bot_shards` every ten seconds and removes it on shutdown. The dashboard reads the directory through `GET /api/v1/shards` on the configured bot address, caches it for ten seconds and keeps the last known directory when a refresh fails. Each shard's dashboard API answers `421` for a guild it does not own, so a stale directory cannot act on the wrong guild.
+`ShardRegistry` writes a heartbeat for its process into `bot_shards` every ten seconds and removes it on shutdown. It runs whether or not the dashboard API is enabled. Once the guild stream has settled the heartbeat carries the shard's guild count and member total. `GuildStateCache` takes `member_count` from `GUILD_CREATE` and follows `GUILD_MEMBER_ADD` and `GUILD_MEMBER_REMOVE`. The `stats` command and the presence add up the counts of all shards, so neither needs a REST call. Only while a shard is missing do they fall back to `GET /users/@me/guilds?with_counts=true`, which reports approximate member counts for every guild in about ten requests. The dashboard reads the directory through `GET /api/v1/shards` on the configured bot address, caches it for ten seconds and keeps the last known directory when a refresh fails. Each shard's dashboard API answers `421` for a guild it does not own, so a stale directory cannot act on the wrong guild.
 
 ## Last.fm Scrobbling
 

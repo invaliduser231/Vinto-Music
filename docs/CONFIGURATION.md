@@ -246,6 +246,23 @@ Notes:
 | `SENTRY_DSN` | empty | Optional Sentry DSN. |
 | `SENTRY_ENVIRONMENT` | `production` | Sentry environment label. |
 
+## FluxerList
+
+Both features need an API key issued to the bot owner on fluxerlist.com. One key
+may send 3,000 requests per month across all endpoints, so the intervals have a
+floor of five minutes and the defaults stay well inside that budget.
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `FLUXERLIST_STATS_ENABLED` | `0` | Post the guild count to the bot listing. Sent once at startup and then on the interval, from shard 0 only. |
+| `FLUXERLIST_API_KEY` | empty | FluxerList API key. |
+| `FLUXERLIST_BOT_ID` | bot user id | Fluxer bot id, FluxerList UUID or listing slug. |
+| `FLUXERLIST_API_BASE` | `https://fluxerlist.com` | API origin. |
+| `FLUXERLIST_STATS_INTERVAL_MS` | `1800000` | Stats push interval, at least `300000`. |
+| `VOTE_REWARDS_ENABLED` | `0` | Raise per user limits for people who voted. Votes are kept permanently in the `fluxerlist_voters` collection. |
+| `VOTE_REFRESH_INTERVAL_MS` | `3600000` | How often shard 0 reads the voter list, at least `300000`. It stops at the first page with a known voter. Other shards read new voters from MongoDB every five minutes. The `vote` command checks a single user right away, at most once per user every ten minutes. |
+| `VOTE_URL` | empty | Link shown by the `vote` command. |
+
 ## Dashboard API
 
 Local web UI for session-scoped playback control. Disabled by default.
@@ -316,10 +333,15 @@ Above 2,500 guilds per process Fluxer refuses the connection with close code
   `Ignoring events for a guild owned by another shard`.
 - Events without a guild, such as direct messages, are handled by shard 0.
 - The weekly recap sweep handles only the shard's own guilds. The Last.fm retry
-  queue and the FluxerList stats push run on shard 0 only.
+  queue, the FluxerList stats push and the FluxerList voter list run on shard 0
+  only.
+- Every process writes a heartbeat with its guild and member counts to the
+  `bot_shards` collection, whether or not the dashboard API is enabled. The
+  `stats` command adds up the counts of all shards and only falls back to the
+  REST guild list while a shard has not reported yet.
 - Every shard serves the dashboard API for its own guilds and answers `421` for
-  any other. Each process records its `DASHBOARD_API_ADVERTISE_URL` with a
-  heartbeat in the `bot_shards` collection. The dashboard reads that directory
+  any other. Each process records its `DASHBOARD_API_ADVERTISE_URL` in its
+  heartbeat. The dashboard reads that directory
   through `DASHBOARD_API_URL` and routes every request and live connection to
   the owning shard. A shard that stops sending heartbeats drops out after 30
   seconds, and its guilds answer `503` until it is back.
