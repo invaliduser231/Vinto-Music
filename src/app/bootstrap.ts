@@ -677,6 +677,7 @@ export async function startApp() {
     allowedOrigins: config.dashboardApiAllowedOrigins,
     progressIntervalMs: config.dashboardApiProgressIntervalMs,
     logger: logger.child('dashboard'),
+    shardAssignment: { shardId: config.shardId, shardCount: config.shardCount },
     sessions,
     voiceStateStore,
     botUserId: me?.id ?? null,

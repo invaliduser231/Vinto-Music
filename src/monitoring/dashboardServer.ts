@@ -2,6 +2,7 @@ import http from 'node:http';
 import { timingSafeEqual, createHash } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { SessionManager } from '../bot/sessionManager.ts';
+import { guildBelongsToShard, shardForGuild, type ShardAssignment } from '../core/sharding.ts';
 import type { VoiceStateStore } from '../bot/voiceStateStore.ts';
 import type { LoggerLike } from '../types/core.ts';
 import type { GuildConfig, Session, Track } from '../types/domain.ts';
@@ -66,6 +67,7 @@ type DashboardServerOptions = {
   isBotInGuild?: (guildId: string) => Promise<boolean>;
   lyrics?: LyricsService | null;
   lastfm?: { client: LastFmClient; accounts: LastFmAccountStore } | null;
+  shardAssignment?: ShardAssignment | null;
 };
 
 type ClientSubscription = {
@@ -175,6 +177,7 @@ export class DashboardServer {
   isBotInGuild: ((guildId: string) => Promise<boolean>) | null;
   lyrics: LyricsService | null;
   lastfm: { client: LastFmClient; accounts: LastFmAccountStore } | null;
+  shardAssignment: ShardAssignment;
   pendingLastFmTokens: Map<string, string>;
   botGuildMembershipCache: Map<string, { present: boolean; expiresAt: number }>;
   memberProfileCache: TtlCache<DashboardMemberProfile>;
@@ -213,6 +216,7 @@ export class DashboardServer {
     this.isBotInGuild = options.isBotInGuild ?? null;
     this.lyrics = options.lyrics ?? null;
     this.lastfm = options.lastfm ?? null;
+    this.shardAssignment = options.shardAssignment ?? { shardId: 0, shardCount: 1 };
     this.pendingLastFmTokens = new Map();
     this.botGuildMembershipCache = new Map();
     this.memberProfileCache = new Map();
@@ -326,6 +330,9 @@ export class DashboardServer {
 
     const url = new URL(req.url ?? '/', 'http://dashboard.local');
     const path = url.pathname;
+
+    const queryGuildId = String(url.searchParams.get('guildId') ?? '').trim();
+    if (queryGuildId && this._rejectForeignGuild(req, res, queryGuildId)) return;
 
     if (path === '/api/v1/guild' && req.method === 'GET') {
       void this._handleGuildGet(req, res, url);
@@ -835,6 +842,7 @@ export class DashboardServer {
     }
 
     const guildId = String(body.guildId ?? '').trim();
+    if (guildId && this._rejectForeignGuild(req, res, guildId)) return;
     const voiceChannelId = String(body.voiceChannelId ?? '').trim();
     const userId = String(req.headers['x-user-id'] ?? '').trim();
     const roleIds = await this._resolveRoleIds(
@@ -1419,6 +1427,17 @@ export class DashboardServer {
     return verdict === true;
   }
 
+  _rejectForeignGuild(req: http.IncomingMessage, res: http.ServerResponse, guildId: string): boolean {
+    if (guildBelongsToShard(guildId, this.shardAssignment)) return false;
+    if (!this._authorizeRequest(req, res)) return true;
+    res.writeHead(421, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({
+      error: 'guild belongs to another shard',
+      shardId: shardForGuild(guildId, this.shardAssignment.shardCount),
+    }));
+    return true;
+  }
+
   _authorizeRequest(req: http.IncomingMessage, res: http.ServerResponse): boolean {
     const token = readBearerToken(req.headers.authorization)
       ?? (String(req.headers['x-dashboard-secret'] ?? '').trim() || null);
@@ -1804,6 +1823,10 @@ export class DashboardServer {
     const userId = client.identityUserId ?? String(payload.userId ?? '').trim();
     if (!guildId || !voiceChannelId || !userId) {
       this._sendSocket(client, { op: 'error', message: 'missing subscribe fields' });
+      return;
+    }
+    if (!guildBelongsToShard(guildId, this.shardAssignment)) {
+      this._sendSocket(client, { op: 'error', message: 'wrong_shard', shardId: shardForGuild(guildId, this.shardAssignment.shardCount) });
       return;
     }
 
