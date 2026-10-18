@@ -30,7 +30,7 @@ Most runtime environment variables are parsed in `src/config.ts`. `.env.example`
 | `API_BASE` | `https://api.fluxer.app/v1` | REST API base URL. |
 | `GATEWAY_URL` | `wss://gateway.fluxer.app` | Gateway websocket URL. |
 | `GATEWAY_INTENTS` | `0` | Gateway identify intents bitset. |
-| `SHARD_COUNT` | `1` | Number of bot processes sharing the guilds. Every process needs the same value. |
+| `SHARD_COUNT` | `1` | Number of bot processes sharing the guilds. Every process needs the same value. See [Sharding](#sharding). |
 | `SHARD_ID` | `0` | Position of this process, counting from zero, and lower than `SHARD_COUNT`. |
 | `GATEWAY_PRESENCE_ENABLED` | `0` | Send initial and rotating gateway presence updates. Keep disabled if Fluxer closes the socket after `READY` with close code `4013`. |
 | `DNS_RESULT_ORDER` | `ipv4first` | `ipv4first` or `verbatim`. |
@@ -258,70 +258,78 @@ Local web UI for session-scoped playback control. Disabled by default.
 | `DASHBOARD_API_SECRET` | empty | Shared secret between the bot and the dashboard server. Minimum 24 characters when enabled. It stays server side: the browser authenticates with a short lived ticket the dashboard mints from it. |
 | `DASHBOARD_API_REQUIRE_TICKET` | `1` | Accept only signed tickets on the WebSocket and take the user id from the ticket instead of the client. Turning this off lets any holder of the secret act as any user, so keep it on outside local debugging. |
 | `DASHBOARD_API_ALLOWED_ORIGINS` | `http://localhost:3000` | Comma-separated browser origins for CORS. Behind a reverse proxy this is the public origin, for example `https://vinto.example.com`. |
-| `DASHBOARD_WS_URL` | empty | Dashboard container only. Address the browser uses for the live connection. Empty means `wss://<dashboard host>/ws`, which requires the reverse proxy route below. Read at runtime, so unlike `NEXT_PUBLIC_*` it works with the prebuilt image. |
+| `DASHBOARD_API_ADVERTISE_URL` | `http://127.0.0.1:<DASHBOARD_API_PORT>` | Address under which the dashboard reaches this process. Each process announces it in the shard directory, which is how the dashboard finds every shard. The bundled compose file sets it per container. |
+| `DASHBOARD_WS_URL` | empty | Dashboard container only. Address the browser uses for the live connection. Empty means `wss://<dashboard host>/ws`, which the dashboard forwards to the shard that owns the guild. Set it only to point the browser straight at a single bot process. Read at runtime, so unlike `NEXT_PUBLIC_*` it works with the prebuilt image. |
 | `NEXT_PUBLIC_VISUALIZER_LEAD_MS` | `600` | Dashboard-side delay before a spectrum frame is drawn. The analyzer taps the audio upstream of the voice buffer, so frames arrive before listeners hear them. Measured on this stack as a median lead of 613 ms, ranging from 362 to 856 ms as the buffer drains and refills. The `fluxer_bot_voice_queued_duration_ms` metric reports the current lead so it can be retuned per deployment. |
 | `DASHBOARD_API_PROGRESS_INTERVAL_MS` | `2000` | Now playing progress resync interval for WebSocket clients. The dashboard interpolates the position locally between resyncs, and every player action is broadcast immediately, so a low value only adds load. |
 
-The dashboard container reads `DASHBOARD_API_URL` to reach the bot API from inside the network, plus `DASHBOARD_API_SECRET` and the `FLUXER_OAUTH_*` values. None of these are exposed to the browser. See `dashboard/README.md`.
+The dashboard container reads `DASHBOARD_API_URL` to reach the bot API from inside the network, plus `DASHBOARD_API_SECRET` and the `FLUXER_OAUTH_*` values. None of these are exposed to the browser. `DASHBOARD_API_URL` names one bot process; the dashboard learns the others from the shard directory. It listens on `PORT` (default `3000`) and `DASHBOARD_LISTEN_HOST` (default `0.0.0.0`). See `dashboard/README.md`.
 
 ### Reverse proxy
 
-The dashboard needs **two** upstreams behind one hostname, because the page and
-the live connection are served by different processes:
-
-| Path | Upstream | Served by |
-| --- | --- | --- |
-| `/ws` | `DASHBOARD_API_PORT` (9092) | the bot |
-| everything else | `DASHBOARD_PORT` (3000) | the dashboard |
-
-Forwarding the whole hostname to the dashboard port is the common mistake. The
-page then loads and login works, but no session ever appears: the player stays
-on "Bring Vinto here", that button does nothing, and the browser console repeats
-`can't establish a connection to the server at wss://<host>/ws`. Vinto looks
-absent because the only channel that reports its state never opens.
+The dashboard serves the page and the live connection, so the reverse proxy
+forwards the whole hostname to it:
 
 Caddy:
 
 ```
 vinto.example.com {
-	handle /ws {
-		reverse_proxy 192.168.1.18:9092
-	}
-	handle {
-		reverse_proxy 192.168.1.18:3000
-	}
+	reverse_proxy 192.168.1.18:3000
 }
 ```
 
 nginx:
 
 ```
-location /ws {
-	proxy_pass http://192.168.1.18:9092;
+location / {
+	proxy_pass http://192.168.1.18:3000;
 	proxy_http_version 1.1;
 	proxy_set_header Upgrade $http_upgrade;
 	proxy_set_header Connection "upgrade";
 	proxy_read_timeout 3600s;
 }
-
-location / {
-	proxy_pass http://192.168.1.18:3000;
-}
 ```
 
-Two things to keep in mind:
+The live connection is a WebSocket on `/ws`. The dashboard accepts it and
+forwards it to the bot process that owns the guild, so no bot port has to be
+reachable from outside.
 
 - The WebSocket upgrade only exists in HTTP/1.1. Testing with `curl` over HTTP/2
   returns `404` even on a correct setup; add `--http1.1` to see the real
   `101 Switching Protocols`.
-- Add the public origin to `DASHBOARD_API_ALLOWED_ORIGINS`, for example
-  `https://vinto.example.com`.
+- Older setups that send `/ws` straight to the bot on port 9092 keep working
+  with a single process. With several shards that route has to go, because only
+  the dashboard knows which shard owns a guild.
 
-If adding the `/ws` route is not an option, point the browser straight at the
-bot with `DASHBOARD_WS_URL` instead, for example
-`DASHBOARD_WS_URL=wss://vinto-bot.example.com`. That variable is read at runtime,
-so it also works with the prebuilt image, unlike the `NEXT_PUBLIC_*` values
-which are fixed when the image is built.
+## Sharding
+
+Above 2,500 guilds per process Fluxer refuses the connection with close code
+`4011`, so a larger bot runs several processes. Each one gets the same
+`SHARD_COUNT` and its own `SHARD_ID`. A guild belongs to shard
+`(guild_id >> 22) % SHARD_COUNT`, the formula Fluxer uses as well.
+
+- Every shard drops gateway events for guilds it does not own. Fluxer filters
+  the guild list at identify, but connects every session to a guild the bot
+  joins later, and shard 0 receives those events without a filter. Without the
+  check in the bot, two processes would answer the same command and join the
+  same voice channel. The log notes each such guild once with
+  `Ignoring events for a guild owned by another shard`.
+- Events without a guild, such as direct messages, are handled by shard 0.
+- The weekly recap sweep handles only the shard's own guilds. The Last.fm retry
+  queue and the FluxerList stats push run on shard 0 only.
+- Every shard serves the dashboard API for its own guilds and answers `421` for
+  any other. Each process records its `DASHBOARD_API_ADVERTISE_URL` with a
+  heartbeat in the `bot_shards` collection. The dashboard reads that directory
+  through `DASHBOARD_API_URL` and routes every request and live connection to
+  the owning shard. A shard that stops sending heartbeats drops out after 30
+  seconds, and its guilds answer `503` until it is back.
+- Two processes with the same `SHARD_ID` are reported with
+  `Another process is running with the same shard id`.
+
+The bundled compose file runs shard 0 as `app` and shard 1 as `app-shard-1`
+under the `sharded` profile. For two shards set `SHARD_COUNT=2` in `.env` and
+start with `docker compose --profile sharded up -d`. The dashboard needs no
+change.
 
 ## Practical Presets
 

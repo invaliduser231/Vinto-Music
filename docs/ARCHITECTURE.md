@@ -127,6 +127,7 @@ MongoDB collections used by the current code:
 - `guild_recaps`: recap send-state metadata
 - `user_lastfm_accounts`: linked Last.fm accounts, session keys encrypted with AES-256-GCM, scrobble counters and day streaks
 - `lastfm_scrobble_retries`: scrobbles that failed against the Last.fm API, expired by a TTL index after 14 days
+- `bot_shards`: one heartbeat record per running process with its shard id and dashboard API address, expired by a TTL index
 
 Notes:
 
@@ -141,6 +142,16 @@ The guild config store keeps a TTL cache in memory to reduce repeated reads for 
 The HTTP hub combines playlists, favorites, stations, queue templates, recaps, taste data and optional Last.fm views. WebSocket actions cover playback, queue changes, effects, vote skip, temporary DJ handoff, personal Last.fm operations and party battles. Party state lives in a shared in-memory store so the dashboard and `party` command operate on the same guild battle; it expires after 12 hours and is intentionally not persisted across restarts.
 
 The Next.js client keeps fast controls optimistic, then reconciles them against the authoritative session broadcasts. Guild settings are edited as a local draft and sent only when saved. OAuth identifies the viewer when enabled; the bot API remains responsible for guild membership, voice-channel membership and permission checks.
+
+The dashboard runs behind its own Node server (`dashboard/server.ts`) instead of the standalone Next.js server, because Next.js route handlers cannot accept WebSocket upgrades. Every request and the `/ws` live connection carry a guild id, and the dashboard looks up the owning shard in the shard directory before forwarding. The live connection is forwarded at the socket level after the upgrade, so the dashboard never parses frames and the bot still authenticates the signed ticket. Cookies and authorization headers are not passed on to the bot.
+
+## Sharding
+
+Each process owns the guilds where `(guild_id >> 22) % SHARD_COUNT` equals its `SHARD_ID`. `Gateway` drops every dispatch for a foreign guild before emitting it, so commands, reactions, voice state and guild caches only ever see owned guilds. Fluxer filters the guild list at identify but connects every session to a guild the bot joins later, and shard 0 has no per-dispatch filter, so this check is what keeps two shards from answering the same command. Events without a guild go to shard 0.
+
+Work that spans guilds follows the same split: the weekly recap sweep skips foreign guilds, and account-level jobs such as the Last.fm retry queue and the FluxerList stats push run on shard 0 only. Persistent voice sessions are restored by their owning shard.
+
+`ShardRegistry` writes a heartbeat for its process into `bot_shards` every ten seconds and removes it on shutdown. The dashboard reads the directory through `GET /api/v1/shards` on the configured bot address, caches it for ten seconds and keeps the last known directory when a refresh fails. Each shard's dashboard API answers `421` for a guild it does not own, so a stale directory cannot act on the wrong guild.
 
 ## Last.fm Scrobbling
 

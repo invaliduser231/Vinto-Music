@@ -25,14 +25,19 @@ Voice channels with active bot sessions are listed automatically once you are in
 
 ## Behind a reverse proxy
 
-Two upstreams share one hostname: `/ws` belongs to the bot API (port 9092),
-everything else to this app (port 3000). Sending the whole hostname to port 3000
-loads the page and signs you in, but no session ever arrives, so the player
-stays on "Bring Vinto here" and the console repeats
-`can't establish a connection to the server at wss://<host>/ws`.
+Forward the whole hostname to this app (port 3000). It serves the page and
+accepts the `/ws` live connection itself, then hands the connection to the bot
+process that owns the guild. The proxy has to pass WebSocket upgrades through.
 
-Working Caddy and nginx snippets, plus the `DASHBOARD_WS_URL` alternative, are
-in `docs/CONFIGURATION.md` under "Reverse proxy".
+Working Caddy and nginx snippets are in `docs/CONFIGURATION.md` under
+"Reverse proxy", and the sharded setup under "Sharding".
+
+## Server
+
+`pnpm dev` and `pnpm start` run `server.ts`, a small Node server around Next.js.
+It exists because Next.js route handlers cannot accept WebSocket upgrades. It
+reads the shard directory from the bot through `DASHBOARD_API_URL`, routes `/ws`
+by the guild id in the query string and leaves every other request to Next.js.
 
 ## Fluxer OAuth
 
