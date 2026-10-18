@@ -1,12 +1,28 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { getAuthSession } from '@/lib/auth-server';
-import { BOT_API_ALLOWED_PATHS, readBotApiConfig, stripClientIdentity } from '@/lib/bot-api';
+import {
+  BOT_API_ALLOWED_PATHS,
+  mergeUserVoiceResponses,
+  planBotApiRoute,
+  readBotApiConfig,
+  stripClientIdentity,
+} from '@/lib/bot-api';
+import { getShardDirectory, type ShardDirectory } from '@/lib/shard-directory';
 
 type RouteContext = { params: Promise<{ path: string[] }> };
 
+async function resolveTargets(directory: ShardDirectory, path: string, search: URLSearchParams, body: string | undefined): Promise<string[]> {
+  const route = planBotApiRoute(path, search, body);
+  if (route.kind === 'every-shard') return directory.allUrls();
+  if (route.kind === 'bootstrap') return [directory.bootstrap];
+  const target = await directory.urlForGuild(route.guildId);
+  return target ? [target] : [];
+}
+
 async function forward(req: NextRequest, context: RouteContext): Promise<NextResponse> {
   const config = readBotApiConfig();
-  if (!config) {
+  const directory = getShardDirectory();
+  if (!config || !directory) {
     return NextResponse.json({ error: 'dashboard api not configured' }, { status: 503 });
   }
 
@@ -21,9 +37,6 @@ async function forward(req: NextRequest, context: RouteContext): Promise<NextRes
     return NextResponse.json({ error: 'not found' }, { status: 404 });
   }
 
-  const target = new URL(`/api/v1/${suffix}`, config.baseUrl);
-  target.search = req.nextUrl.search;
-
   const headers = new Headers({
     authorization: `Bearer ${config.secret}`,
     'x-user-id': session.userId,
@@ -35,13 +48,36 @@ async function forward(req: NextRequest, context: RouteContext): Promise<NextRes
     headers.set('content-type', 'application/json');
   }
 
-  try {
-    const response = await fetch(target, {
+  const targets = await resolveTargets(directory, suffix, req.nextUrl.searchParams, body);
+  if (!targets.length) {
+    return NextResponse.json({ error: 'shard unavailable' }, { status: 503 });
+  }
+
+  const requestShard = (baseUrl: string) => {
+    const target = new URL(`/api/v1/${suffix}`, baseUrl);
+    target.search = req.nextUrl.search;
+    return fetch(target, {
       method: req.method,
       headers,
       ...(body === undefined ? {} : { body }),
       cache: 'no-store',
     });
+  };
+
+  if (targets.length > 1) {
+    const results = await Promise.allSettled(targets.map(async (baseUrl) => {
+      const response = await requestShard(baseUrl);
+      return response.ok ? response.json() as Promise<unknown> : null;
+    }));
+    const payloads = results.flatMap((result) => (result.status === 'fulfilled' && result.value ? [result.value] : []));
+    if (!payloads.length) {
+      return NextResponse.json({ error: 'bot api unreachable' }, { status: 502 });
+    }
+    return NextResponse.json(mergeUserVoiceResponses(payloads), { headers: { 'cache-control': 'no-store' } });
+  }
+
+  try {
+    const response = await requestShard(targets[0] ?? directory.bootstrap);
     const payload = await response.text();
     return new NextResponse(payload, {
       status: response.status,

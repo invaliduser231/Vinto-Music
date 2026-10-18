@@ -5,9 +5,9 @@
   "type": "module",
   "packageManager": "pnpm@10.12.1",
   "scripts": {
-    "dev": "next dev --port 3000",
+    "dev": "node --experimental-strip-types server.ts",
     "build": "next build",
-    "start": "next start --port 3000",
+    "start": "node --experimental-strip-types server.ts --production",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-test-module-mocks --import tsx --test test/*.test.ts"
   },

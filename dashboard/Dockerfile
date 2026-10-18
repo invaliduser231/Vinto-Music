@@ -7,6 +7,15 @@ RUN corepack enable && corepack prepare pnpm@10.12.1 --activate
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
+FROM node:24-bookworm-slim AS prod-deps
+
+WORKDIR /app
+
+RUN corepack enable && corepack prepare pnpm@10.12.1 --activate
+
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile --prod
+
 FROM node:24-bookworm-slim AS build
 
 WORKDIR /app
@@ -27,7 +36,7 @@ ENV NEXT_TELEMETRY_DISABLED=1 \
     NEXT_PUBLIC_USE_MOCK_SESSION=$NEXT_PUBLIC_USE_MOCK_SESSION \
     NEXT_PUBLIC_FLUXER_CDN_BASE=$NEXT_PUBLIC_FLUXER_CDN_BASE
 
-RUN pnpm run build
+RUN pnpm run build && rm -rf .next/cache
 
 FROM node:24-bookworm-slim AS runtime
 
@@ -36,12 +45,13 @@ WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1
 
-RUN corepack enable
-
+COPY --from=prod-deps /app/node_modules ./node_modules
+COPY --from=build /app/package.json /app/next.config.ts /app/server.ts ./
+COPY --from=build /app/.next ./.next
 COPY --from=build /app/public ./public
-COPY --from=build /app/.next/standalone ./
-COPY --from=build /app/.next/static ./.next/static
+COPY --from=build /app/src/lib/shard-directory.ts ./src/lib/shard-directory.ts
+COPY --from=build /app/src/server ./src/server
 
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+CMD ["node", "server.ts"]

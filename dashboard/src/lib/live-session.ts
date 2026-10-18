@@ -1,5 +1,5 @@
 import type { DashboardSession } from '@/types/session';
-import { requestBotTicket, resolveWebSocketUrl } from '@/lib/bot-client';
+import { requestBotTicket, resolveWebSocketUrl, withLiveConnectionGuild } from '@/lib/bot-client';
 
 const STORAGE_KEY = 'vinto-dashboard-dev';
 
@@ -185,7 +185,7 @@ export class LiveSessionClient {
       return;
     }
 
-    const socket = new WebSocket(wsUrl);
+    const socket = new WebSocket(withLiveConnectionGuild(wsUrl, guildId));
     this.socket = socket;
 
     socket.addEventListener('open', () => {

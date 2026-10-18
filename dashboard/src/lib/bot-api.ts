@@ -37,6 +37,37 @@ export function stripClientIdentity(rawBody: string): string {
   return JSON.stringify(sanitized);
 }
 
+export type BotApiRoute =
+  | { kind: 'every-shard' }
+  | { kind: 'bootstrap' }
+  | { kind: 'guild'; guildId: string };
+
+const EVERY_SHARD_PATHS = new Set(['user/voice']);
+const BOOTSTRAP_PATHS = new Set(['bot/guilds']);
+
+function readBodyGuildId(rawBody: string | undefined): string | null {
+  if (!rawBody) return null;
+  try {
+    const parsed: unknown = JSON.parse(rawBody);
+    if (!parsed || typeof parsed !== 'object' || !('guildId' in parsed)) return null;
+    return String(parsed.guildId ?? '').trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+export function planBotApiRoute(path: string, search: URLSearchParams, rawBody?: string): BotApiRoute {
+  if (EVERY_SHARD_PATHS.has(path)) return { kind: 'every-shard' };
+  if (BOOTSTRAP_PATHS.has(path)) return { kind: 'bootstrap' };
+  const guildId = String(search.get('guildId') ?? '').trim() || readBodyGuildId(rawBody);
+  return guildId ? { kind: 'guild', guildId } : { kind: 'bootstrap' };
+}
+
+export function mergeUserVoiceResponses(payloads: unknown[]): Record<string, unknown> {
+  const records = payloads.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object');
+  return records.find((entry) => entry.voice != null) ?? records[0] ?? { voice: null, ts: Date.now() };
+}
+
 export function readBotApiConfig(): BotApiConfig | null {
   const baseUrl = String(process.env.DASHBOARD_API_URL ?? 'http://127.0.0.1:9092').trim();
   const secret = String(process.env.DASHBOARD_API_SECRET ?? '').trim();

@@ -37,6 +37,12 @@ export async function requestBotTicket(): Promise<BotTicket | null> {
   }
 }
 
+export function withLiveConnectionGuild(wsUrl: string, guildId: string): string {
+  const url = new URL(wsUrl);
+  url.searchParams.set('guildId', guildId);
+  return url.toString();
+}
+
 export function resolveWebSocketUrl(): string {
   const configured = String(process.env.NEXT_PUBLIC_DASHBOARD_WS_URL ?? '').trim();
   if (configured) return configured;
