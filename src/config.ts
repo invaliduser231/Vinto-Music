@@ -34,6 +34,21 @@ function ensureUrlScheme(value: unknown, fallbackScheme: string): string {
   return `${fallbackScheme}://${trimmed.replace(/^\/+/, '')}`;
 }
 
+function parseAdvertiseUrl(value: unknown, port: number): string {
+  const raw = String(value ?? '').trim();
+  if (!raw) return `http://127.0.0.1:${port}`;
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new ConfigurationError('DASHBOARD_API_ADVERTISE_URL must be an absolute http(s) URL');
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new ConfigurationError('DASHBOARD_API_ADVERTISE_URL must be an absolute http(s) URL');
+  }
+  return parsed.origin;
+}
+
 function stripTrailingSlashes(pathname: string): string {
   if (!pathname || pathname === '/') return '/';
   const normalized = pathname.replace(/\/+$/g, '');
@@ -288,6 +303,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
       .map((entry) => entry.trim())
       .filter(Boolean),
     dashboardApiProgressIntervalMs: parsePositiveInt(env.DASHBOARD_API_PROGRESS_INTERVAL_MS, 2000),
+    dashboardApiAdvertiseUrl: parseAdvertiseUrl(env.DASHBOARD_API_ADVERTISE_URL, parsePositiveInt(env.DASHBOARD_API_PORT, 9092)),
     unhealthyExitEnabled: parseBool(env.UNHEALTHY_EXIT_ENABLED, true),
     unhealthyExitAfterMs: parsePositiveInt(env.UNHEALTHY_EXIT_AFTER_MS, 180_000),
     gatewayOutageExitAfterMs: parsePositiveInt(env.GATEWAY_OUTAGE_EXIT_AFTER_MS, 1_800_000),

@@ -3,6 +3,7 @@ import { timingSafeEqual, createHash } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { SessionManager } from '../bot/sessionManager.ts';
 import { guildBelongsToShard, shardForGuild, type ShardAssignment } from '../core/sharding.ts';
+import type { ShardRecord } from '../bot/services/shardRegistry.ts';
 import type { VoiceStateStore } from '../bot/voiceStateStore.ts';
 import type { LoggerLike } from '../types/core.ts';
 import type { GuildConfig, Session, Track } from '../types/domain.ts';
@@ -68,6 +69,7 @@ type DashboardServerOptions = {
   lyrics?: LyricsService | null;
   lastfm?: { client: LastFmClient; accounts: LastFmAccountStore } | null;
   shardAssignment?: ShardAssignment | null;
+  listShards?: (() => Promise<ShardRecord[]>) | null;
 };
 
 type ClientSubscription = {
@@ -178,6 +180,7 @@ export class DashboardServer {
   lyrics: LyricsService | null;
   lastfm: { client: LastFmClient; accounts: LastFmAccountStore } | null;
   shardAssignment: ShardAssignment;
+  listShards: (() => Promise<ShardRecord[]>) | null;
   pendingLastFmTokens: Map<string, string>;
   botGuildMembershipCache: Map<string, { present: boolean; expiresAt: number }>;
   memberProfileCache: TtlCache<DashboardMemberProfile>;
@@ -217,6 +220,7 @@ export class DashboardServer {
     this.lyrics = options.lyrics ?? null;
     this.lastfm = options.lastfm ?? null;
     this.shardAssignment = options.shardAssignment ?? { shardId: 0, shardCount: 1 };
+    this.listShards = options.listShards ?? null;
     this.pendingLastFmTokens = new Map();
     this.botGuildMembershipCache = new Map();
     this.memberProfileCache = new Map();
@@ -379,6 +383,11 @@ export class DashboardServer {
       return;
     }
 
+    if (path === '/api/v1/shards' && req.method === 'GET') {
+      void this._handleShardsGet(req, res);
+      return;
+    }
+
     if (path === '/api/v1/guild/settings' && req.method === 'PATCH') {
       void this._handleGuildSettingsPatch(req, res, url);
       return;
@@ -386,6 +395,41 @@ export class DashboardServer {
 
     res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ error: 'not found' }));
+  }
+
+  async _handleShardsGet(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    if (!this._authorizeRequest(req, res)) return;
+    if (!this.listShards) {
+      res.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: 'shard directory unavailable' }));
+      return;
+    }
+
+    const records = await this.listShards().catch((err: unknown) => {
+      this.logger?.warn?.('Shard directory lookup failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    });
+    if (!records) {
+      res.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: 'shard directory unavailable' }));
+      return;
+    }
+
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+    });
+    res.end(JSON.stringify({
+      shards: records.map((record) => ({
+        shardId: record.shardId,
+        shardCount: record.shardCount,
+        url: record.dashboardUrl,
+        heartbeatAt: record.heartbeatAt.toISOString(),
+      })),
+      ts: Date.now(),
+    }));
   }
 
   async _handleBotGuildsGet(

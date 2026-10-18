@@ -26,6 +26,7 @@ import { LastFmClient } from '../integrations/lastfm/LastFmClient.ts';
 import { parseEncryptionKey } from '../integrations/lastfm/secretBox.ts';
 import { LastFmAccountStore } from '../bot/services/lastFmAccountStore.ts';
 import { ScrobbleService } from '../bot/services/scrobbleService.ts';
+import { ShardRegistry } from '../bot/services/shardRegistry.ts';
 import { sanitizeBrokenLocalProxyEnv } from './proxy.ts';
 import { verifyApiConnectivity, resolveGatewayUrl } from './connectivity.ts';
 import { bindGatewayMetrics, bindSessionMetrics, createAppMetrics } from './metrics.ts';
@@ -668,8 +669,18 @@ export async function startApp() {
     });
   });
 
+  const shardRegistry = config.dashboardApiEnabled
+    ? new ShardRegistry({
+      collection: mongo.collection('bot_shards'),
+      assignment: { shardId: config.shardId, shardCount: config.shardCount },
+      dashboardUrl: config.dashboardApiAdvertiseUrl,
+      logger: logger.child('shard-registry'),
+    })
+    : null;
+
   const dashboardServer = new DashboardServer({
     enabled: config.dashboardApiEnabled,
+    listShards: shardRegistry ? () => shardRegistry.list() : null,
     host: config.dashboardApiHost,
     port: config.dashboardApiPort,
     secret: config.dashboardApiSecret,
@@ -755,6 +766,14 @@ export async function startApp() {
       error: err instanceof Error ? err.message : String(err),
     });
   });
+  if (shardRegistry) {
+    await shardRegistry.init().catch((err) => {
+      logger.warn('Shard registry index setup failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+    shardRegistry.start();
+  }
 
   const getRuntimeHealth = () => ({
     ok: !shuttingDown && (gatewayConnected || Date.now() - startedAt < 60_000),
@@ -884,6 +903,11 @@ export async function startApp() {
     gateway.disconnect();
     await monitoringServer.stop().catch((err) => {
       logger.error('Monitoring server shutdown failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+    await shardRegistry?.stop().catch((err) => {
+      logger.warn('Shard registry shutdown failed', {
         error: err instanceof Error ? err.message : String(err),
       });
     });
