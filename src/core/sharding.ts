@@ -1,4 +1,5 @@
 import { ConfigurationError } from './errors.ts';
+import { asRecord } from '../utils/unknownData.ts';
 
 export type ShardAssignment = {
   shardId: number;
@@ -40,4 +41,36 @@ export function guildBelongsToShard(guildId: unknown, assignment: ShardAssignmen
   const owner = shardForGuild(guildId, assignment.shardCount);
   if (owner == null) return true;
   return owner === assignment.shardId;
+}
+
+export function isPrimaryShard(assignment: ShardAssignment): boolean {
+  return assignment.shardId === 0;
+}
+
+export function shardAssignmentFromConfig(
+  config: { shardId?: unknown; shardCount?: unknown } | null | undefined,
+): ShardAssignment {
+  const shardCount = Math.max(1, Number.parseInt(String(config?.shardCount ?? 1), 10) || 1);
+  const shardId = Math.max(0, Math.min(shardCount - 1, Number.parseInt(String(config?.shardId ?? 0), 10) || 0));
+  return { shardId, shardCount };
+}
+
+const EVENTS_NAMING_GUILD_AS_ID = new Set(['GUILD_CREATE', 'GUILD_UPDATE', 'GUILD_DELETE', 'GUILD_SYNC']);
+const SESSION_LIFECYCLE_EVENTS = new Set(['READY', 'RESUMED']);
+
+export function dispatchGuildId(eventName: string, data: unknown): string | null {
+  const record = asRecord(data);
+  if (!record) return null;
+  const candidate = record.guild_id ?? (EVENTS_NAMING_GUILD_AS_ID.has(eventName) ? record.id : null);
+  const guildId = String(candidate ?? '').trim();
+  return guildId || null;
+}
+
+export function shouldDeliverDispatch(eventName: string, data: unknown, assignment: ShardAssignment): boolean {
+  if (assignment.shardCount <= 1) return true;
+  if (SESSION_LIFECYCLE_EVENTS.has(eventName)) return true;
+
+  const guildId = dispatchGuildId(eventName, data);
+  if (guildId) return guildBelongsToShard(guildId, assignment);
+  return isPrimaryShard(assignment);
 }

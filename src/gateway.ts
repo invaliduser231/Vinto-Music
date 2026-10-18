@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import WebSocket from 'ws';
+import { dispatchGuildId, shardForGuild, shouldDeliverDispatch, type ShardAssignment } from './core/sharding.ts';
 
 const Op = {
   DISPATCH: 0,
@@ -26,6 +27,7 @@ const MIN_HEARTBEAT_INTERVAL_MS = 100;
 const MAX_HEARTBEAT_INTERVAL_MS = 60_000;
 const SEQUENCE_ACK_HEARTBEAT_INTERVAL_MS = 750;
 const MAX_MISSED_HEARTBEAT_ACKS = 2;
+const MAX_TRACKED_FOREIGN_GUILDS = 1_000;
 
 type GatewayOptions = {
   url: string;
@@ -145,6 +147,7 @@ export class Gateway extends EventEmitter {
   initialPresence: GatewayPresence | null;
   shardId: number;
   shardCount: number;
+  foreignGuildIds: Set<string>;
   constructor(options: GatewayOptions) {
     super();
 
@@ -157,6 +160,7 @@ export class Gateway extends EventEmitter {
       Math.max(0, Number.parseInt(String(options.shardId ?? 0), 10) || 0),
     );
     this.logger = options.logger ?? null;
+    this.foreignGuildIds = new Set();
 
     this.reconnectBaseDelayMs = options.reconnectBaseDelayMs ?? 1_000;
     this.reconnectMaxDelayMs = options.reconnectMaxDelayMs ?? 30_000;
@@ -436,8 +440,10 @@ export class Gateway extends EventEmitter {
           this.logger?.info?.('Gateway session resumed');
         }
 
-        if (eventName) {
+        if (eventName && shouldDeliverDispatch(eventName, d, this._shardAssignment())) {
           this.emit(eventName, d);
+        } else if (eventName) {
+          this._noteForeignDispatch(eventName, d);
         }
 
         this._scheduleSequenceAckHeartbeat();
@@ -453,6 +459,24 @@ export class Gateway extends EventEmitter {
       default:
         break;
     }
+  }
+
+  _shardAssignment(): ShardAssignment {
+    return { shardId: this.shardId, shardCount: this.shardCount };
+  }
+
+  _noteForeignDispatch(eventName: string, data: unknown) {
+    const guildId = dispatchGuildId(eventName, data);
+    if (!guildId || this.foreignGuildIds.has(guildId)) return;
+    if (this.foreignGuildIds.size >= MAX_TRACKED_FOREIGN_GUILDS) return;
+
+    this.foreignGuildIds.add(guildId);
+    this.logger?.info?.('Ignoring events for a guild owned by another shard', {
+      guildId,
+      event: eventName,
+      shardId: this.shardId,
+      ownerShardId: shardForGuild(guildId, this.shardCount),
+    });
   }
 
   _identify() {
