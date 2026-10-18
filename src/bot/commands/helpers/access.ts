@@ -369,26 +369,26 @@ function buildManageGuildVerificationMessage(ctx: CommandContextLike, diagnostic
   const hasDirectPermissions = hasDirectPermissionPayload(ctx);
 
   if (diagnostics?.rolesStatus === 403) {
-    return 'Could not verify your server permissions because Fluxer denied the bot access to this server\'s role list.';
+    return 'Could not verify your guild permissions because Fluxer denied the bot access to this guild\'s role list.';
   }
 
   if ((diagnostics?.guildStatus ?? 0) >= 500) {
-    return 'Could not verify your server permissions because Fluxer returned a server error for this guild\'s metadata.';
+    return 'Could not verify your guild permissions because Fluxer returned a server error for this guild\'s metadata.';
   }
 
   if (!hasDirectPermissions && roleIds.length > 0 && !ctx.guildStateCache) {
-    return 'Could not verify your server permissions because this message only included role IDs and no cached guild role data was available.';
+    return 'Could not verify your guild permissions because this message only included role IDs and no cached guild role data was available.';
   }
 
   if (!hasDirectPermissions && roleIds.length > 0) {
-    return 'Could not verify your server permissions because Fluxer did not include direct permission bits in the message, and the bot could not resolve your role permissions for this server.';
+    return 'Could not verify your guild permissions because Fluxer did not include direct permission bits in the message, and the bot could not resolve your role permissions for this guild.';
   }
 
   if (!hasDirectPermissions && roleIds.length === 0) {
-    return 'Could not verify your server permissions because Fluxer did not include your permissions or roles in this message.';
+    return 'Could not verify your guild permissions because Fluxer did not include your permissions or roles in this message.';
   }
 
-  return 'Could not verify your server permissions right now because Fluxer did not return enough permission data for this server.';
+  return 'Could not verify your guild permissions right now because Fluxer did not return enough permission data for this guild.';
 }
 
 async function resolveManageGuildPermission(ctx: CommandContextLike) {

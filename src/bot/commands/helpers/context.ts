@@ -174,7 +174,7 @@ export async function prepareSessionConnection(
   ) || 5;
   if (!hadSession && concurrentGuildSessions.length >= maxConcurrentVoiceChannels) {
     throw new ValidationError(
-      `This server already has the maximum number of active voice sessions (${maxConcurrentVoiceChannels}).`
+      `This guild already has the maximum number of active voice sessions (${maxConcurrentVoiceChannels}).`
     );
   }
 

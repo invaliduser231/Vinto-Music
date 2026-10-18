@@ -90,7 +90,7 @@ test('config command rejects users without manage guild permission', async () =>
         async info() {},
       },
     } as unknown),
-    /Manage Server/
+    /Manage Guild/
   );
 });
 
@@ -177,7 +177,7 @@ test('config command rejects REST role fallback without manage guild bit', async
         async info() {},
       },
     } as unknown),
-    /Manage Server/
+    /Manage Guild/
   );
 });
 
@@ -325,6 +325,6 @@ test('config command reports role-list access problems clearly', async () => {
         async info() {},
       },
     } as unknown),
-    /denied the bot access to this server's role list/
+    /denied the bot access to this guild's role list/
   );
 });

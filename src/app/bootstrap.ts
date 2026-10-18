@@ -108,7 +108,7 @@ async function pushFluxerListStats(opts: {
   apiBase: string;
   botId: string;
   apiKey: string;
-  serverCount: number;
+  guildCount: number;
 }): Promise<void> {
   const url = `${opts.apiBase}/api/bots/${encodeURIComponent(opts.botId)}/stats`;
   const res = await fetch(url, {
@@ -117,7 +117,7 @@ async function pushFluxerListStats(opts: {
       Authorization: `Bearer ${opts.apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ serverCount: opts.serverCount }),
+    body: JSON.stringify({ serverCount: opts.guildCount }),
     signal: AbortSignal.timeout(10_000),
   });
   if (!res.ok) {
@@ -550,8 +550,8 @@ export async function startApp() {
       fluxerlistLogger.debug('Skipping FluxerList stats push: bot id not resolved yet', { reason });
       return;
     }
-    const serverCount = await fetchCurrentGuildCount(rest).catch(() => null);
-    if (!Number.isFinite(serverCount)) {
+    const guildCount = await fetchCurrentGuildCount(rest).catch(() => null);
+    if (guildCount == null || !Number.isFinite(guildCount)) {
       fluxerlistLogger.debug('Skipping FluxerList stats push: guild count unavailable', { reason });
       return;
     }
@@ -560,9 +560,9 @@ export async function startApp() {
         apiBase: config.fluxerlistApiBase,
         botId,
         apiKey: config.fluxerlistApiKey,
-        serverCount: serverCount as number,
+        guildCount,
       });
-      fluxerlistLogger.info('FluxerList stats pushed', { reason, botId, serverCount });
+      fluxerlistLogger.info('FluxerList stats pushed', { reason, botId, guildCount });
     } catch (err) {
       fluxerlistLogger.warn('FluxerList stats push failed', {
         reason,

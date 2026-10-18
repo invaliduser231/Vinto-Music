@@ -642,10 +642,10 @@ async function handleBlend(ctx: CommandContextLike, lastfm: LastFmBundle): Promi
 
 async function handleLeaderboard(ctx: CommandContextLike, lastfm: LastFmBundle): Promise<void> {
   const scope = String(ctx.args[1] ?? 'global').trim().toLowerCase();
-  const serverScope = scope === 'server' || scope === 'guild';
+  const guildScope = scope === 'guild' || scope === 'server';
 
   let userIds: string[] | null = null;
-  if (serverScope) {
+  if (guildScope) {
     ensureGuild(ctx);
     userIds = await collectGuildUserIds(ctx);
     if (!userIds.length) {
@@ -661,7 +661,7 @@ async function handleLeaderboard(ctx: CommandContextLike, lastfm: LastFmBundle):
   }
 
   const lines = top.map((entry, index) => `${index + 1}. ${entry.username} ${formatCount(entry.scrobbleCount, ctx.t)}`);
-  const title = serverScope ? ctx.t('lastfm.leaderboardServer') : ctx.t('lastfm.leaderboardGlobal');
+  const title = guildScope ? ctx.t('lastfm.leaderboardGuild') : ctx.t('lastfm.leaderboardGlobal');
 
   await ctx.sendPaginated([
     buildInfoPayload(

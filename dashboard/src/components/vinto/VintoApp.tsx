@@ -221,7 +221,7 @@ export function VintoApp() {
   };
 
   const activeGuild = visibleGuilds.find((g) => g.id === devSettings.guildId);
-  const guildName = activeGuild?.name ?? session.guildName ?? 'Server';
+  const guildName = activeGuild?.name ?? session.guildName ?? 'Guild';
 
   const channelNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -305,7 +305,7 @@ export function VintoApp() {
     ];
 
     if (guildSettingsHook.settings?.canManage) {
-      misc.push({ id: 'open:settings', group: 'Server', label: 'Open server settings', run: () => setSettingsOpen(true) });
+      misc.push({ id: 'open:settings', group: 'Guild', label: 'Open guild settings', run: () => setSettingsOpen(true) });
     }
 
     return [...viewCommands, ...misc, ...playback];
@@ -533,7 +533,7 @@ export function VintoApp() {
             ) : null}
             {guildSettingsHook.settings?.canManage ? (
               <button type="button" className="vinto-btn vinto-btn-ghost" onClick={() => setSettingsOpen(true)}>
-                <SlidersHorizontal size={17} /> Server settings
+                <SlidersHorizontal size={17} /> Guild settings
               </button>
             ) : null}
             {user ? (

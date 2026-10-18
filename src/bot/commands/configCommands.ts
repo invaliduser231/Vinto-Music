@@ -442,7 +442,7 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
     name: 'language',
     aliases: ['lang', 'sprache', 'idioma'],
     description: 'Show or change the language used for bot replies.',
-    usage: 'language [en|de|pt-BR|server <code>|reset]',
+    usage: 'language [en|de|pt-BR|guild <code>|reset]',
     async execute(ctx: CommandContextLike) {
       const localeList = SUPPORTED_LOCALES.join(', ');
       const library = requireLibrary(ctx);
@@ -492,11 +492,11 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
         const requested = String(rest[0] ?? '').trim();
         if (!requested) {
           const current = normalizeLocale(guildConfig.settings.language) ?? ctx.locale;
-          await ctx.reply.info(ctx.t('language.serverCurrent', describe(current)), [availableField]);
+          await ctx.reply.info(ctx.t('language.guildCurrent', describe(current)), [availableField]);
           return;
         }
 
-        await ensureManageGuildAccess(ctx, 'access.changeServerLanguage');
+        await ensureManageGuildAccess(ctx, 'access.changeGuildLanguage');
 
         const locale = normalizeLocale(requested);
         if (!locale) {
@@ -504,7 +504,7 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
         }
 
         await updateGuildConfig(ctx, { settings: { language: locale } });
-        await ctx.reply.success(translate('language.serverUpdated', locale, describe(locale)));
+        await ctx.reply.success(translate('language.guildUpdated', locale, describe(locale)));
         return;
       }
 

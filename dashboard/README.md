@@ -17,7 +17,7 @@ Open http://localhost:3000. Mock mode uses local sample data.
 
 1. Enable the bot dashboard API (`DASHBOARD_API_ENABLED=1` in the bot `.env`).
 2. Set `NEXT_PUBLIC_USE_MOCK_SESSION=0` in `dashboard/.env.local`.
-3. Sign in with Fluxer OAuth when configured, pick a server, then join a voice channel on Fluxer.
+3. Sign in with Fluxer OAuth when configured, pick a guild, then join a voice channel on Fluxer.
 
 Without OAuth, set guild, channel, and API credentials in the connect panel manually.
 

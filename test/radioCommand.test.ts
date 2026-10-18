@@ -836,7 +836,7 @@ test('station save requires manage server when no DJ roles are configured', asyn
       },
       async safeTyping() {},
     } as never)),
-    (error: unknown) => error instanceof Error && /Manage Server/i.test(error.message)
+    (error: unknown) => error instanceof Error && /Manage Guild/i.test(error.message)
   );
 
   assert.equal(saved, false);

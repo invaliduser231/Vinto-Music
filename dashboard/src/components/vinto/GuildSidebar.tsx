@@ -14,7 +14,7 @@ export function GuildSidebar({
   onSelectGuild: (guildId: string) => void;
 }) {
   return (
-    <nav className="vinto-guild-sidebar" aria-label="Servers">
+    <nav className="vinto-guild-sidebar" aria-label="Guilds">
       {guilds.map((guild) => (
         <button
           type="button"

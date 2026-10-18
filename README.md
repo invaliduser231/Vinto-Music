@@ -12,7 +12,7 @@ Resilient, self-hosted music bot for Fluxer with persistent music data, queue sa
 [![Monitoring](https://img.shields.io/badge/Monitoring-healthz%20%7C%20readyz%20%7C%20metrics-0A66C2?style=for-the-badge)](#what-it-does)
 
 [![Invite Bot](https://img.shields.io/badge/Invite-Hosted%20Bot-ff2d78?style=for-the-badge)](https://web.fluxer.app/oauth2/authorize?client_id=1474774210677452817&scope=bot&permissions=3525696)
-[![Support Server](https://img.shields.io/badge/Support-Vinto%20Server-2ea44f?style=for-the-badge)](https://fluxer.gg/qDoq4Tf0)
+[![Support Guild](https://img.shields.io/badge/Support-Vinto%20Guild-2ea44f?style=for-the-badge)](https://fluxer.gg/qDoq4Tf0)
 [![Website](https://img.shields.io/badge/Website-vinto.music-f54b8a?style=for-the-badge)](https://vinto.music)
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Q5Q31VDH1Z)
@@ -271,7 +271,7 @@ Default prefix: `!`
 
 ### Last.fm
 
-Available when `LASTFM_ENABLED=1`. Each listener links their own account, nothing is enabled server-wide.
+Available when `LASTFM_ENABLED=1`. Each listener links their own account, nothing is enabled guild-wide.
 
 - `lastfm connect` / `lastfm disconnect` / `lastfm status`
 - `lastfm on` / `lastfm off` to pause scrobbling without unlinking
@@ -279,7 +279,7 @@ Available when `LASTFM_ENABLED=1`. Each listener links their own account, nothin
 - `lastfm top [artists|tracks|albums] [7d|1m|3m|6m|1y|all] [@user]`
 - `lastfm compare <@user>` for a taste match score
 - `lastfm blend` builds a queue from the top artists of everyone currently in the voice channel
-- `lastfm leaderboard [server|global]`
+- `lastfm leaderboard [guild|global]`
 - `fmplay [@user]` queues the track someone scrobbled last
 - `love` / `unlove` for the currently playing track
 - `autoplay [on|off]` controls Last.fm recommendations for the current voice channel
