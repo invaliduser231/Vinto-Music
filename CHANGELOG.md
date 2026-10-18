@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.13.2] - 2026-10-18
+
+- Fixes:
+  - a restarted shard no longer reports "Another process is running with the same shard id". The old process removed its heartbeat only at the end of shutdown, after Docker had already stopped it, and the new process took the leftover record for a second live process. The heartbeat is now removed first, and a conflict is only reported when another process overwrites the record after this one wrote it
+- Tests: covered a leftover heartbeat after a restart
+
 ## [0.13.1] - 2026-10-18
 
 - Stats:
