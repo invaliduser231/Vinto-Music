@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { guildBelongsToShard } from '../core/sharding.ts';
+import { guildBelongsToShard, shardAssignmentFromConfig } from '../core/sharding.ts';
 import { VoiceConnection, type EarrapeDetectionEvent } from '../voice/VoiceConnection.ts';
 import { MusicPlayer } from '../player/MusicPlayer.ts';
 import type {
@@ -1054,10 +1054,7 @@ export class SessionManager extends EventEmitter {
   }
 
   _ownsGuild(guildId: unknown) {
-    return guildBelongsToShard(guildId, {
-      shardId: Number(this.config?.shardId ?? 0),
-      shardCount: Number(this.config?.shardCount ?? 1),
-    });
+    return guildBelongsToShard(guildId, shardAssignmentFromConfig(this.config));
   }
 
   async restorePersistentVoiceSessions() {

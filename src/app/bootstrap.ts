@@ -30,6 +30,7 @@ import { sanitizeBrokenLocalProxyEnv } from './proxy.ts';
 import { verifyApiConnectivity, resolveGatewayUrl } from './connectivity.ts';
 import { bindGatewayMetrics, bindSessionMetrics, createAppMetrics } from './metrics.ts';
 import { isGatewayRecovering, unhealthyExitThresholdMs } from './unhealthyExit.ts';
+import { isPrimaryShard } from '../core/sharding.ts';
 import type { SessionManagerOptions } from '../types/domain.ts';
 const PRESENCE_ROTATION_INTERVAL_MS = 10 * 60 * 1000;
 const RSS_EXIT_CONSECUTIVE_BREACHES = 3;
@@ -352,6 +353,7 @@ export async function startApp() {
       logger: logger.child('scrobbler'),
       minDurationSec: config.lastfmScrobbleMinSeconds,
       fallbackLocale: config.defaultLanguage,
+      flushRetries: isPrimaryShard(config),
       metrics: {
         scrobblesTotal: metricSet.lastfmScrobblesTotal,
         scrobbleFailuresTotal: metricSet.lastfmScrobbleFailuresTotal,
@@ -542,6 +544,7 @@ export async function startApp() {
   const fluxerlistLogger = logger.child('fluxerlist');
   const pushFluxerListStatsSafe = async (reason: string): Promise<void> => {
     if (!config.fluxerlistStatsEnabled || !config.fluxerlistApiKey) return;
+    if (!isPrimaryShard(config)) return;
     const botId = config.fluxerlistBotId ?? resolvedBotUserId;
     if (!botId) {
       fluxerlistLogger.debug('Skipping FluxerList stats push: bot id not resolved yet', { reason });
@@ -831,7 +834,7 @@ export async function startApp() {
     }, PRESENCE_ROTATION_INTERVAL_MS);
     presenceUpdateHandle.unref?.();
   }
-  if (config.fluxerlistStatsEnabled && config.fluxerlistApiKey) {
+  if (config.fluxerlistStatsEnabled && config.fluxerlistApiKey && isPrimaryShard(config)) {
     fluxerlistStatsHandle = setInterval(() => {
       pushFluxerListStatsSafe('interval').catch(() => null);
     }, config.fluxerlistStatsIntervalMs);

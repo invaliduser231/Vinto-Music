@@ -1,5 +1,6 @@
 import { SEARCH_PICK_EMOJIS, applyReplyOptionsToPayload, summarizeTrack } from './commandRouterUtils.ts';
 import { createTranslator, type Locale } from '../i18n/index.ts';
+import { guildBelongsToShard, shardAssignmentFromConfig } from '../core/sharding.ts';
 import type { MessagePayload, ReplyOptions, ResponderEmbedOptions } from '../types/core.ts';
 
 type ReplyField = { name: string; value: string; inline?: boolean };
@@ -44,6 +45,8 @@ type SearchSelectionState = {
 type RouterLike = {
   config: {
     searchPickTimeoutMs?: number;
+    shardId?: number;
+    shardCount?: number;
   };
   rest: {
     addReactionToMessage?: (channelId: string, messageId: string, emoji: string) => Promise<unknown>;
@@ -120,9 +123,11 @@ export async function runWeeklyRecapSweep(router: RouterLike) {
     after = String(lastId);
   }
 
+  const assignment = shardAssignmentFromConfig(router.config);
   for (const guild of guilds) {
     const guildId = String(guild?.id ?? '').trim();
     if (!guildId) continue;
+    if (!guildBelongsToShard(guildId, assignment)) continue;
 
     if (!router.library.getGuildFeatureConfig || !router.library.getRecapState || !router.library.buildGuildRecap || !router.library.markRecapSent) continue;
 

@@ -67,6 +67,7 @@ interface ScrobbleServiceOptions {
   botUserId?: string | null;
   minDurationSec?: number;
   fallbackLocale?: string | null;
+  flushRetries?: boolean;
 }
 
 interface ActivePlayback {
@@ -93,6 +94,7 @@ export class ScrobbleService {
   botUserId: string | null;
   minDurationSec: number;
   fallbackLocale: string | null;
+  flushRetries: boolean;
 
   private active: Map<string, ActivePlayback>;
   private sessions: SessionEmitterLike | null;
@@ -111,6 +113,7 @@ export class ScrobbleService {
     this.botUserId = options.botUserId ? String(options.botUserId) : null;
     this.minDurationSec = options.minDurationSec ?? 30;
     this.fallbackLocale = options.fallbackLocale ?? null;
+    this.flushRetries = options.flushRetries !== false;
 
     this.active = new Map();
     this.sessions = null;
@@ -155,7 +158,7 @@ export class ScrobbleService {
       this.tickHandle.unref?.();
     }
 
-    if (!this.retryHandle) {
+    if (this.flushRetries && !this.retryHandle) {
       this.retryHandle = setInterval(() => {
         this._flushRetries().catch((err: unknown) => this._logFailure('retry flush', err));
       }, RETRY_FLUSH_INTERVAL_MS);
