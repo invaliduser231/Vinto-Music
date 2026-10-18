@@ -261,6 +261,7 @@ export type CommandContextLike = {
   guildStateCache?: {
     resolveOwnerId?: (guildId: string) => string | null;
     computeManageGuildPermission?: (guildId: string, roleIds: string[], userId: string) => boolean | null;
+    guildCount?: () => number;
   } | null;
   rest?: {
     sendMessage?: (channelId: string, payload: MessagePayload) => Promise<unknown>;

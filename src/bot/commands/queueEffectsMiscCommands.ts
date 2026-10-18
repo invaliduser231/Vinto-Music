@@ -17,6 +17,7 @@ import {
 } from './commandHelpers.ts';
 import { createProgressReporter } from './responseUtils.ts';
 import { relativeTimestamp } from '../fluxerMarkdown.ts';
+import { shardAssignmentFromConfig } from '../../core/sharding.ts';
 import type { CommandRegistry } from '../commandRegistry.ts';
 import type { CommandContextLike, SessionLike, TrackDataLike } from './helpers/types.ts';
 import type { MessagePayload } from '../../types/core.ts';
@@ -919,60 +920,51 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
       const cachedCounts = getCachedGlobalGuildAndUserCounts(typedCtx.rest);
       const library = typedCtx.library as { getTotalPlays?: () => Promise<number> } | null;
       const totalPlays = library?.getTotalPlays ? await library.getTotalPlays().catch(() => null) : null;
-      const playsField = {
-        name: typedCtx.t('stats.tracksPlayed'),
-        value: totalPlays == null ? typedCtx.t('common.notAvailable') : `\`${totalPlays.toLocaleString(typedCtx.t.locale)}\``,
-        inline: true,
+      const { shardId, shardCount } = shardAssignmentFromConfig({
+        shardId: typedCtx.config.shardId,
+        shardCount: typedCtx.config.shardCount,
+      });
+      const shardGuildCount = typedCtx.guildStateCache?.guildCount?.() ?? null;
+      const userCountLabel = (counts: { userCount?: number | null; incompleteGuildCount: number } | null, pending: string) => {
+        if (counts?.userCount == null) return pending;
+        return counts.incompleteGuildCount > 0
+          ? typedCtx.t('stats.partial', { count: counts.userCount })
+          : String(counts.userCount);
       };
-      await progress.info(typedCtx.t('stats.title'), [
+      const buildFields = (guildTotal: string, userTotal: string) => [
         { name: typedCtx.t('stats.uptime'), value: formatUptimeCompact(uptimeSeconds), inline: true },
-        { name: typedCtx.t('stats.guildSessions'), value: String(typedCtx.sessions.sessions?.size ?? 0), inline: true },
-        { name: typedCtx.t('stats.serversTotal'), value: cachedCounts?.guildCount == null ? typedCtx.t('stats.counting') : String(cachedCounts.guildCount), inline: true },
+        { name: typedCtx.t(shardCount > 1 ? 'stats.shardSessions' : 'stats.guildSessions'), value: String(typedCtx.sessions.sessions?.size ?? 0), inline: true },
+        { name: typedCtx.t('stats.guildsTotal'), value: guildTotal, inline: true },
+        { name: typedCtx.t('stats.usersTotal'), value: userTotal, inline: true },
+        { name: typedCtx.t('stats.shard'), value: typedCtx.t('stats.shardValue', { id: shardId, count: shardCount }), inline: true },
+        ...(shardCount > 1 && shardGuildCount != null
+          ? [{ name: typedCtx.t('stats.shardGuilds'), value: String(shardGuildCount), inline: true }]
+          : []),
+        { name: typedCtx.t('stats.heapUsed'), value: `${Math.round(mem.heapUsed / 1024 / 1024)} MB`, inline: true },
         {
-          name: typedCtx.t('stats.usersTotal'),
-          value: cachedCounts?.userCount == null
-            ? typedCtx.t('stats.counting')
-            : (cachedCounts.incompleteGuildCount > 0 ? typedCtx.t('stats.partial', { count: cachedCounts.userCount }) : String(cachedCounts.userCount)),
+          name: typedCtx.t('stats.tracksPlayed'),
+          value: totalPlays == null ? typedCtx.t('common.notAvailable') : `\`${totalPlays.toLocaleString(typedCtx.t.locale)}\``,
           inline: true,
         },
-        { name: typedCtx.t('stats.heapUsed'), value: `${Math.round(mem.heapUsed / 1024 / 1024)} MB`, inline: true },
-        playsField,
-      ]);
+      ];
+
+      await progress.info(typedCtx.t('stats.title'), buildFields(
+        cachedCounts?.guildCount == null ? typedCtx.t('stats.counting') : String(cachedCounts.guildCount),
+        userCountLabel(cachedCounts, typedCtx.t('stats.counting')),
+      ));
 
       if (cachedCounts?.guildCount == null) {
         const fastGuildCount = await fetchGlobalGuildCount(typedCtx.rest).catch(() => null);
         if (fastGuildCount != null) {
-          await progress.info(typedCtx.t('stats.title'), [
-            { name: typedCtx.t('stats.uptime'), value: formatUptimeCompact(uptimeSeconds), inline: true },
-            { name: typedCtx.t('stats.guildSessions'), value: String(typedCtx.sessions.sessions?.size ?? 0), inline: true },
-            { name: typedCtx.t('stats.serversTotal'), value: String(fastGuildCount), inline: true },
-            { name: typedCtx.t('stats.usersTotal'), value: typedCtx.t('stats.counting'), inline: true },
-            { name: typedCtx.t('stats.heapUsed'), value: `${Math.round(mem.heapUsed / 1024 / 1024)} MB`, inline: true },
-        playsField,
-          ]);
+          await progress.info(typedCtx.t('stats.title'), buildFields(String(fastGuildCount), typedCtx.t('stats.counting')));
         }
       }
 
       const globalCounts = await fetchCachedGlobalGuildAndUserCounts(typedCtx.rest).catch(() => null);
-      const serverCountLabel = globalCounts?.guildCount == null
-        ? typedCtx.t('common.notAvailable')
-        : String(globalCounts.guildCount);
-      const userCountLabel = globalCounts?.userCount == null
-        ? typedCtx.t('common.notAvailable')
-        : (
-          globalCounts.incompleteGuildCount > 0
-            ? typedCtx.t('stats.partial', { count: globalCounts.userCount })
-            : String(globalCounts.userCount)
-        );
-
-      await progress.info(typedCtx.t('stats.title'), [
-        { name: typedCtx.t('stats.uptime'), value: formatUptimeCompact(uptimeSeconds), inline: true },
-        { name: typedCtx.t('stats.guildSessions'), value: String(typedCtx.sessions.sessions?.size ?? 0), inline: true },
-        { name: typedCtx.t('stats.serversTotal'), value: serverCountLabel, inline: true },
-        { name: typedCtx.t('stats.usersTotal'), value: userCountLabel, inline: true },
-        { name: typedCtx.t('stats.heapUsed'), value: `${Math.round(mem.heapUsed / 1024 / 1024)} MB`, inline: true },
-        playsField,
-      ]);
+      await progress.info(typedCtx.t('stats.title'), buildFields(
+        globalCounts?.guildCount == null ? typedCtx.t('common.notAvailable') : String(globalCounts.guildCount),
+        userCountLabel(globalCounts, typedCtx.t('common.notAvailable')),
+      ));
     },
   }));
 }

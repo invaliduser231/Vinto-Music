@@ -100,6 +100,10 @@ export class GuildStateCache {
     });
   }
 
+  guildCount(): number {
+    return this.guilds.size;
+  }
+
   resolveOwnerId(guildId: unknown): string | null {
     const guild = this.guilds.get(String(guildId ?? '').trim());
     return guild?.ownerId ?? null;
