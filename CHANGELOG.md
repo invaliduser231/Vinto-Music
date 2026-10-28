@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.13.3] - 2026-10-28
+
+- Fixes:
+  - stale server deafen no longer blocks every join, the bot lifts it with Deafen Members or says how to fix it
+- Gateway: owning shard logs guild joins and leaves
+- Tests: server deafen handling, join and leave logging
+
 ## [0.13.2] - 2026-10-18
 
 - Fixes:
