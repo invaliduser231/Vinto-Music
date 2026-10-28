@@ -73,6 +73,7 @@ type HelloPayload = {
 type ReadyPayload = {
   session_id?: unknown;
   user?: { username?: unknown } | null;
+  guilds?: Array<{ id?: unknown } | null> | null;
 };
 
 function isGatewayPacket(value: unknown): value is GatewayPacket {
@@ -151,6 +152,7 @@ export class Gateway extends EventEmitter {
   shardId: number;
   shardCount: number;
   foreignGuildIds: Set<string>;
+  ownGuildIds: Set<string>;
   constructor(options: GatewayOptions) {
     super();
 
@@ -164,6 +166,7 @@ export class Gateway extends EventEmitter {
     );
     this.logger = options.logger ?? null;
     this.foreignGuildIds = new Set();
+    this.ownGuildIds = new Set();
 
     this.reconnectBaseDelayMs = options.reconnectBaseDelayMs ?? 1_000;
     this.reconnectMaxDelayMs = options.reconnectMaxDelayMs ?? 30_000;
@@ -433,6 +436,7 @@ export class Gateway extends EventEmitter {
           const ready = d as ReadyPayload | null | undefined;
           this.sessionId = String(ready?.session_id ?? '') || null;
           this.reconnectAttempts = 0;
+          this._seedOwnGuilds(ready);
           this.logger?.info?.('Gateway ready', {
             user: String(ready?.user?.username ?? 'unknown'),
           });
@@ -444,6 +448,7 @@ export class Gateway extends EventEmitter {
         }
 
         if (eventName && shouldDeliverDispatch(eventName, d, this._shardAssignment())) {
+          this._trackOwnGuildMembership(eventName, d);
           this.emit(eventName, d);
         } else if (eventName) {
           this._noteForeignDispatch(eventName, d);
@@ -466,6 +471,31 @@ export class Gateway extends EventEmitter {
 
   _shardAssignment(): ShardAssignment {
     return { shardId: this.shardId, shardCount: this.shardCount };
+  }
+
+  _seedOwnGuilds(ready: ReadyPayload | null | undefined) {
+    this.ownGuildIds.clear();
+    for (const guild of ready?.guilds ?? []) {
+      const guildId = String(guild?.id ?? '').trim();
+      if (guildId) this.ownGuildIds.add(guildId);
+    }
+  }
+
+  _trackOwnGuildMembership(eventName: string, data: unknown) {
+    if (eventName !== 'GUILD_CREATE' && eventName !== 'GUILD_DELETE') return;
+    const guildId = dispatchGuildId(eventName, data);
+    if (!guildId) return;
+
+    if (eventName === 'GUILD_CREATE') {
+      if (this.ownGuildIds.has(guildId)) return;
+      this.ownGuildIds.add(guildId);
+      this.logger?.info?.('Joined guild', { guildId, shardId: this.shardId });
+      return;
+    }
+
+    if ((data as { unavailable?: unknown } | null)?.unavailable === true) return;
+    if (!this.ownGuildIds.delete(guildId)) return;
+    this.logger?.info?.('Left guild', { guildId, shardId: this.shardId });
   }
 
   _noteForeignDispatch(eventName: string, data: unknown) {

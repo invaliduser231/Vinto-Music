@@ -95,3 +95,23 @@ test('the owning shard still receives the events of its guild', () => {
 
   assert.deepEqual(received, [SHARD_1_GUILD]);
 });
+
+test('the owning shard logs joins and leaves, but not guilds it already had at ready', () => {
+  const { internal, logged } = createGateway(0, 2);
+  const OTHER_SHARD_0_GUILD = '1488115521506995110';
+
+  dispatch(internal, 'READY', { session_id: 's', guilds: [{ id: SHARD_0_GUILD, unavailable: true }] }, 1);
+  dispatch(internal, 'GUILD_CREATE', { id: SHARD_0_GUILD }, 2);
+  dispatch(internal, 'GUILD_CREATE', { id: OTHER_SHARD_0_GUILD }, 3);
+  dispatch(internal, 'GUILD_CREATE', { id: OTHER_SHARD_0_GUILD }, 4);
+  dispatch(internal, 'GUILD_DELETE', { id: SHARD_0_GUILD, unavailable: true }, 5);
+  dispatch(internal, 'GUILD_DELETE', { id: OTHER_SHARD_0_GUILD }, 6);
+
+  const membership = logged
+    .filter((line) => line.message === 'Joined guild' || line.message === 'Left guild')
+    .map((line) => `${line.message}:${String(line.meta.guildId)}`);
+  assert.deepEqual(membership, [
+    `Joined guild:${OTHER_SHARD_0_GUILD}`,
+    `Left guild:${OTHER_SHARD_0_GUILD}`,
+  ]);
+});
