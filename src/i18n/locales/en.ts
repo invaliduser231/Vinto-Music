@@ -389,7 +389,7 @@ export const en = {
   'errors.guildConfigUnavailable': 'Guild config store is not available.',
   'errors.libraryUnavailable': 'Music library storage is unavailable.',
   'errors.noVoicePermission': 'I do not have permission to connect and speak in that voice channel.',
-  'errors.botDeafened': 'Cannot connect to VC because I am Deafened - please undeafen me.',
+  'errors.botDeafened': 'A moderator server-deafened me here, so I cannot play audio. Give me the Deafen Members permission so I can lift it myself, or re-invite me.',
   'errors.voiceConnectTimeout': 'The voice server did not answer in time, so I could not join. Run the command again.',
   'errors.voiceGatewayOffline': 'I lost my connection to Fluxer for a moment, so I could not join. Run the command again.',
   'errors.notExecutable': 'Command "{command}" is not executable.',

@@ -391,7 +391,7 @@ export const ptBR: Catalog = {
   'errors.guildConfigUnavailable': 'O armazenamento de configuração da guild não está disponível.',
   'errors.libraryUnavailable': 'O armazenamento da biblioteca de música não está disponível.',
   'errors.noVoicePermission': 'Não tenho permissão para entrar e falar nesse canal de voz.',
-  'errors.botDeafened': 'Não consigo entrar no canal de voz porque estou com o áudio desativado, por favor, reative.',
+  'errors.botDeafened': 'Um moderador me ensurdeceu neste servidor, então não consigo tocar áudio. Dê-me a permissão Ensurdecer membros para eu remover isso sozinho, ou me convide de novo.',
   'errors.voiceConnectTimeout': 'O servidor de voz não respondeu a tempo, então não consegui entrar. Execute o comando novamente.',
   'errors.voiceGatewayOffline': 'Minha conexão com o Fluxer caiu por um instante, então não consegui entrar. Execute o comando novamente.',
   'errors.notExecutable': 'O comando "{command}" não é executável.',

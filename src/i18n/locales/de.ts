@@ -391,7 +391,7 @@ export const de: Catalog = {
   'errors.guildConfigUnavailable': 'Der Guild-Konfigurationsspeicher ist nicht verfügbar.',
   'errors.libraryUnavailable': 'Der Musikbibliothek-Speicher ist nicht verfügbar.',
   'errors.noVoicePermission': 'Mir fehlt die Berechtigung, diesem Sprachkanal beizutreten und dort zu sprechen.',
-  'errors.botDeafened': 'Ich kann dem Sprachkanal nicht beitreten, weil ich stummgeschaltet bin, bitte hebe das auf.',
+  'errors.botDeafened': 'Ein Moderator hat mich hier serverseitig taub geschaltet, deshalb kann ich nichts abspielen. Gib mir die Berechtigung Mitglieder taub schalten, damit ich das selbst aufheben kann, oder lade mich neu ein.',
   'errors.voiceConnectTimeout': 'Der Sprachserver hat nicht rechtzeitig geantwortet, deshalb konnte ich nicht beitreten. Führe den Befehl noch einmal aus.',
   'errors.voiceGatewayOffline': 'Meine Verbindung zu Fluxer war kurz unterbrochen, deshalb konnte ich nicht beitreten. Führe den Befehl noch einmal aus.',
   'errors.notExecutable': 'Der Befehl „{command}" ist nicht ausführbar.',

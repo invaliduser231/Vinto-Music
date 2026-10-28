@@ -450,6 +450,13 @@ export class RestClient {
     });
   }
 
+  async setGuildMemberDeaf(guildId: string, userId: string, deaf: boolean) {
+    return this.request('PATCH', `/guilds/${guildId}/members/${userId}`, {
+      body: { deaf },
+      retryUnsafe: false,
+    });
+  }
+
   async listGuildRoles(guildId: string) {
     return this.request('GET', `/guilds/${guildId}/roles`);
   }

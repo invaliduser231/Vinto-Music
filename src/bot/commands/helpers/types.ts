@@ -278,6 +278,7 @@ export type CommandContextLike = {
     ) => Promise<unknown>;
     editMessage?: (channelId: string, messageId: string, payload: MessagePayload) => Promise<unknown>;
     getGuildMember?: (guildId: string, userId: string) => Promise<unknown>;
+    setGuildMemberDeaf?: (guildId: string, userId: string, deaf: boolean) => Promise<unknown>;
     getGuild?: (guildId: string) => Promise<unknown>;
     listCurrentUserGuilds?: (options: { limit: number; after?: string; withCounts?: boolean }) => Promise<unknown>;
     listGuildRoles?: (guildId: string) => Promise<unknown>;

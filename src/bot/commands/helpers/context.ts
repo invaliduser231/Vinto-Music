@@ -109,6 +109,23 @@ async function isBotCurrentlyDeafened(ctx: CommandContextLike): Promise<boolean>
   }
 }
 
+async function tryLiftBotServerDeafen(ctx: CommandContextLike): Promise<boolean> {
+  if (!ctx.botUserId || typeof ctx?.rest?.setGuildMemberDeaf !== 'function') return false;
+
+  try {
+    await ctx.rest.setGuildMemberDeaf(ctx.guildId, ctx.botUserId, false);
+  } catch {
+    return false;
+  }
+  return !(await isBotCurrentlyDeafened(ctx));
+}
+
+export async function ensureBotNotDeafened(ctx: CommandContextLike): Promise<void> {
+  if (!(await isBotCurrentlyDeafened(ctx))) return;
+  if (await tryLiftBotServerDeafen(ctx)) return;
+  throw new ValidationError(ctx.t('errors.botDeafened'));
+}
+
 export async function resolveActiveVoiceChannelOrThrow(ctx: CommandContextLike, options: { fallbackCommand?: string | null } = {}) {
   const fallbackCommand = String(options.fallbackCommand ?? 'play').trim() || 'play';
   let resolvedVoice = ctx.voiceStateStore.resolveMemberVoiceChannel(ctx.message);
@@ -155,9 +172,7 @@ export async function prepareSessionConnection(
     }
   }
 
-  if (await isBotCurrentlyDeafened(ctx)) {
-    throw new ValidationError(ctx.t('errors.botDeafened'));
-  }
+  await ensureBotNotDeafened(ctx);
 
   const selector = { voiceChannelId: resolvedVoice };
   const hadSession = ctx.sessions.has(ctx.guildId, selector);
