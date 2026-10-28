@@ -56,6 +56,7 @@ import {
 import { detectRadioNowPlaying } from './helpers/radioNowPlaying.ts';
 import { ensurePermissionCheck } from '../permissions/require.ts';
 import type { CommandRegistry } from '../commandRegistry.ts';
+import { clearAutoPause } from '../sessionManager/autoPause.ts';
 import type { EmbedField, MessagePayload } from '../../types/core.ts';
 import type { CommandContextLike, SessionLike, TrackDataLike } from './helpers/types.ts';
 import { buildCommandUsage, buildHelpPayload } from './helpers/formatting.ts';
@@ -1351,6 +1352,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       const session = getSessionOrThrow(ctx);
       ensureDjAccess(ctx, session, 'access.pausePlayback');
 
+      clearAutoPause(session);
       if (!session.player.pause()) {
         await ctx.reply.warning(ctx.t('pause.cannot'));
         return;
@@ -1371,6 +1373,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
       const session = getSessionOrThrow(ctx);
       ensureDjAccess(ctx, session, 'access.resumePlayback');
 
+      clearAutoPause(session);
       if (!session.player.resume()) {
         await ctx.reply.warning(ctx.t('resume.cannot'));
         return;

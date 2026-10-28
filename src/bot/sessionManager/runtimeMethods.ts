@@ -10,6 +10,7 @@ import {
   toSeekStartSec,
   toSnapshotPersistOptions,
 } from './runtimeHelpers.ts';
+import { isAutoPausedForEmptyChannel } from './autoPause.ts';
 import type { Session, SessionSnapshotDocument, Track, VoiceProfileSettings } from '../../types/domain.ts';
 import type { SessionManager } from '../sessionManager.ts';
 
@@ -127,7 +128,7 @@ export const runtimeMethods: RuntimeMethods & ThisType<SessionManager> = {
         return;
       }
 
-      const active = this._isSessionPlaybackActive(session);
+      const active = this._isSessionPlaybackActive(session) && !isAutoPausedForEmptyChannel(session);
       const hasHumanListeners = session.idleTimeoutIgnoreListeners
         ? false
         : this._hasHumanListeners(session);

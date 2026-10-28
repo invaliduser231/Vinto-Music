@@ -140,6 +140,21 @@ export interface SessionRestoreState {
   suppressStartupErrors?: boolean;
 }
 
+export type SessionAutoPauseReason = 'empty' | 'muted';
+
+export interface SessionAutoPauseState {
+  reasons: Set<SessionAutoPauseReason>;
+  botMuted: boolean;
+}
+
+export interface VoiceStateChange {
+  guildId: string;
+  userId: string;
+  channelId: string | null;
+  previousChannelId: string | null;
+  mute: boolean;
+}
+
 export interface VoiceConnectionLike {
   connected?: boolean;
   channelId?: string | null;
@@ -178,6 +193,7 @@ export interface MusicPlayerLike {
   emit?: (event: string, ...args: unknown[]) => unknown;
   play?: () => Promise<unknown>;
   pause?: () => unknown;
+  resume?: () => unknown;
   stop?: () => unknown;
   clearQueue?: () => unknown;
   setVolumePercent?: (value: number) => unknown;
@@ -219,6 +235,7 @@ export interface Session {
   diagnostics?: SessionDiagnosticsState;
   snapshot?: SessionSnapshotState;
   restoreState?: SessionRestoreState;
+  autoPause?: SessionAutoPauseState;
 }
 
 export interface SessionKickTimerMeta {
@@ -315,6 +332,7 @@ export interface RestAdapterLike {
 export interface VoiceStateStoreLike {
   countUsersInChannel?: (guildId: string, channelId: string, excludedUserIds?: string[]) => number;
   getUsersInChannel?: (guildId: string, channelId: string) => string[];
+  on?: (event: 'change', listener: (change: VoiceStateChange) => void) => unknown;
 }
 
 export interface PipelineProcess {

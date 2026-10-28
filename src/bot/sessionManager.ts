@@ -13,8 +13,10 @@ import type {
   SessionSnapshotDocument,
   SessionSelector,
   Track,
+  VoiceStateChange,
   VoiceStateStoreLike,
 } from '../types/domain.ts';
+import { evaluateAutoPause } from './sessionManager/autoPause.ts';
 import {
   createSessionKey,
   hasPendingTracks,
@@ -161,6 +163,7 @@ export class SessionManager extends EventEmitter {
     this.snapshotFlushHandle = null;
     this.playerSessionListeners = new Map();
     this._startSnapshotFlushLoop();
+    this.voiceStateStore?.on?.('change', (change) => this.handleVoiceStateChange(change));
   }
 
   getMemoryTelemetry(): SessionManagerMemoryTelemetry {
@@ -492,6 +495,31 @@ export class SessionManager extends EventEmitter {
     }
   }
 
+  handleVoiceStateChange(change: VoiceStateChange): void {
+    const isBot = this.botUserId != null && String(change.userId) === this.botUserId;
+    for (const session of this.listByGuild(change.guildId)) {
+      const channelId = toChannelId(session.connection?.channelId);
+      if (!channelId) continue;
+      if (isBot) {
+        if (change.channelId !== channelId) continue;
+        this._applyAutoPause(session, change.mute);
+        continue;
+      }
+      if (change.channelId !== channelId && change.previousChannelId !== channelId) continue;
+      this._applyAutoPause(session);
+    }
+  }
+
+  _applyAutoPause(session: Session, botMuted: boolean | null = null): void {
+    const outcome = evaluateAutoPause(this, session, botMuted);
+    if (!outcome) return;
+    this.logger?.info?.(outcome === 'paused' ? 'Auto-paused playback' : 'Auto-resumed playback', {
+      guildId: session.guildId,
+      sessionId: session.sessionId ?? null,
+      reasons: [...(session.autoPause?.reasons ?? [])],
+    });
+  }
+
   listByGuild(guildId: string): Session[] {
     const safeGuildId = String(guildId ?? '').trim();
     if (!safeGuildId) return [];
@@ -668,6 +696,7 @@ export class SessionManager extends EventEmitter {
       this.touch(guildId, { sessionId: session.sessionId! });
       this.markSnapshotDirty(session, true);
       this._syncPersistentVoiceStateSoon(guildId, 'track_start');
+      this._applyAutoPause(session);
       this.emit('trackStart', { session, track, restoredFromPersistentSession });
       },
 

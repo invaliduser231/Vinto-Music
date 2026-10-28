@@ -1,4 +1,5 @@
 import type { Session, Track } from '../types/domain.ts';
+import { clearAutoPause } from '../bot/sessionManager/autoPause.ts';
 
 const MAX_ENQUEUE_QUERY_LENGTH = 500;
 
@@ -99,8 +100,10 @@ export function executeDashboardAction(session: Session, action: DashboardAction
 
   switch (action.type) {
     case 'pause':
+      clearAutoPause(session);
       return Boolean(player.pause?.());
     case 'resume':
+      clearAutoPause(session);
       return Boolean(player.resume?.());
     case 'skip':
       return Boolean(player.skip?.());

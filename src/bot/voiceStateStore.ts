@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import type { BivariantCallback, LoggerLike } from '../types/core.ts';
 
 type VoiceStateWaiter = {
@@ -9,6 +10,7 @@ type VoiceStatePayload = {
   channel_id?: string | null;
   deaf?: boolean | null;
   self_deaf?: boolean | null;
+  mute?: boolean | null;
 };
 
 type GatewayPayload = {
@@ -29,13 +31,14 @@ type RestLike = {
   getGuildMember?: (guildId: string, userId: string) => Promise<unknown>;
 };
 
-export class VoiceStateStore {
+export class VoiceStateStore extends EventEmitter {
   logger: LoggerLike | undefined;
   guildVoiceStates: Map<string, Map<string, string>>;
   deafenedUsers: Set<string>;
   pendingWaiters: Map<string, VoiceStateWaiter[]>;
 
   constructor(logger?: LoggerLike) {
+    super();
     this.logger = logger;
     this.guildVoiceStates = new Map();
     this.deafenedUsers = new Set();
@@ -68,12 +71,25 @@ export class VoiceStateStore {
     });
 
     gateway.on('VOICE_STATE_UPDATE', (payload: GatewayPayload & VoiceStatePayload) => {
+      const guildId = payload?.guild_id ?? null;
+      const userId = payload?.user_id ?? null;
+      const previousChannelId = guildId && userId
+        ? this.guildVoiceStates.get(guildId)?.get(userId) ?? null
+        : null;
       this._upsert(
-        payload?.guild_id,
-        payload?.user_id,
+        guildId,
+        userId,
         payload?.channel_id ?? null,
         payload?.deaf === true || payload?.self_deaf === true,
       );
+      if (!guildId || !userId) return;
+      this.emit('change', {
+        guildId,
+        userId,
+        channelId: payload?.channel_id ?? null,
+        previousChannelId,
+        mute: payload?.mute === true,
+      });
     });
 
     gateway.on('GUILD_DELETE', (payload: GatewayPayload) => {

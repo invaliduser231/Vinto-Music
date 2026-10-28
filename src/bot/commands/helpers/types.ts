@@ -6,6 +6,7 @@ import type { LastFmClient } from '../../../integrations/lastfm/LastFmClient.ts'
 import type { LastFmAccountStore } from '../../services/lastFmAccountStore.ts';
 import type { ScrobbleService } from '../../services/scrobbleService.ts';
 import type { ShardTotals } from '../../services/shardRegistry.ts';
+import type { SessionAutoPauseState } from '../../../types/domain.ts';
 
 export type LastFmBundle = {
   client: LastFmClient;
@@ -68,6 +69,7 @@ export type SessionLike = {
   targetVoiceChannelId?: string | null;
   textChannelId?: string | null;
   tempDjHandoff?: { userId: string; expiresAt: number } | null;
+  autoPause?: SessionAutoPauseState | null;
   settings: {
     dedupeEnabled: boolean;
     stayInVoiceEnabled: boolean;
