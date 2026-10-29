@@ -57,6 +57,7 @@ import { detectRadioNowPlaying } from './helpers/radioNowPlaying.ts';
 import { ensurePermissionCheck } from '../permissions/require.ts';
 import type { CommandRegistry } from '../commandRegistry.ts';
 import { clearAutoPause } from '../sessionManager/autoPause.ts';
+import { collectPlayableAttachmentUrls } from './helpers/attachments.ts';
 import type { EmbedField, MessagePayload } from '../../types/core.ts';
 import type { CommandContextLike, SessionLike, TrackDataLike } from './helpers/types.ts';
 import { buildCommandUsage, buildHelpPayload } from './helpers/formatting.ts';
@@ -864,13 +865,13 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
   registry.register(createCommand({
     name: 'play',
     aliases: ['p'],
-    description: 'Queue a song or URL.',
-    usage: 'play <query|url>',
+    description: 'Queue a song, URL or attached audio file.',
+    usage: 'play <query|url|attachment>',
     async execute(ctx: PlaybackCommandContext) {
       ensureGuild(ctx);
 
       const { channelId: explicitChannelId, rest } = parseVoiceChannelArgument(ctx.args);
-      const rawQuery = rest.join(' ').trim();
+      const rawQuery = rest.join(' ').trim() || collectPlayableAttachmentUrls(ctx.message).join(' ');
       if (!rawQuery) {
         throw new ValidationError(ctx.t('play.usage', { prefix: ctx.prefix }));
       }

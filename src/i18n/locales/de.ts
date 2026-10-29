@@ -558,7 +558,7 @@ export const de: Catalog = {
   'cmd.pick.description': 'Ein Ergebnis aus deiner letzten Suche auswählen.',
   'cmd.ping.description': 'Aktuelle Latenz anzeigen.',
   'cmd.pitch.description': 'Tonhöhe in Halbtönen verschieben (-12 bis +12).',
-  'cmd.play.description': 'Einen Song oder eine URL einreihen.',
+  'cmd.play.description': 'Einen Song, eine URL oder eine angehängte Audiodatei einreihen.',
   'cmd.playlist.description': 'Dauerhafte Guild-Playlists verwalten.',
   'cmd.playnext.description': 'Einen Song direkt nach dem aktuellen einreihen.',
   'cmd.prefix.description': 'Das Befehlspräfix der Guild anzeigen oder setzen.',

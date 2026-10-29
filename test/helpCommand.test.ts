@@ -152,7 +152,7 @@ test('help command formats command alternatives without spaced pipes', async () 
   assert.ok(sentPayload);
   const payload: HelpPayload = sentPayload as HelpPayload;
   const description = payload.embeds[0]?.description ?? '';
-  assert.match(description, /`!play <query\|url>`/);
+  assert.match(description, /`!play <query\|url\|attachment>`/);
   assert.doesNotMatch(description, /\b \| \b/);
 });
 

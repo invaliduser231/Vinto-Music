@@ -558,7 +558,7 @@ export const ptBR: Catalog = {
   'cmd.pick.description': 'Escolher um resultado da sua última busca.',
   'cmd.ping.description': 'Mostrar a latência atual.',
   'cmd.pitch.description': 'Alterar o tom em semitons (-12 a +12).',
-  'cmd.play.description': 'Colocar uma música ou URL na fila.',
+  'cmd.play.description': 'Colocar uma música, URL ou arquivo de áudio anexado na fila.',
   'cmd.playlist.description': 'Gerenciar playlists permanentes da guild.',
   'cmd.playnext.description': 'Colocar uma música para tocar logo após a atual.',
   'cmd.prefix.description': 'Mostrar ou definir o prefixo de comandos da guild.',

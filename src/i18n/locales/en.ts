@@ -556,7 +556,7 @@ export const en = {
   'cmd.pick.description': 'Pick a result from your latest search.',
   'cmd.ping.description': 'Show current latency.',
   'cmd.pitch.description': 'Set pitch shift in semitones (-12 to +12).',
-  'cmd.play.description': 'Queue a song or URL.',
+  'cmd.play.description': 'Queue a song, URL or attached audio file.',
   'cmd.playlist.description': 'Manage persistent guild playlists.',
   'cmd.playnext.description': 'Queue a song to play right after the current one.',
   'cmd.prefix.description': 'Show or set the guild command prefix.',
