@@ -5,6 +5,7 @@ import type { BivariantCallback, CommandDefinition, MessagePayload } from '../..
 import type { LastFmClient } from '../../../integrations/lastfm/LastFmClient.ts';
 import type { LastFmAccountStore } from '../../services/lastFmAccountStore.ts';
 import type { ScrobbleService } from '../../services/scrobbleService.ts';
+import type { LastFmCrownStore } from '../../services/lastFmCrownStore.ts';
 import type { ShardTotals } from '../../services/shardRegistry.ts';
 import type { SessionAutoPauseState } from '../../../types/domain.ts';
 
@@ -12,6 +13,7 @@ export type LastFmBundle = {
   client: LastFmClient;
   accounts: LastFmAccountStore;
   scrobbler: ScrobbleService | null;
+  crowns?: LastFmCrownStore | null;
 };
 
 export type GuildConfigLike = {

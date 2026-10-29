@@ -451,3 +451,86 @@ test('love marks the playing track and unlove clears it', async () => {
   assert.deepEqual(shared.loveCalls, ['love:M83 - Midnight City', 'unlove:M83 - Midnight City']);
   assert.ok(love.replyCalls[0]?.startsWith('success:Loved **M83 - Midnight City**.'));
 });
+
+function createCrownStore() {
+  const crowns = new Map<string, { userId: string; username: string; playcount: number }>();
+  return {
+    crowns,
+    async record(_guildId: string, artist: string, holder: { userId: string; username: string; playcount: number }) {
+      const previous = crowns.get(artist);
+      crowns.set(artist, holder);
+      const crown = { guildId: GUILD_ID, artist, ...holder, claimedAt: new Date() };
+      if (!previous) return { status: 'claimed', crown };
+      if (previous.userId === holder.userId) return { status: 'kept', crown };
+      return { status: 'stolen', crown, previousUserId: previous.userId };
+    },
+    async listForUser(_guildId: string, userId: string) {
+      return [...crowns.entries()]
+        .filter(([, holder]) => holder.userId === userId)
+        .map(([artist, holder]) => ({ guildId: GUILD_ID, artist, ...holder, claimedAt: new Date() }));
+    },
+    async countForUser(_guildId: string, userId: string) {
+      return [...crowns.values()].filter((holder) => holder.userId === userId).length;
+    },
+  };
+}
+
+function createWhoKnowsContext(args: string[], crowns = createCrownStore()) {
+  const plays: Record<string, number> = { listener: 120, other: 45 };
+  const lastfm = createLastFm({
+    async artistGetUserStats(_artist: string, user: string) {
+      return { name: 'M83', url: null, userPlaycount: plays[user] ?? 0 };
+    },
+  });
+  const accounts = Object.assign(lastfm.accounts, {
+    async listLinked() {
+      return [
+        { userId: OTHER_ID, username: 'other', scrobbleCount: 10 },
+        { userId: AUTHOR_ID, username: 'listener', scrobbleCount: 30 },
+      ];
+    },
+  });
+  lastfm.linked.set(AUTHOR_ID, 'listener');
+  const created = createContext({
+    args,
+    lastfm,
+    library: { async listGuildParticipantIds() { return [OTHER_ID]; } },
+  });
+  created.context.lastfm = { client: lastfm.client, accounts, scrobbler: null, crowns } as never;
+  return { ...created, crowns, plays };
+}
+
+test('whoknows ranks linked members for the playing artist and hands out the crown', async () => {
+  const execute = resolveExecute('lastfm');
+  const { context, replyCalls, crowns } = createWhoKnowsContext(['whoknows']);
+
+  await execute(context);
+
+  assert.equal(replyCalls.length, 1);
+  assert.match(replyCalls[0]!, /^info:Who knows M83 here:/);
+  assert.match(replyCalls[0]!, /1\. \*\*listener\*\* <@100000000000000001> `120`\n2\. \*\*other\*\*/);
+  assert.match(replyCalls[0]!, /listener with 120 plays/);
+  assert.equal(crowns.crowns.get('M83')?.userId, AUTHOR_ID);
+});
+
+test('whoknows reports a stolen crown', async () => {
+  const execute = resolveExecute('lastfm');
+  const crowns = createCrownStore();
+  crowns.crowns.set('M83', { userId: OTHER_ID, username: 'other', playcount: 40 });
+  const { context, replyCalls } = createWhoKnowsContext(['wk', 'M83'], crowns);
+
+  await execute(context);
+
+  assert.match(replyCalls[0]!, /listener took it from <@100000000000000002> with 120 plays/);
+});
+
+test('crowns lists the crowns a member holds', async () => {
+  const execute = resolveExecute('lastfm');
+  const crowns = createCrownStore();
+  crowns.crowns.set('M83', { userId: AUTHOR_ID, username: 'listener', playcount: 120 });
+  const { context, replyCalls } = createWhoKnowsContext(['crowns'], crowns);
+
+  await execute(context);
+
+  assert.deepEqual(replyCalls, ['info:listener holds 1 crown:1. M83 `120`']);
+});

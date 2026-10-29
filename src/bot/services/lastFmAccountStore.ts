@@ -310,6 +310,28 @@ export class LastFmAccountStore {
     }));
   }
 
+  async listLinked(userIds: string[], limit: number = 50): Promise<LastFmLeaderboardEntry[]> {
+    if (!this.collection.find) return [];
+    const allowed = userIds.map((id) => normalizeUserId(id)).filter((id): id is string => Boolean(id));
+    if (!allowed.length) return [];
+
+    const docs = await this.collection
+      .find(
+        { userId: { $in: allowed }, username: { $type: 'string', $ne: '' } },
+        { projection: { _id: 0, userId: 1, username: 1, scrobbleCount: 1 } },
+      )
+      .sort({ scrobbleCount: -1 })
+      .limit(Math.max(1, limit))
+      .toArray()
+      .catch(() => [] as AccountDoc[]);
+
+    return docs.map((doc) => ({
+      userId: String(doc.userId),
+      username: String(doc.username ?? '').trim(),
+      scrobbleCount: toCount(doc.scrobbleCount),
+    })).filter((entry) => entry.username);
+  }
+
   async countLinked(): Promise<number> {
     if (!this.collection.countDocuments) return 0;
     return this.collection.countDocuments({}).catch(() => 0);

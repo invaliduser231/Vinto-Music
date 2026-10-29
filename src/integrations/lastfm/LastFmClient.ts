@@ -52,6 +52,12 @@ export interface LastFmRankedEntry {
   playcount: number;
 }
 
+export interface LastFmArtistUserStats {
+  name: string;
+  url: string | null;
+  userPlaycount: number;
+}
+
 export interface LastFmSimilarTrack {
   artist: string;
   track: string;
@@ -376,6 +382,16 @@ export class LastFmClient {
         match: Number.isFinite(match) ? match : 0,
       };
     }).filter((entry) => entry.artist && entry.track);
+  }
+
+  async artistGetUserStats(artist: string, user: string): Promise<LastFmArtistUserStats> {
+    const payload = await this._call('artist.getInfo', { artist, username: user, autocorrect: 1 });
+    const info = asRecord(payload.artist);
+    return {
+      name: readText(info.name) || artist,
+      url: readText(info.url) || null,
+      userPlaycount: readCount(asRecord(info.stats).userplaycount),
+    };
   }
 
   async artistGetTopTracks(artist: string, limit: number = 10): Promise<LastFmSimilarTrack[]> {

@@ -27,6 +27,7 @@ import { NodeLinkClient } from '../player/musicPlayer/NodeLinkClient.ts';
 import { LastFmClient } from '../integrations/lastfm/LastFmClient.ts';
 import { parseEncryptionKey } from '../integrations/lastfm/secretBox.ts';
 import { LastFmAccountStore } from '../bot/services/lastFmAccountStore.ts';
+import { LastFmCrownStore } from '../bot/services/lastFmCrownStore.ts';
 import { ScrobbleService } from '../bot/services/scrobbleService.ts';
 import { ShardRegistry } from '../bot/services/shardRegistry.ts';
 import { fetchGlobalGuildCount } from '../bot/commands/helpers/guildStats.ts';
@@ -215,6 +216,13 @@ export async function startApp() {
     })
     : null;
   if (lastfmAccounts) await lastfmAccounts.init();
+  const lastfmCrowns = lastfmAccounts
+    ? new LastFmCrownStore({
+      collection: mongo.collection('lastfm_crowns'),
+      logger: logger.child('lastfm-crowns'),
+    })
+    : null;
+  if (lastfmCrowns) await lastfmCrowns.init();
 
   const connectivityRest = rest as ConnectivityRest;
   const gatewayUrl = await resolveGatewayUrl({ config, rest: connectivityRest, logger });
@@ -477,7 +485,7 @@ export async function startApp() {
     config,
     voteService,
     ...(lastfmClient && lastfmAccounts
-      ? { lastfm: { client: lastfmClient, accounts: lastfmAccounts, scrobbler } }
+      ? { lastfm: { client: lastfmClient, accounts: lastfmAccounts, scrobbler, crowns: lastfmCrowns } }
       : {}),
     logger: logger.child('commands'),
     rest: rest as CommandRouterCtorOptions['rest'],

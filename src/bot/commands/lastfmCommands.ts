@@ -20,6 +20,7 @@ import { toLastFmTrack, trackIdentity } from '../../integrations/lastfm/trackMet
 import type { LastFmPeriod, LastFmRankedEntry } from '../../integrations/lastfm/LastFmClient.ts';
 import type { CommandContextLike, LastFmBundle, SessionLike, TrackDataLike } from './helpers/types.ts';
 import type { EmbedField } from '../../types/core.ts';
+import { CROWN_MIN_PLAYS } from '../services/lastFmCrownStore.ts';
 
 const USER_MENTION_PATTERN = /^<@!?(\d+)>$/;
 const PENDING_TOKEN_TTL_MS = 15 * 60 * 1000;
@@ -28,6 +29,9 @@ const BLEND_TRACKS_PER_USER = 3;
 const BLEND_MAX_TRACKS = 24;
 const COMPARE_ARTIST_SAMPLE = 100;
 const RECENT_LOOKBACK = 10;
+const WHOKNOWS_MAX_USERS = 25;
+const WHOKNOWS_LIST_SIZE = 10;
+const CROWNS_LIST_SIZE = 15;
 
 type LastFmCommandContext = CommandContextLike & {
   sessions: CommandContextLike['sessions'] & {
@@ -127,14 +131,18 @@ async function resolveLinkedUsername(ctx: CommandContextLike, targetUserId: stri
   return account.username;
 }
 
-function currentTrackIdentity(ctx: CommandContextLike): string | null {
+function currentTrackMetadata(ctx: CommandContextLike) {
   const session = ctx.sessions.get(ctx.guildId, {
     voiceChannelId: ctx.activeVoiceChannelId,
     textChannelId: ctx.channelId,
   });
 
   const track = session?.player?.displayTrack ?? session?.player?.currentTrack ?? null;
-  const meta = toLastFmTrack(track as never, { minDurationSec: 1 });
+  return toLastFmTrack(track as never, { minDurationSec: 1 });
+}
+
+function currentTrackIdentity(ctx: CommandContextLike): string | null {
+  const meta = currentTrackMetadata(ctx);
   return meta ? trackIdentity(meta) : null;
 }
 
@@ -210,7 +218,7 @@ export function registerLastFmCommands(registry: RegistryLike) {
     name: 'lastfm',
     aliases: ['fm', 'lfm'],
     description: 'Link your Last.fm account and browse your listening data.',
-    usage: 'lastfm <connect|disconnect|status|on|off|profile|recent|top|compare|blend|leaderboard>',
+    usage: 'lastfm <connect|disconnect|status|on|off|profile|recent|top|compare|blend|leaderboard|whoknows|crowns>',
     async execute(ctx: CommandContextLike) {
       const lastfm = requireLastFm(ctx);
       const sub = String(ctx.args[0] ?? '').trim().toLowerCase();
@@ -275,6 +283,16 @@ export function registerLastFmCommands(registry: RegistryLike) {
 
       if (sub === 'leaderboard' || sub === 'lb') {
         await handleLeaderboard(ctx, lastfm);
+        return;
+      }
+
+      if (sub === 'whoknows' || sub === 'wk') {
+        await handleWhoKnows(ctx, lastfm);
+        return;
+      }
+
+      if (sub === 'crowns') {
+        await handleCrowns(ctx, lastfm);
         return;
       }
 
@@ -671,6 +689,101 @@ async function handleLeaderboard(ctx: CommandContextLike, lastfm: LastFmBundle):
       [{ name: ctx.t('lastfm.fieldRanking'), value: lines.join('\n') }],
       { footer: ctx.t('lastfm.leaderboardFooter') },
     ),
+  ]);
+}
+
+async function resolveWhoKnowsArtist(ctx: CommandContextLike, lastfm: LastFmBundle): Promise<string> {
+  const explicit = ctx.args.slice(1).join(' ').trim();
+  if (explicit) return explicit;
+
+  const playing = currentTrackMetadata(ctx)?.artist;
+  if (playing) return playing;
+
+  const own = await lastfm.accounts.get(ctx.authorId);
+  if (own?.username) {
+    const recent = await withLastFmErrors(ctx, () => lastfm.client.userGetRecentTracks(own.username, 1));
+    if (recent[0]?.artist) return recent[0].artist;
+  }
+
+  throw new ValidationError(ctx.t('lastfm.whoknowsUsage', { prefix: ctx.prefix }));
+}
+
+async function handleWhoKnows(ctx: CommandContextLike, lastfm: LastFmBundle): Promise<void> {
+  ensureGuild(ctx);
+  const artist = await resolveWhoKnowsArtist(ctx, lastfm);
+
+  const accounts = await lastfm.accounts.listLinked(await collectGuildUserIds(ctx), WHOKNOWS_MAX_USERS);
+  if (!accounts.length) {
+    await ctx.reply.warning(ctx.t('lastfm.whoknowsNobody', { prefix: ctx.prefix }));
+    return;
+  }
+
+  const stats = await Promise.all(accounts.map(async (account) => {
+    const entry = await lastfm.client.artistGetUserStats(artist, account.username).catch(() => null);
+    return entry ? { ...account, artist: entry.name, playcount: entry.userPlaycount } : null;
+  }));
+  const resolved = stats.filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+  const artistName = resolved[0]?.artist ?? artist;
+  const listeners = resolved
+    .filter((entry) => entry.playcount > 0)
+    .sort((left, right) => right.playcount - left.playcount);
+
+  if (!listeners.length) {
+    await ctx.reply.warning(ctx.t('lastfm.whoknowsEmpty', { artist: artistName }));
+    return;
+  }
+
+  const leader = listeners[0]!;
+  const outcome = await lastfm.crowns?.record(ctx.guildId, artistName, {
+    userId: leader.userId,
+    username: leader.username,
+    playcount: leader.playcount,
+  }).catch(() => null) ?? null;
+
+  const lines = listeners
+    .slice(0, WHOKNOWS_LIST_SIZE)
+    .map((entry, index) => `${index + 1}. **${entry.username}** <@${entry.userId}> ${formatCount(entry.playcount, ctx.t)}`);
+  const fields: EmbedField[] = [{ name: ctx.t('lastfm.fieldListeners'), value: lines.join('\n').slice(0, 1000) }];
+
+  if (outcome && outcome.status !== 'none') {
+    const crownKey = outcome.status === 'stolen' ? 'lastfm.crownStolen' : 'lastfm.crownHolder';
+    fields.push({
+      name: ctx.t('lastfm.fieldCrown'),
+      value: ctx.t(crownKey, {
+        user: outcome.crown.username,
+        plays: outcome.crown.playcount,
+        previous: outcome.status === 'stolen' ? `<@${outcome.previousUserId}>` : '',
+      }),
+    });
+  } else if (lastfm.crowns) {
+    fields.push({ name: ctx.t('lastfm.fieldCrown'), value: ctx.t('lastfm.crownThreshold', { min: CROWN_MIN_PLAYS }) });
+  }
+
+  await ctx.reply.info(ctx.t('lastfm.whoknowsTitle', { artist: artistName }), fields);
+}
+
+async function handleCrowns(ctx: CommandContextLike, lastfm: LastFmBundle): Promise<void> {
+  ensureGuild(ctx);
+  if (!lastfm.crowns) throw new ValidationError(ctx.t('lastfm.unavailable'));
+
+  const targetUserId = parseUserId(ctx.args[1], ctx.authorId);
+  if (!targetUserId) throw new ValidationError(ctx.t('errors.userIdUnresolved'));
+
+  const [crowns, count, account] = await Promise.all([
+    lastfm.crowns.listForUser(ctx.guildId, targetUserId, CROWNS_LIST_SIZE),
+    lastfm.crowns.countForUser(ctx.guildId, targetUserId),
+    lastfm.accounts.get(targetUserId),
+  ]);
+  const name = account?.username ?? `<@${targetUserId}>`;
+
+  if (!crowns.length) {
+    await ctx.reply.warning(ctx.t('lastfm.crownsEmpty', { user: name, prefix: ctx.prefix }));
+    return;
+  }
+
+  const lines = crowns.map((crown, index) => `${index + 1}. ${crown.artist} ${formatCount(crown.playcount, ctx.t)}`);
+  await ctx.reply.info(ctx.t('lastfm.crownsTitle', { user: name, count }), [
+    { name: ctx.t('lastfm.fieldArtists'), value: lines.join('\n').slice(0, 1000) },
   ]);
 }
 
