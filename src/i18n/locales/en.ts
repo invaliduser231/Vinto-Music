@@ -122,6 +122,7 @@ export const en = {
   'skip.alreadyVoted': 'You already voted to skip this track.',
   'skip.votePassed': 'Vote-skip passed ({votes}/{required}). Skipping track.',
   'skip.voteRegistered': 'Vote registered: {votes}/{required} needed to skip.',
+  'skipto.skipped': 'Jumping to {track}',
 
   'pause.cannot': 'Cannot pause right now.',
   'pause.paused': 'Playback paused.',
@@ -154,6 +155,9 @@ export const en = {
 
   'queue.invalidIndex': 'Invalid queue index.',
   'queue.removed': 'Removed: {track}',
+  'queue.removedRange': { one: 'Removed {count} track.', other: 'Removed {count} tracks.' },
+  'queue.moved': 'Moved {track} to position {position}.',
+  'queue.clearUsage': 'Usage: {prefix}clear [from-to]',
   'queue.cleared': { one: 'Cleared {count} pending track.', other: 'Cleared {count} pending tracks.' },
   'queue.shuffled': { one: 'Shuffled {count} pending track.', other: 'Shuffled {count} pending tracks.' },
 
@@ -399,6 +403,7 @@ export const en = {
 
   'field.days': 'Days',
   'field.index': 'Index',
+  'field.position': 'Position',
   'field.minutes': 'Minutes',
   'field.page': 'Page',
   'field.pitch': 'Pitch',
@@ -439,6 +444,7 @@ export const en = {
   'access.manageKickTimer': 'manage the kick timer',
   'access.managePlaylists': 'manage playlists',
   'access.manageStations': 'manage radio presets',
+  'access.moveTracks': 'move tracks',
   'access.pausePlayback': 'pause playback',
   'access.playPrevious': 'play previous tracks',
   'access.removeTracks': 'remove tracks',
@@ -447,6 +453,7 @@ export const en = {
   'access.saveTemplates': 'save queue templates',
   'access.seek': 'seek',
   'access.shuffleQueue': 'shuffle the queue',
+  'access.skipToTrack': 'skip to a queued track',
 
   'config.title': 'Guild configuration',
   'config.prefix': 'Prefix',
@@ -516,7 +523,7 @@ export const en = {
 
   'cmd.247.description': 'Toggle 24/7 mode for your current voice channel.',
   'cmd.charts.description': 'Show top played tracks in this guild.',
-  'cmd.clear.description': 'Clear all pending tracks.',
+  'cmd.clear.description': 'Clear all pending tracks or a range of them.',
   'cmd.dedupe.description': 'Toggle duplicate prevention when adding tracks.',
   'cmd.diag.description': 'Owner-only playback diagnostics snapshot and per-track report.',
   'cmd.djrole.description': 'Manage DJ role restrictions for control commands.',
@@ -558,7 +565,9 @@ export const en = {
   'cmd.queueguard.description': 'Configure smart queue guard rules.',
   'cmd.radio.description': 'Play a built-in or guild-saved radio station preset.',
   'cmd.recap.description': 'Configure and preview weekly recap.',
-  'cmd.remove.description': 'Remove a queued track by index (from queue view).',
+  'cmd.remove.description': 'Remove a queued track or a range of tracks by index.',
+  'cmd.move.description': 'Move a queued track to another position.',
+  'cmd.skipto.description': 'Skip straight to a track in the queue.',
   'cmd.replay.description': 'Restart current track or replay the last played track.',
   'cmd.reputation.description': 'Show requester reputation score.',
   'cmd.resume.description': 'Resume playback.',

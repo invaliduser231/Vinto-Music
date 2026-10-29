@@ -1344,6 +1344,29 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
   }));
 
   registry.register(createCommand({
+    name: 'skipto',
+    aliases: ['jumpto', 'st'],
+    description: 'Skip straight to a track in the queue.',
+    usage: 'skipto <index>',
+    async execute(ctx: PlaybackCommandContext) {
+      ensureGuild(ctx);
+      const session = getSessionOrThrow(ctx);
+      ensureSessionTrack(ctx, session);
+      ensureDjAccess(ctx, session, 'access.skipToTrack');
+
+      const index = normalizeIndex(ctx.args[0], 'field.index', ctx.t);
+      const target = session.player.skipToQueueIndex(index);
+      if (!target) {
+        await ctx.reply.warning(ctx.t('queue.invalidIndex'));
+        return;
+      }
+
+      ctx.sessions.markSnapshotDirty?.(session, true);
+      await ctx.reply.success(ctx.t('skipto.skipped', { track: trackLabel(target) }));
+    },
+  }));
+
+  registry.register(createCommand({
     name: 'pause',
     description: 'Pause playback.',
     usage: 'pause',

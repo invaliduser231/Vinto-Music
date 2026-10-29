@@ -124,6 +124,7 @@ export const ptBR: Catalog = {
   'skip.alreadyVoted': 'Você já votou para pular esta faixa.',
   'skip.votePassed': 'Votação aprovada ({votes}/{required}). Pulando a faixa.',
   'skip.voteRegistered': 'Voto registrado: {votes}/{required} necessários para pular.',
+  'skipto.skipped': 'Pulando para {track}',
 
   'pause.cannot': 'Não é possível pausar agora.',
   'pause.paused': 'Reprodução pausada.',
@@ -156,6 +157,9 @@ export const ptBR: Catalog = {
 
   'queue.invalidIndex': 'Índice de fila inválido.',
   'queue.removed': 'Removido: {track}',
+  'queue.removedRange': { one: '{count} faixa removida.', other: '{count} faixas removidas.' },
+  'queue.moved': '{track} movida para a posição {position}.',
+  'queue.clearUsage': 'Uso: {prefix}clear [de-até]',
   'queue.cleared': { one: '{count} faixa pendente removida.', other: '{count} faixas pendentes removidas.' },
   'queue.shuffled': { one: '{count} faixa pendente embaralhada.', other: '{count} faixas pendentes embaralhadas.' },
 
@@ -401,6 +405,7 @@ export const ptBR: Catalog = {
 
   'field.days': 'Dias',
   'field.index': 'Índice',
+  'field.position': 'Posição',
   'field.minutes': 'Minutos',
   'field.page': 'Página',
   'field.pitch': 'Tom',
@@ -441,6 +446,7 @@ export const ptBR: Catalog = {
   'access.manageKickTimer': 'gerenciar o temporizador de expulsão',
   'access.managePlaylists': 'gerenciar playlists',
   'access.manageStations': 'gerenciar predefinições de rádio',
+  'access.moveTracks': 'mover faixas',
   'access.pausePlayback': 'pausar a reprodução',
   'access.playPrevious': 'tocar faixas anteriores',
   'access.removeTracks': 'remover faixas',
@@ -449,6 +455,7 @@ export const ptBR: Catalog = {
   'access.saveTemplates': 'salvar modelos de fila',
   'access.seek': 'avançar na faixa',
   'access.shuffleQueue': 'embaralhar a fila',
+  'access.skipToTrack': 'pular para uma faixa da fila',
 
   'config.title': 'Configuração da guild',
   'config.prefix': 'Prefixo',
@@ -518,7 +525,7 @@ export const ptBR: Catalog = {
 
   'cmd.247.description': 'Alternar o modo 24/7 para o seu canal de voz atual.',
   'cmd.charts.description': 'Mostrar as faixas mais tocadas nesta guild.',
-  'cmd.clear.description': 'Limpar todas as faixas pendentes.',
+  'cmd.clear.description': 'Limpar todas as faixas pendentes ou um intervalo delas.',
   'cmd.dedupe.description': 'Alternar a proteção contra duplicatas ao adicionar faixas.',
   'cmd.diag.description': 'Diagnóstico de reprodução e relatório por faixa (apenas dono do bot).',
   'cmd.djrole.description': 'Gerenciar restrições por cargo de DJ para os comandos de controle.',
@@ -560,7 +567,9 @@ export const ptBR: Catalog = {
   'cmd.queueguard.description': 'Configurar as regras da proteção inteligente de fila.',
   'cmd.radio.description': 'Tocar uma predefinição de rádio interna ou salva na guild.',
   'cmd.recap.description': 'Configurar e pré-visualizar o resumo semanal.',
-  'cmd.remove.description': 'Remover uma faixa da fila pelo índice (da visualização da fila).',
+  'cmd.remove.description': 'Remover uma faixa ou um intervalo de faixas da fila pelo índice.',
+  'cmd.move.description': 'Mover uma faixa da fila para outra posição.',
+  'cmd.skipto.description': 'Pular direto para uma faixa da fila.',
   'cmd.replay.description': 'Reiniciar a faixa atual ou repetir a última tocada.',
   'cmd.reputation.description': 'Mostrar a pontuação de reputação de quem pede músicas.',
   'cmd.resume.description': 'Retomar a reprodução.',

@@ -32,6 +32,8 @@ export type QueueLifecycleMethods = {
   clearQueue(): number;
   shuffleQueue(): number;
   removeFromQueue(index: number): unknown;
+  removeRangeFromQueue(fromIndex: number, toIndex: number): Track[];
+  skipToQueueIndex(index: number): Track | null;
   moveQueueItem(fromIndex: number, toIndex: number): boolean;
   getLastHistoryTrack(): Track | null;
   replayCurrentTrack(): boolean;
@@ -105,6 +107,21 @@ export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecy
     const removed = this.queue.remove(index);
     this._scheduleNextTrackPrefetch();
     return removed;
+  },
+
+  removeRangeFromQueue(this: QueueLifecycleRuntime, fromIndex, toIndex) {
+    const removed = this.queue.removeRange(fromIndex, toIndex);
+    if (removed.length) this._scheduleNextTrackPrefetch();
+    return removed;
+  },
+
+  skipToQueueIndex(this: QueueLifecycleRuntime, index) {
+    if (!this.playing) return null;
+    if (!Number.isInteger(index) || index < 1 || index > this.queue.pendingSize) return null;
+    this.queue.dropBefore(index);
+    const target = this.queue.tracks[0] ?? null;
+    this.skip();
+    return target;
   },
 
   moveQueueItem(this: QueueLifecycleRuntime, fromIndex, toIndex) {

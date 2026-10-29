@@ -124,6 +124,7 @@ export const de: Catalog = {
   'skip.alreadyVoted': 'Du hast bereits für das Überspringen dieses Titels gestimmt.',
   'skip.votePassed': 'Abstimmung erfolgreich ({votes}/{required}). Überspringe Titel.',
   'skip.voteRegistered': 'Stimme gezählt: {votes}/{required} zum Überspringen nötig.',
+  'skipto.skipped': 'Springe zu {track}',
 
   'pause.cannot': 'Pausieren ist gerade nicht möglich.',
   'pause.paused': 'Wiedergabe pausiert.',
@@ -156,6 +157,9 @@ export const de: Catalog = {
 
   'queue.invalidIndex': 'Ungültiger Warteschlangen-Index.',
   'queue.removed': 'Entfernt: {track}',
+  'queue.removedRange': { one: '{count} Titel entfernt.', other: '{count} Titel entfernt.' },
+  'queue.moved': '{track} an Position {position} verschoben.',
+  'queue.clearUsage': 'Verwendung: {prefix}clear [von-bis]',
   'queue.cleared': { one: '{count} wartenden Titel entfernt.', other: '{count} wartende Titel entfernt.' },
   'queue.shuffled': { one: '{count} wartenden Titel gemischt.', other: '{count} wartende Titel gemischt.' },
 
@@ -401,6 +405,7 @@ export const de: Catalog = {
 
   'field.days': 'Tage',
   'field.index': 'Index',
+  'field.position': 'Position',
   'field.minutes': 'Minuten',
   'field.page': 'Seite',
   'field.pitch': 'Tonhöhe',
@@ -441,6 +446,7 @@ export const de: Catalog = {
   'access.manageKickTimer': 'den Kick-Timer zu verwalten',
   'access.managePlaylists': 'Playlists zu verwalten',
   'access.manageStations': 'Radio-Presets zu verwalten',
+  'access.moveTracks': 'Titel zu verschieben',
   'access.pausePlayback': 'die Wiedergabe zu pausieren',
   'access.playPrevious': 'vorherige Titel abzuspielen',
   'access.removeTracks': 'Titel zu entfernen',
@@ -449,6 +455,7 @@ export const de: Catalog = {
   'access.saveTemplates': 'Warteschlangen-Vorlagen zu speichern',
   'access.seek': 'zu spulen',
   'access.shuffleQueue': 'die Warteschlange zu mischen',
+  'access.skipToTrack': 'zu einem Titel in der Warteschlange zu springen',
 
   'config.title': 'Guild-Konfiguration',
   'config.prefix': 'Präfix',
@@ -518,7 +525,7 @@ export const de: Catalog = {
 
   'cmd.247.description': 'Den 24/7-Modus für deinen aktuellen Sprachkanal umschalten.',
   'cmd.charts.description': 'Die meistgespielten Titel dieser Guild anzeigen.',
-  'cmd.clear.description': 'Alle wartenden Titel entfernen.',
+  'cmd.clear.description': 'Alle wartenden Titel oder einen Bereich davon entfernen.',
   'cmd.dedupe.description': 'Duplikatschutz beim Hinzufügen von Titeln umschalten.',
   'cmd.diag.description': 'Wiedergabe-Diagnose und Titelbericht (nur Bot-Besitzer).',
   'cmd.djrole.description': 'DJ-Rollen-Beschränkungen für Steuerbefehle verwalten.',
@@ -560,7 +567,9 @@ export const de: Catalog = {
   'cmd.queueguard.description': 'Regeln für den smarten Warteschlangen-Schutz einrichten.',
   'cmd.radio.description': 'Ein eingebautes oder gespeichertes Radio-Preset abspielen.',
   'cmd.recap.description': 'Wochenrückblick einrichten und vorschauen.',
-  'cmd.remove.description': 'Einen wartenden Titel per Index entfernen (aus der Warteschlangenansicht).',
+  'cmd.remove.description': 'Einen wartenden Titel oder einen Bereich per Index entfernen.',
+  'cmd.move.description': 'Einen wartenden Titel an eine andere Position verschieben.',
+  'cmd.skipto.description': 'Direkt zu einem Titel in der Warteschlange springen.',
   'cmd.replay.description': 'Aktuellen Titel neu starten oder den zuletzt gespielten wiederholen.',
   'cmd.reputation.description': 'Reputationspunkte eines Bestellers anzeigen.',
   'cmd.resume.description': 'Wiedergabe fortsetzen.',

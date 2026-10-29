@@ -71,3 +71,31 @@ test('queue move reorders pending tracks with one-based indexes', () => {
 
 
 
+
+test('queue removeRange removes an inclusive range and clamps the end', () => {
+  const queue = new Queue();
+  for (let id = 1; id <= 5; id += 1) queue.add(track(id));
+
+  const removed = queue.removeRange(2, 9);
+  assert.deepEqual(removed.map((item) => item.id), [2, 3, 4, 5]);
+  assert.deepEqual(queue.tracks.map((item) => item.id), [1]);
+});
+
+test('queue removeRange rejects invalid ranges', () => {
+  const queue = new Queue();
+  for (let id = 1; id <= 3; id += 1) queue.add(track(id));
+
+  assert.deepEqual(queue.removeRange(3, 2), []);
+  assert.deepEqual(queue.removeRange(0, 2), []);
+  assert.deepEqual(queue.removeRange(4, 5), []);
+  assert.equal(queue.pendingSize, 3);
+});
+
+test('queue dropBefore keeps the target at the front', () => {
+  const queue = new Queue();
+  for (let id = 1; id <= 4; id += 1) queue.add(track(id));
+
+  assert.deepEqual(queue.dropBefore(3).map((item) => item.id), [1, 2]);
+  assert.deepEqual(queue.tracks.map((item) => item.id), [3, 4]);
+  assert.deepEqual(queue.dropBefore(5), []);
+});

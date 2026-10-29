@@ -141,6 +141,12 @@ function buildDiagSnapshot(session: SessionLike | null | undefined, playerDiagno
   };
 }
 
+function parseQueueRange(args: string[]): { from: number; to: number } | null {
+  const match = /^(\d+)\s*(?:-|\s)\s*(\d+)$/.exec(args.slice(0, 2).join(' ').trim());
+  if (!match) return null;
+  return { from: Number(match[1]), to: Number(match[2]) };
+}
+
 function describeDiagStatus(snapshot: DiagnosticsSnapshot) {
   const ratio = Number(snapshot?.computed?.paceRatio ?? Number.NaN);
   const queueDepth = Number(snapshot?.computed?.queueDepthMs ?? Number.NaN);
@@ -574,13 +580,27 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
   registry.register(createCommand({
     name: 'remove',
     aliases: ['rm'],
-    description: 'Remove a queued track by index (from queue view).',
-    usage: 'remove <index>',
+    description: 'Remove a queued track or a range of tracks by index (from queue view).',
+    usage: 'remove <index|from-to>',
     async execute(ctx: CommandContextLike) {
       const typedCtx = ctx as QueueEffectsContext;
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
       ensureDjAccess(ctx, session, 'access.removeTracks');
+
+      const range = parseQueueRange(ctx.args);
+      if (range) {
+        const removedTracks = range.to >= range.from
+          ? session.player.removeRangeFromQueue(range.from, range.to)
+          : [];
+        if (!removedTracks.length) {
+          await ctx.reply.warning(ctx.t('queue.invalidIndex'));
+          return;
+        }
+        typedCtx.sessions.markSnapshotDirty?.(session, true);
+        await ctx.reply.success(ctx.t('queue.removedRange', { count: removedTracks.length }));
+        return;
+      }
 
       const index = parseRequiredInteger(ctx.args[0], 'field.index', ctx.t);
       const removed = session.player.removeFromQueue(index);
@@ -598,19 +618,60 @@ export function registerQueueEffectsAndMiscCommands(registry: CommandRegistry) {
   registry.register(createCommand({
     name: 'clear',
     aliases: ['cq'],
-    description: 'Clear all pending tracks.',
-    usage: 'clear',
+    description: 'Clear all pending tracks or a range of them.',
+    usage: 'clear [from-to]',
     async execute(ctx: CommandContextLike) {
       const typedCtx = ctx as QueueEffectsContext;
       ensureGuild(ctx);
       const session = getSessionOrThrow(ctx);
       ensureDjAccess(ctx, session, 'access.clearQueue');
 
+      if (ctx.args.length) {
+        const range = parseQueueRange(ctx.args);
+        if (!range) {
+          throw new ValidationError(ctx.t('queue.clearUsage', { prefix: ctx.prefix }));
+        }
+        const removedTracks = range.to >= range.from
+          ? session.player.removeRangeFromQueue(range.from, range.to)
+          : [];
+        if (!removedTracks.length) {
+          await ctx.reply.warning(ctx.t('queue.invalidIndex'));
+          return;
+        }
+        typedCtx.sessions.markSnapshotDirty?.(session, true);
+        await ctx.reply.success(ctx.t('queue.cleared', { count: removedTracks.length }));
+        return;
+      }
+
       const removed = session.player.pendingTracks.length;
       session.player.clearQueue();
 
       typedCtx.sessions.markSnapshotDirty?.(session, true);
       await ctx.reply.success(ctx.t('queue.cleared', { count: removed }));
+    },
+  }));
+
+  registry.register(createCommand({
+    name: 'move',
+    aliases: ['mv'],
+    description: 'Move a queued track to another position.',
+    usage: 'move <from> <to>',
+    async execute(ctx: CommandContextLike) {
+      const typedCtx = ctx as QueueEffectsContext;
+      ensureGuild(ctx);
+      const session = getSessionOrThrow(ctx);
+      ensureDjAccess(ctx, session, 'access.moveTracks');
+
+      const from = parseRequiredInteger(ctx.args[0], 'field.index', ctx.t);
+      const to = parseRequiredInteger(ctx.args[1], 'field.position', ctx.t);
+      const track = session.player.pendingTracks[from - 1] ?? null;
+      if (!track || !session.player.moveQueueItem(from, to)) {
+        await ctx.reply.warning(ctx.t('queue.invalidIndex'));
+        return;
+      }
+
+      typedCtx.sessions.markSnapshotDirty?.(session, true);
+      await ctx.reply.success(ctx.t('queue.moved', { track: trackLabel(track), position: to }));
     },
   }));
 

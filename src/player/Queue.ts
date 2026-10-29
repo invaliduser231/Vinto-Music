@@ -55,6 +55,19 @@ export class Queue<T = QueueItem> {
     return (this.tracks.splice(index - 1, 1)[0] ?? null) as T;
   }
 
+  removeRange(fromIndex: number, toIndex: number): T[] {
+    if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex)) return [];
+    if (fromIndex < 1 || toIndex < fromIndex || fromIndex > this.tracks.length) return [];
+    const end = Math.min(toIndex, this.tracks.length);
+    return this.tracks.splice(fromIndex - 1, end - fromIndex + 1);
+  }
+
+  dropBefore(index: number): T[] {
+    if (!Number.isInteger(index)) return [];
+    if (index < 1 || index > this.tracks.length) return [];
+    return this.tracks.splice(0, index - 1);
+  }
+
   move(fromIndex: number, toIndex: number): boolean {
     if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex)) return false;
     if (fromIndex < 1 || fromIndex > this.tracks.length) return false;
