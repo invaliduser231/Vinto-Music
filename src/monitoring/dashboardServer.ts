@@ -310,10 +310,19 @@ export class DashboardServer {
       this.sessions.on(event, onSessionChange);
     }
 
+    const onVoiceStateChange = (payload: { guildId?: string | null }) => {
+      const guildId = String(payload?.guildId ?? '').trim();
+      if (!guildId) return;
+      this._broadcastGuild(guildId);
+    };
+    const voiceStates = this.voiceStateStore;
+    if (typeof voiceStates.on === 'function') voiceStates.on('change', onVoiceStateChange);
+
     this.unbindSessionEvents = () => {
       for (const event of events) {
         this.sessions.off(event, onSessionChange);
       }
+      if (typeof voiceStates.off === 'function') voiceStates.off('change', onVoiceStateChange);
     };
   }
 

@@ -208,3 +208,29 @@ test('DashboardServer returns bot guild ids over HTTP', async () => {
     await server.stop();
   }
 });
+
+test('DashboardServer pushes guild updates on voice state changes', () => {
+  const voiceStateStore = new VoiceStateStore();
+  const server = new DashboardServer({
+    enabled: true,
+    secret: 'local-secret',
+    sessions: createMockSessions({
+      guildId: 'guild-1',
+      settings: { djRoleIds: new Set<string>() },
+      player: { playing: false },
+    } as Session) as unknown as import('../src/bot/sessionManager.ts').SessionManager,
+    voiceStateStore,
+    botUserId: 'bot-1',
+  });
+  const broadcasts: string[] = [];
+  server._broadcastGuild = (guildId: string) => {
+    broadcasts.push(guildId);
+  };
+
+  server._bindSessionEvents();
+  voiceStateStore.emit('change', { guildId: 'guild-1', userId: 'bot-1', channelId: 'vc-1' });
+  server.unbindSessionEvents?.();
+  voiceStateStore.emit('change', { guildId: 'guild-1', userId: 'bot-1', channelId: null });
+
+  assert.deepEqual(broadcasts, ['guild-1']);
+});
