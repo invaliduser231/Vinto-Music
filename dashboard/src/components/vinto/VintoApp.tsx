@@ -70,6 +70,7 @@ export function VintoApp() {
     progress,
     spectrum,
     mockEnabled,
+    status,
     settled,
     message,
     clearMessage,
@@ -360,7 +361,7 @@ export function VintoApp() {
     const next: DevConnectSettings = {
       ...devSettings,
       guildId,
-      voiceChannelId: '',
+      voiceChannelId: voiceDiscovery?.guildId === guildId ? voiceDiscovery.voiceChannelId : '',
     };
     saveDevConnectSettings(next);
     setDevSettings(next);
@@ -527,7 +528,12 @@ export function VintoApp() {
               <h1>{userInVoiceNow ? 'Ready when you are' : 'Join a voice channel'}</h1>
             </div>
             {userInVoiceNow ? (
-              <button type="button" className="vinto-btn vinto-btn-primary" onClick={() => actions.join()}>
+              <button
+                type="button"
+                className="vinto-btn vinto-btn-primary"
+                disabled={status !== 'open'}
+                onClick={() => actions.join()}
+              >
                 Bring Vinto here
               </button>
             ) : null}
