@@ -29,6 +29,7 @@ Most runtime environment variables are parsed in `src/config.ts`. `.env.example`
 | `LOG_LEVEL` | `info` | Logger verbosity. |
 | `API_BASE` | `https://api.fluxer.app/v1` | REST API base URL. |
 | `GATEWAY_URL` | `wss://gateway.fluxer.app` | Gateway websocket URL. |
+| `FLUXER_CDN_BASE` | `https://fluxerusercontent.com` | Media host for avatars and guild icons on the dashboard. Set it on the bot and the dashboard container for a self-hosted instance, usually `https://<instance>/media`. Read at runtime, so it works with the prebuilt images. `NEXT_PUBLIC_FLUXER_CDN_BASE` is still honoured as a build-time fallback. |
 | `GATEWAY_INTENTS` | `0` | Gateway identify intents bitset. |
 | `SHARD_COUNT` | `1` | Number of bot processes sharing the guilds. Every process needs the same value. See [Sharding](#sharding). |
 | `SHARD_ID` | `0` | Position of this process, counting from zero, and lower than `SHARD_COUNT`. |

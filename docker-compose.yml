@@ -24,6 +24,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       API_BASE: ${API_BASE:-https://api.fluxer.app/v1}
       GATEWAY_URL: ${GATEWAY_URL:-wss://gateway.fluxer.app}
+      FLUXER_CDN_BASE: ${FLUXER_CDN_BASE:-}
       GATEWAY_INTENTS: ${GATEWAY_INTENTS:-0}
       GATEWAY_PRESENCE_ENABLED: ${GATEWAY_PRESENCE_ENABLED:-0}
       DNS_RESULT_ORDER: ${DNS_RESULT_ORDER:-ipv4first}
@@ -165,6 +166,7 @@ services:
       FLUXER_OAUTH_REDIRECT_URI: ${FLUXER_OAUTH_REDIRECT_URI:-http://127.0.0.1:3000/api/auth/callback}
       FLUXER_OAUTH_SCOPE: ${FLUXER_OAUTH_SCOPE:-identify guilds}
       FLUXER_API_BASE: ${FLUXER_API_BASE:-https://api.fluxer.app/v1}
+      FLUXER_CDN_BASE: ${FLUXER_CDN_BASE:-}
       AUTH_COOKIE_SECRET: ${AUTH_COOKIE_SECRET:-}
     logging:
       driver: json-file
