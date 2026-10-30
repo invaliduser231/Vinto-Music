@@ -14,19 +14,24 @@ function asRecord(value: unknown): LooseRecord | null {
   return value as LooseRecord;
 }
 
-export function buildMemberAvatarUrl(userId: string, avatarHash: string | null | undefined): string {
+export function buildMemberAvatarUrl(
+  userId: string,
+  avatarHash: string | null | undefined,
+  cdnBase?: string | null,
+): string {
   const id = String(userId ?? '').trim();
   const hash = String(avatarHash ?? '').trim();
   if (id && hash) {
     const extension = hash.startsWith('a_') ? 'gif' : 'png';
-    return `${DEFAULT_CDN_BASE}/avatars/${id}/${hash}.${extension}`;
+    const base = (cdnBase?.trim() || DEFAULT_CDN_BASE).replace(/\/+$/, '');
+    return `${base}/avatars/${id}/${hash}.${extension}`;
   }
   if (!id) return `${DEFAULT_STATIC_BASE}/avatars/0.png`;
   const index = Number(BigInt(id) % 6n);
   return `${DEFAULT_STATIC_BASE}/avatars/${index}.png`;
 }
 
-export function parseMemberProfile(member: unknown): DashboardMemberProfile | null {
+export function parseMemberProfile(member: unknown, cdnBase?: string | null): DashboardMemberProfile | null {
   const root = asRecord(member);
   if (!root) return null;
 
@@ -47,7 +52,7 @@ export function parseMemberProfile(member: unknown): DashboardMemberProfile | nu
   return {
     id,
     username,
-    avatarUrl: buildMemberAvatarUrl(id, avatarHash),
+    avatarUrl: buildMemberAvatarUrl(id, avatarHash, cdnBase),
   };
 }
 

@@ -23,6 +23,15 @@ test('parseMemberProfile reads username and avatar from nested user payload', ()
   assert.equal(profile.avatarUrl, 'https://fluxerusercontent.com/avatars/123/avatarhash.png');
 });
 
+test('parseMemberProfile builds avatars from a self-hosted cdn base', () => {
+  const profile = parseMemberProfile(
+    { user: { id: '123', username: 'rainer', avatar: 'a_hash' } },
+    'https://chat.example.com/media/',
+  );
+
+  assert.equal(profile?.avatarUrl, 'https://chat.example.com/media/avatars/123/a_hash.gif');
+});
+
 test('collectRequesterIds gathers ids from now playing and queue', () => {
   const ids = collectRequesterIds({
     nowPlaying: { requestedBy: 'user-1' },

@@ -50,6 +50,7 @@ type DashboardServerOptions = {
   requireTicket?: boolean;
   allowedOrigins?: string[];
   progressIntervalMs?: number;
+  cdnBase?: string | null;
   logger?: LoggerLike | undefined;
   sessions: SessionManager;
   voiceStateStore: VoiceStateStore;
@@ -159,6 +160,7 @@ export class DashboardServer {
   requireTicket: boolean;
   allowedOrigins: Set<string>;
   progressIntervalMs: number;
+  cdnBase: string | null;
   logger: LoggerLike | undefined;
   sessions: SessionManager;
   voiceStateStore: VoiceStateStore;
@@ -199,6 +201,7 @@ export class DashboardServer {
     this.requireTicket = options.requireTicket === true;
     this.allowedOrigins = new Set(options.allowedOrigins ?? ['http://localhost:3000']);
     this.progressIntervalMs = Math.max(250, Number(options.progressIntervalMs ?? 2000));
+    this.cdnBase = options.cdnBase ?? null;
     this.logger = options.logger ?? undefined;
     this.sessions = options.sessions;
     this.voiceStateStore = options.voiceStateStore;
@@ -536,7 +539,7 @@ export class DashboardServer {
     if (!this.getGuildMember) return null;
     try {
       const member = await this.getGuildMember(safeGuildId, safeUserId);
-      const profile = parseMemberProfile(member);
+      const profile = parseMemberProfile(member, this.cdnBase);
       if (profile) {
         writeTtlCache(
           this.memberProfileCache,

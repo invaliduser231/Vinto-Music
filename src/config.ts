@@ -166,6 +166,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     logLevel,
     apiBase: normalizeApiBase(env.API_BASE),
     gatewayUrl: normalizeGatewayUrl(env.GATEWAY_URL),
+    fluxerCdnBase: env.FLUXER_CDN_BASE?.trim().replace(/\/+$/, '') || null,
     gatewayIntents: parseNonNegativeInt(env.GATEWAY_INTENTS, 0),
     ...parseShardAssignment(env.SHARD_ID, env.SHARD_COUNT),
     gatewayPresenceEnabled: parseBool(env.GATEWAY_PRESENCE_ENABLED, false),

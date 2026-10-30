@@ -3,8 +3,14 @@ const DEFAULT_CDN_BASE = 'https://fluxerusercontent.com';
 const DEFAULT_STATIC_BASE = 'https://fluxerstatic.com';
 
 export function readFluxerCdnBase(): string {
-  const fromEnv = process.env.NEXT_PUBLIC_FLUXER_CDN_BASE?.trim();
+  const fromEnv = process.env.FLUXER_CDN_BASE?.trim() || process.env.NEXT_PUBLIC_FLUXER_CDN_BASE?.trim();
   return (fromEnv || DEFAULT_CDN_BASE).replace(/\/+$/, '');
+}
+
+export function rebaseFluxerCdnUrl(url: string, cdnBase = readFluxerCdnBase()): string {
+  const base = cdnBase.replace(/\/+$/, '');
+  if (base === DEFAULT_CDN_BASE || !url.startsWith(`${DEFAULT_CDN_BASE}/`)) return url;
+  return `${base}${url.slice(DEFAULT_CDN_BASE.length)}`;
 }
 
 export function buildGuildIconUrl(

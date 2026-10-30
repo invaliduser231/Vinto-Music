@@ -669,6 +669,7 @@ export async function startApp() {
     requireTicket: config.dashboardApiRequireTicket,
     allowedOrigins: config.dashboardApiAllowedOrigins,
     progressIntervalMs: config.dashboardApiProgressIntervalMs,
+    cdnBase: config.fluxerCdnBase,
     logger: logger.child('dashboard'),
     shardAssignment: { shardId: config.shardId, shardCount: config.shardCount },
     sessions,

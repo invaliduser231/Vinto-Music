@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { buildGuildIconUrl } from '@/lib/fluxer-cdn';
 import type { OAuthGuild } from '@/lib/fluxer-oauth';
 
 function guildInitials(name: string): string {
@@ -13,7 +12,7 @@ function guildInitials(name: string): string {
 
 export function GuildSidebarIcon({ guild }: { guild: OAuthGuild }) {
   const [iconFailed, setIconFailed] = useState(false);
-  const iconUrl = buildGuildIconUrl(guild.id, guild.icon, { size: 96 });
+  const iconUrl = guild.iconUrl;
 
   if (iconUrl && !iconFailed) {
     return (

@@ -1,5 +1,5 @@
 import type { OAuthConfig } from './oauth-config';
-import { resolveUserAvatarUrl } from './fluxer-cdn';
+import { buildGuildIconUrl, resolveUserAvatarUrl } from './fluxer-cdn';
 
 export type OAuthTokenResponse = {
   access_token: string;
@@ -19,6 +19,7 @@ export type OAuthGuild = {
   id: string;
   name: string;
   icon: string | null;
+  iconUrl: string | null;
 };
 
 export function buildAuthorizeUrl(config: OAuthConfig, state: string): string {
@@ -163,6 +164,7 @@ export async function fetchUserGuilds(config: OAuthConfig, accessToken: string):
         id,
         name: String(entry.name ?? '').trim() || id,
         icon,
+        iconUrl: buildGuildIconUrl(id, icon, { size: 96 }),
       });
     }
 
