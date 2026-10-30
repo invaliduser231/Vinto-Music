@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.14.0] - 2026-10-30
+
+- Playback:
+  - pauses while the voice channel is empty and continues when someone joins
+  - pauses while the bot is server-muted
+  - radio streams keep running, a manual pause stays paused
+  - `play` accepts attached audio and video files
+- Queue:
+  - `skipto <index>` jumps straight to a queued track
+  - `move <from> <to>`
+  - `remove` and `clear` take a range like `3-7`
+- Last.fm:
+  - `lastfm whoknows [artist]` ranks linked members, playing artist by default
+  - `lastfm crowns [@user]`, a crown needs at least 30 plays
+- Tests: auto-pause, skipto and ranges, attachments, whoknows, crowns
+
 ## [0.13.3] - 2026-10-28
 
 - Fixes:
