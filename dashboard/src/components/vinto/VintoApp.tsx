@@ -164,7 +164,7 @@ export function VintoApp() {
     });
   }, [guildOverview?.userVoiceChannelId, setDevSettings]);
 
-  const inVoice = shouldShowPlayer(mockEnabled, session.userInChannel);
+  const inVoice = shouldShowPlayer(mockEnabled, session.userInChannel, session.botInChannel);
   const canControl = shouldShowControls(mockEnabled, session.canControl);
   const showConnect = shouldShowConnectPanel(mockEnabled, inVoice);
   const showPlayer = inVoice;

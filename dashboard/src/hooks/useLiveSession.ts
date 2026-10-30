@@ -458,6 +458,7 @@ function emptySession(settings: DevConnectSettings): DashboardSession {
     voiceChannelId: settings.voiceChannelId,
     voiceChannelName: settings.voiceChannelId || 'Voice channel',
     userInChannel: false,
+    botInChannel: false,
     canControl: false,
     autoplayEnabled: false,
     nowPlaying: null,

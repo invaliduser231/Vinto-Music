@@ -17,9 +17,14 @@ test('isOAuthGuildAllowed rejects guilds outside the oauth list', () => {
 });
 
 test('shouldShowPlayer follows voice membership unless mock mode is enabled', () => {
-  assert.equal(shouldShowPlayer(false, false), false);
-  assert.equal(shouldShowPlayer(false, true), true);
-  assert.equal(shouldShowPlayer(true, false), true);
+  assert.equal(shouldShowPlayer(false, false, true), false);
+  assert.equal(shouldShowPlayer(false, true, true), true);
+  assert.equal(shouldShowPlayer(true, false, false), true);
+});
+
+test('shouldShowPlayer waits for vinto to be in the channel', () => {
+  assert.equal(shouldShowPlayer(false, true, false), false);
+  assert.equal(shouldShowPlayer(false, true, undefined), true);
 });
 
 test('shouldShowControls hides dj controls without permission', () => {

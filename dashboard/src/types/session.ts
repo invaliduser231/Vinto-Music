@@ -39,6 +39,7 @@ export type DashboardSession = {
   voiceChannelId: string;
   voiceChannelName: string;
   userInChannel: boolean;
+  botInChannel?: boolean;
   canControl: boolean;
   autoplayEnabled: boolean;
   nowPlaying: NowPlayingTrack | null;

@@ -8,8 +8,12 @@ export function isOAuthGuildAllowed(
   return guilds.some((guild) => guild.id === guildId);
 }
 
-export function shouldShowPlayer(mockEnabled: boolean, userInChannel: boolean): boolean {
-  return mockEnabled || userInChannel;
+export function shouldShowPlayer(
+  mockEnabled: boolean,
+  userInChannel: boolean,
+  botInChannel: boolean | undefined,
+): boolean {
+  return mockEnabled || (userInChannel && botInChannel !== false);
 }
 
 export function shouldShowControls(mockEnabled: boolean, canControl: boolean): boolean {

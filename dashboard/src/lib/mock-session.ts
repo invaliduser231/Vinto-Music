@@ -43,6 +43,7 @@ export function createMockSession(): DashboardSession {
     voiceChannelId: 'vc-general',
     voiceChannelName: 'General',
     userInChannel: true,
+    botInChannel: true,
     canControl: true,
     autoplayEnabled: true,
     nowPlaying: {
