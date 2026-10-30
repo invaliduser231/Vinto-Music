@@ -258,10 +258,13 @@ Default prefix: `!`
 - `join`, `leave`
 - `radio <station|random|url>`, `stations [filter] [page]`
 - `play <query|url>`, `playnext <query|url>`, `search <query>`, `pick <index>`
-- `skip`, `voteskip`, `pause`, `resume`, `seek <time>`
+- `play` with an attached audio or video file queues the file
+- `skip`, `skipto <index>`, `voteskip`, `pause`, `resume`, `seek <time>`
 - `now`, `queue [page]`, `history [page]`, `previous`, `replay`
-- `remove <index>`, `clear`, `shuffle`, `loop <off|track|queue>`, `volume [0-200]`
+- `remove <index|from-to>`, `clear [from-to]`, `move <from> <to>`, `shuffle`, `loop <off|track|queue>`, `volume [0-200]`
 - `filter`, `eq`, `tempo`, `pitch`, `effects`, `lyrics`, `stats`
+
+Playback pauses on its own while the voice channel is empty or the bot is server-muted, and continues once someone is back or the mute is lifted. Radio streams keep running.
 
 ### Library
 
@@ -280,6 +283,8 @@ Available when `LASTFM_ENABLED=1`. Each listener links their own account, nothin
 - `lastfm compare <@user>` for a taste match score
 - `lastfm blend` builds a queue from the top artists of everyone currently in the voice channel
 - `lastfm leaderboard [guild|global]`
+- `lastfm whoknows [artist]` ranks linked members for an artist, the playing one by default; the top listener with at least 30 plays holds the crown
+- `lastfm crowns [@user]`
 - `fmplay [@user]` queues the track someone scrobbled last
 - `love` / `unlove` for the currently playing track
 - `autoplay [on|off]` controls Last.fm recommendations for the current voice channel
