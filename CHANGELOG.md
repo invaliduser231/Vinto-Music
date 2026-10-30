@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.14.1] - 2026-10-30
+
+- Fixes:
+  - dashboard shows the join panel until Vinto is in the channel instead of a locked player
+  - dashboard follows voice joins and leaves, no reload needed after `!join`
+  - switching guilds keeps the voice channel, so "Bring Vinto here" works right away
+  - avatars and guild icons use `FLUXER_CDN_BASE`, read at runtime for self-hosted instances
+- Tests: bot presence in the session payload, voice state updates, cdn base
+
 ## [0.14.0] - 2026-10-30
 
 - Playback:
