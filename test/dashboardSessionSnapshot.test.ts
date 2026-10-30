@@ -108,4 +108,27 @@ test('buildGuildDashboardSessionPayload marks control only inside the voice chan
   assert.equal(outsideChannel?.canControl, false);
   assert.equal(outsideChannel?.nowPlaying, null);
   assert.equal(outsideChannel?.queue.length, 0);
+  assert.equal(inChannel?.botInChannel, true);
+});
+
+test('buildGuildDashboardSessionPayload reports a missing bot while the user waits in voice', () => {
+  const voiceStateStore = new VoiceStateStore();
+  voiceStateStore.guildVoiceStates.set('guild-1', new Map([
+    ['user-1', 'vc-1'],
+  ]));
+
+  const payload = buildGuildDashboardSessionPayload({
+    guildId: 'guild-1',
+    guildName: 'Guild 1',
+    sessions: [],
+    voiceChannelId: 'vc-1',
+    userId: 'user-1',
+    roleIds: [],
+    voiceStateStore,
+    botUserId: 'bot-1',
+  });
+
+  assert.equal(payload?.userInChannel, true);
+  assert.equal(payload?.botInChannel, false);
+  assert.equal(payload?.canControl, false);
 });

@@ -16,6 +16,7 @@ function samplePayload(overrides: Partial<DashboardSessionPayload> = {}): Dashbo
     voiceChannelId: 'vc-1',
     voiceChannelName: 'General',
     userInChannel: true,
+    botInChannel: true,
     canControl: true,
     autoplayEnabled: false,
     nowPlaying: {

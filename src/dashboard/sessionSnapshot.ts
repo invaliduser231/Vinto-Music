@@ -40,6 +40,7 @@ export type DashboardSessionPayload = {
   voiceChannelId: string;
   voiceChannelName: string;
   userInChannel: boolean;
+  botInChannel: boolean;
   canControl: boolean;
   autoplayEnabled: boolean;
   nowPlaying: (DashboardTrackPayload & {
@@ -224,6 +225,7 @@ export function buildDashboardSessionPayload(options: {
     voiceChannelId,
     voiceChannelName: String(options.channelName ?? voiceChannelId).trim() || voiceChannelId,
     userInChannel,
+    botInChannel: true,
     canControl,
     autoplayEnabled: Boolean(options.session.settings?.autoplayEnabled),
     nowPlaying,
@@ -354,6 +356,7 @@ export function buildGuildDashboardSessionPayload(options: {
       voiceChannelId,
       voiceChannelName: options.channelNames?.get(voiceChannelId) ?? voiceChannelId,
       userInChannel: false,
+      botInChannel: false,
       canControl: false,
       autoplayEnabled: false,
       nowPlaying: null,
