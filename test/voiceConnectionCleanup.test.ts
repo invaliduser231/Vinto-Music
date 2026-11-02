@@ -199,3 +199,33 @@ test('_discardStaleRoom releases the audio source of the discarded room', async 
   assert.equal(connection.audioSource, null);
   assert.equal(connection.audioTrackSid, null);
 });
+
+test('disconnect disposes the native room and publication handles', async () => {
+  const connection = new VoiceConnection(createGateway(), 'guild-1', { logger: null });
+
+  const disposed: string[] = [];
+  const publications = new Map([
+    ['pub-1', { ffiHandle: { dispose: () => disposed.push('publication') } }],
+  ]);
+  const room = {
+    ffiHandle: {
+      dispose() {
+        disposed.push('room');
+        throw new Error('trying to drop an invalid handle');
+      },
+    } as { dispose(): void } | undefined,
+    localParticipant: { trackPublications: publications },
+    async disconnect() {},
+    removeAllListeners() {},
+  };
+
+  connection.room = room as never;
+  connection.channelId = 'voice-1';
+
+  await connection.disconnect();
+
+  assert.deepEqual(disposed, ['publication', 'room']);
+  assert.equal(room.ffiHandle, undefined);
+  assert.equal(publications.size, 0);
+  assert.equal(connection.room, null);
+});
