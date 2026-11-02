@@ -220,11 +220,28 @@ type FfiClientEmitterLike = {
   removeListener?: (event: string, listener: (...args: unknown[]) => void) => unknown;
 };
 
+type DisposableHandleLike = {
+  dispose?: () => void;
+};
+
 type InternalRoomLike = {
   onFfiEvent?: ((...args: unknown[]) => void) | null;
   preConnectEvents?: unknown[];
   removeAllListeners?: (event?: string) => unknown;
+  ffiHandle?: DisposableHandleLike;
+  localParticipant?: {
+    trackPublications?: Map<unknown, { ffiHandle?: DisposableHandleLike }>;
+  } | null;
 };
+
+function disposeHandle(handle: DisposableHandleLike | undefined) {
+  if (typeof handle?.dispose !== 'function') return;
+  try {
+    handle.dispose();
+  } catch {
+    return;
+  }
+}
 
 export class VoiceConnection {
   [key: string]: unknown;
@@ -453,6 +470,7 @@ export class VoiceConnection {
     await room.disconnect?.().catch(() => null);
     this._detachRoomFfiListener(room);
     this._resetRoomPreConnectEvents(room);
+    this._disposeRoomHandles(room);
     room.removeAllListeners?.();
     await this._closeAudioResources();
     this.room = null;
@@ -577,6 +595,7 @@ export class VoiceConnection {
     await room?.disconnect().catch(() => null);
     this._detachRoomFfiListener(room);
     this._resetRoomPreConnectEvents(room);
+    this._disposeRoomHandles(room);
     room?.removeAllListeners?.();
     await this._closeAudioResources();
 
@@ -631,6 +650,7 @@ export class VoiceConnection {
 
     this._detachRoomFfiListener(room);
     this._resetRoomPreConnectEvents(room);
+    this._disposeRoomHandles(room);
     room.removeAllListeners?.();
     await this._closeAudioResources();
 
@@ -929,6 +949,20 @@ export class VoiceConnection {
     const internalRoom = room as unknown as InternalRoomLike | null;
     if (!internalRoom || !Array.isArray(internalRoom.preConnectEvents)) return;
     internalRoom.preConnectEvents.length = 0;
+  }
+
+  _disposeRoomHandles(room: Room | null) {
+    const internalRoom = room as unknown as InternalRoomLike | null;
+    if (!internalRoom) return;
+
+    const publications = internalRoom.localParticipant?.trackPublications;
+    for (const publication of publications?.values() ?? []) {
+      disposeHandle(publication?.ffiHandle);
+    }
+    publications?.clear();
+
+    disposeHandle(internalRoom.ffiHandle);
+    internalRoom.ffiHandle = undefined;
   }
 
   _syncVoiceDeafState() {
