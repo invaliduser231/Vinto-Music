@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.14.2] - 2026-11-02
+
+- Fixes:
+  - voice audio sources are always released on reconnect and disconnect, leaked capture threads had pushed the host to full cpu load
+- Tests: audio source release with a dead track handle and on stale rooms
+
 ## [0.14.1] - 2026-10-30
 
 - Fixes:
