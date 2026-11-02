@@ -228,7 +228,7 @@ type InternalRoomLike = {
   onFfiEvent?: ((...args: unknown[]) => void) | null;
   preConnectEvents?: unknown[];
   removeAllListeners?: (event?: string) => unknown;
-  ffiHandle?: DisposableHandleLike;
+  ffiHandle?: DisposableHandleLike | undefined;
   localParticipant?: {
     trackPublications?: Map<unknown, { ffiHandle?: DisposableHandleLike }>;
   } | null;
