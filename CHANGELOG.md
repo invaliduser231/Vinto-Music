@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.14.3] - 2026-11-02
+
+- Fixes:
+  - native room and track publication handles are disposed when a voice room is torn down, livekit kept the old room and its capture thread alive after every reconnect
+- Tests: room handle disposal on disconnect
+
 ## [0.14.2] - 2026-11-02
 
 - Fixes:
