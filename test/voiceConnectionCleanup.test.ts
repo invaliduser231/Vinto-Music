@@ -207,6 +207,17 @@ test('disconnect disposes the native room and publication handles', async () => 
   const publications = new Map([
     ['pub-1', { ffiHandle: { dispose: () => disposed.push('publication') } }],
   ]);
+  const remoteParticipants = new Map([
+    ['user-1', {
+      ffi_handle: { dispose: () => disposed.push('remote') },
+      trackPublications: new Map([
+        ['pub-2', {
+          ffiHandle: { dispose: () => disposed.push('remote-publication') },
+          track: { ffi_handle: { dispose: () => disposed.push('remote-track') } },
+        }],
+      ]),
+    }],
+  ]);
   const room = {
     ffiHandle: {
       dispose() {
@@ -214,7 +225,11 @@ test('disconnect disposes the native room and publication handles', async () => 
         throw new Error('trying to drop an invalid handle');
       },
     } as { dispose(): void } | undefined,
-    localParticipant: { trackPublications: publications },
+    localParticipant: {
+      ffi_handle: { dispose: () => disposed.push('local') },
+      trackPublications: publications,
+    },
+    remoteParticipants,
     async disconnect() {},
     removeAllListeners() {},
   };
@@ -224,8 +239,41 @@ test('disconnect disposes the native room and publication handles', async () => 
 
   await connection.disconnect();
 
-  assert.deepEqual(disposed, ['publication', 'room']);
+  assert.deepEqual(disposed, [
+    'publication',
+    'local',
+    'remote-track',
+    'remote-publication',
+    'remote',
+    'room',
+  ]);
   assert.equal(room.ffiHandle, undefined);
   assert.equal(publications.size, 0);
+  assert.equal(remoteParticipants.size, 0);
   assert.equal(connection.room, null);
+});
+
+test('a participant leaving the room releases its native handles', () => {
+  const connection = new VoiceConnection(createGateway(), 'guild-1', { logger: null });
+  const room = new EventEmitter();
+
+  const disposed: string[] = [];
+  const participant = {
+    ffi_handle: { dispose: () => disposed.push('participant') },
+    trackPublications: new Map([
+      ['pub-1', {
+        ffiHandle: { dispose: () => disposed.push('publication') },
+        track: { ffi_handle: { dispose: () => disposed.push('track') } },
+      }],
+    ]),
+  };
+
+  connection.room = room as never;
+  connection._attachRoomListeners(room as never);
+  room.emit('participantDisconnected', participant);
+
+  assert.deepEqual(disposed, ['track', 'publication', 'participant']);
+
+  connection._detachRoomListeners();
+  assert.equal(room.listenerCount('participantDisconnected'), 0);
 });
