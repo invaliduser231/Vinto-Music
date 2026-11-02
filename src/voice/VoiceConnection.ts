@@ -224,14 +224,23 @@ type DisposableHandleLike = {
   dispose?: () => void;
 };
 
+type InternalPublicationLike = {
+  ffiHandle?: DisposableHandleLike;
+  track?: { ffi_handle?: DisposableHandleLike } | null;
+};
+
+type InternalParticipantLike = {
+  ffi_handle?: DisposableHandleLike;
+  trackPublications?: Map<unknown, InternalPublicationLike>;
+};
+
 type InternalRoomLike = {
   onFfiEvent?: ((...args: unknown[]) => void) | null;
   preConnectEvents?: unknown[];
   removeAllListeners?: (event?: string) => unknown;
   ffiHandle?: DisposableHandleLike | undefined;
-  localParticipant?: {
-    trackPublications?: Map<unknown, { ffiHandle?: DisposableHandleLike }>;
-  } | null;
+  localParticipant?: InternalParticipantLike | null;
+  remoteParticipants?: Map<unknown, InternalParticipantLike>;
 };
 
 function disposeHandle(handle: DisposableHandleLike | undefined) {
@@ -241,6 +250,19 @@ function disposeHandle(handle: DisposableHandleLike | undefined) {
   } catch {
     return;
   }
+}
+
+function disposeParticipantHandles(participant: InternalParticipantLike | null | undefined, includeTracks: boolean) {
+  if (!participant) return;
+  const publications = participant.trackPublications;
+  for (const publication of publications?.values() ?? []) {
+    if (includeTracks) {
+      disposeHandle(publication?.track?.ffi_handle);
+    }
+    disposeHandle(publication?.ffiHandle);
+  }
+  publications?.clear();
+  disposeHandle(participant.ffi_handle);
 }
 
 export class VoiceConnection {
@@ -268,6 +290,7 @@ export class VoiceConnection {
   roomDisconnectedListener: (() => void) | null;
   roomTrackSubscribedListener: ((track: unknown, publication: unknown, participant: unknown) => void) | null;
   roomTrackUnsubscribedListener: ((track: unknown, publication: unknown, participant: unknown) => void) | null;
+  roomParticipantDisconnectedListener: ((participant: unknown) => void) | null;
   earrapeProtectionEnabled: boolean;
   botUserId: string | null;
   onEarrapeDetected: EarrapeDetectionHandler | null;
@@ -317,6 +340,7 @@ export class VoiceConnection {
     this.roomDisconnectedListener = null;
     this.roomTrackSubscribedListener = null;
     this.roomTrackUnsubscribedListener = null;
+    this.roomParticipantDisconnectedListener = null;
     this.earrapeProtectionEnabled = options.earrapeProtectionEnabled === true;
     this.botUserId = String(options.botUserId ?? '').trim() || null;
     this.onEarrapeDetected = options.onEarrapeDetected ?? null;
@@ -881,10 +905,14 @@ export class VoiceConnection {
       }
       this.participantAudioStates.delete(participantId);
     };
+    this.roomParticipantDisconnectedListener = (participant) => {
+      disposeParticipantHandles(participant as InternalParticipantLike | null, true);
+    };
 
     roomLike.on(RoomEvent.Disconnected, this.roomDisconnectedListener);
     roomLike.on(RoomEvent.TrackSubscribed, this.roomTrackSubscribedListener);
     roomLike.on(RoomEvent.TrackUnsubscribed, this.roomTrackUnsubscribedListener);
+    roomLike.on(RoomEvent.ParticipantDisconnected, this.roomParticipantDisconnectedListener);
   }
 
   _detachRoomListeners() {
@@ -897,15 +925,22 @@ export class VoiceConnection {
       this.roomDisconnectedListener = null;
       this.roomTrackSubscribedListener = null;
       this.roomTrackUnsubscribedListener = null;
+      this.roomParticipantDisconnectedListener = null;
       return;
     }
 
     this._detachSingleRoomListener(room, RoomEvent.Disconnected, this.roomDisconnectedListener);
     this._detachSingleRoomListener(room, RoomEvent.TrackSubscribed, this.roomTrackSubscribedListener);
     this._detachSingleRoomListener(room, RoomEvent.TrackUnsubscribed, this.roomTrackUnsubscribedListener);
+    this._detachSingleRoomListener(
+      room,
+      RoomEvent.ParticipantDisconnected,
+      this.roomParticipantDisconnectedListener as ((...args: unknown[]) => void) | null,
+    );
     this.roomDisconnectedListener = null;
     this.roomTrackSubscribedListener = null;
     this.roomTrackUnsubscribedListener = null;
+    this.roomParticipantDisconnectedListener = null;
   }
 
   _detachSingleRoomListener(
@@ -955,11 +990,11 @@ export class VoiceConnection {
     const internalRoom = room as unknown as InternalRoomLike | null;
     if (!internalRoom) return;
 
-    const publications = internalRoom.localParticipant?.trackPublications;
-    for (const publication of publications?.values() ?? []) {
-      disposeHandle(publication?.ffiHandle);
+    disposeParticipantHandles(internalRoom.localParticipant, false);
+    for (const participant of internalRoom.remoteParticipants?.values() ?? []) {
+      disposeParticipantHandles(participant, true);
     }
-    publications?.clear();
+    internalRoom.remoteParticipants?.clear();
 
     disposeHandle(internalRoom.ffiHandle);
     internalRoom.ffiHandle = undefined;
