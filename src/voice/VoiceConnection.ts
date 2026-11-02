@@ -454,6 +454,7 @@ export class VoiceConnection {
     this._detachRoomFfiListener(room);
     this._resetRoomPreConnectEvents(room);
     room.removeAllListeners?.();
+    await this._closeAudioResources();
     this.room = null;
     return true;
   }
@@ -818,13 +819,10 @@ export class VoiceConnection {
       // ignore queue clear errors during teardown
     }
 
-    if (track) {
-      try {
-        await track.close(true);
-      } catch {
-        // ignore track teardown failures during disconnect
-      }
-      return;
+    try {
+      await track?.close(false);
+    } catch {
+      // ignore track teardown failures during disconnect
     }
 
     try {
@@ -1503,6 +1501,10 @@ export class VoiceConnection {
     const participant = this.room?.localParticipant;
     if (!participant) {
       throw new Error('No local participant available.');
+    }
+
+    if (this.audioSource || this.audioTrack) {
+      await this._closeAudioResources();
     }
 
     this.audioSource = new AudioSource(SAMPLE_RATE, CHANNELS, MAX_QUEUE_MS);
