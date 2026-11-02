@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.14.4] - 2026-11-03
+
+- Fixes:
+  - participant handles are released on teardown and when someone leaves, they held closed voice rooms and their capture threads in memory
+- Tests: participant handle release on disconnect and leave
+
 ## [0.14.3] - 2026-11-02
 
 - Fixes:
