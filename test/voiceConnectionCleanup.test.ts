@@ -63,7 +63,7 @@ test('disconnect closes audio resources and clears room internals', async () => 
   assert.equal(gateway.leaveVoiceCalls, 1);
   assert.equal(roomDisconnectCalls, 1);
   assert.equal(roomRemoveAllCalls, 1);
-  assert.deepEqual(trackCloseArgs, [true]);
+  assert.deepEqual(trackCloseArgs, [false]);
   assert.equal(sourceClearQueueCalls, 2);
   assert.equal(sourceCloseCalls, 1);
   assert.equal(connection.room, null);
@@ -141,4 +141,61 @@ test('_cleanupFailedConnect removes dangling ffi listener and pre-connect events
       Reflect.deleteProperty(globalThis, '_ffiClientInstance');
     }
   }
+});
+
+test('_closeAudioResources closes the source even when the track handle is already gone', async () => {
+  const connection = new VoiceConnection(createGateway(), 'guild-1', { logger: null });
+
+  let sourceCloseCalls = 0;
+  const source = {
+    clearQueue() {},
+    async close() {
+      sourceCloseCalls += 1;
+    },
+  };
+  const track = {
+    async close() {
+      throw new Error('trying to drop an invalid handle');
+    },
+  };
+
+  connection.audioSource = source as never;
+  connection.audioTrack = track as never;
+  connection.audioTrackSid = 'track-1';
+
+  await connection._closeAudioResources();
+
+  assert.equal(sourceCloseCalls, 1);
+  assert.equal(connection.audioSource, null);
+  assert.equal(connection.audioTrack, null);
+});
+
+test('_discardStaleRoom releases the audio source of the discarded room', async () => {
+  const connection = new VoiceConnection(createGateway(), 'guild-1', { logger: null });
+
+  let sourceCloseCalls = 0;
+  const source = {
+    clearQueue() {},
+    async close() {
+      sourceCloseCalls += 1;
+    },
+  };
+  const track = {
+    async close() {},
+  };
+  const room = {
+    async disconnect() {},
+    removeAllListeners() {},
+  };
+
+  connection.room = room as never;
+  connection.audioSource = source as never;
+  connection.audioTrack = track as never;
+  connection.audioTrackSid = 'track-1';
+
+  assert.equal(await connection._discardStaleRoom(), true);
+  assert.equal(sourceCloseCalls, 1);
+  assert.equal(connection.room, null);
+  assert.equal(connection.audioSource, null);
+  assert.equal(connection.audioTrackSid, null);
 });
