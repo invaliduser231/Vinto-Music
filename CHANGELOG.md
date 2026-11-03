@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.14.5] - 2026-11-03
+
+- Runtime:
+  - watchdog restarts the process gracefully when leaked livekit audio capture threads pile up, at 150 while idle or 400 during playback
+  - new `AUDIO_THREAD_IDLE_RESTART` and `AUDIO_THREAD_RESTART` settings
+  - new `audio_capture_threads` metric
+- Tests: watchdog thresholds and thread counting
+
 ## [0.14.4] - 2026-11-03
 
 - Fixes:
