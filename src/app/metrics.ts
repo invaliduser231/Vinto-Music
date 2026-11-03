@@ -55,6 +55,7 @@ export function createAppMetrics() {
     processRssBytes: registry.gauge('process_rss_bytes', 'Process RSS in bytes'),
     processExternalBytes: registry.gauge('process_external_bytes', 'Process external memory in bytes'),
     processArrayBuffersBytes: registry.gauge('process_array_buffers_bytes', 'Process array buffer memory in bytes'),
+    audioCaptureThreads: registry.gauge('audio_capture_threads', 'Native audio capture threads in this process'),
     eventLoopDelayP50Ms: registry.gauge('event_loop_delay_p50_ms', 'Median event loop delay in milliseconds'),
     eventLoopDelayP99Ms: registry.gauge('event_loop_delay_p99_ms', '99th percentile event loop delay in milliseconds'),
     eventLoopDelayMaxMs: registry.gauge('event_loop_delay_max_ms', 'Longest event loop delay in milliseconds since the last sample'),

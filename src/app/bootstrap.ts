@@ -35,6 +35,13 @@ import { sanitizeBrokenLocalProxyEnv } from './proxy.ts';
 import { verifyApiConnectivity, resolveGatewayUrl } from './connectivity.ts';
 import { bindGatewayMetrics, bindSessionMetrics, createAppMetrics } from './metrics.ts';
 import { isGatewayRecovering, unhealthyExitThresholdMs } from './unhealthyExit.ts';
+import {
+  AUDIO_THREAD_WATCHDOG_INTERVAL_MS,
+  AUDIO_THREAD_WATCHDOG_REQUIRED_BREACHES,
+  countAudioCaptureThreads,
+  evaluateAudioThreadWatchdog,
+  leakedAudioThreads,
+} from './audioThreadWatchdog.ts';
 import { isPrimaryShard } from '../core/sharding.ts';
 import type { SessionManagerOptions } from '../types/domain.ts';
 const PRESENCE_ROTATION_INTERVAL_MS = 10 * 60 * 1000;
@@ -99,6 +106,8 @@ export async function startApp() {
   let unhealthyExitHandle: NodeJS.Timeout | null = null;
   let memoryTelemetryHandle: NodeJS.Timeout | null = null;
   let rssExitHandle: NodeJS.Timeout | null = null;
+  let audioThreadWatchdogHandle: NodeJS.Timeout | null = null;
+  let audioThreadBreaches = 0;
 
   (dns as DnsWithDefaultOrder).setDefaultResultOrder?.(config.dnsResultOrder);
   logger.info('DNS resolution order configured', { order: config.dnsResultOrder });
@@ -882,6 +891,10 @@ export async function startApp() {
       clearInterval(rssExitHandle);
       rssExitHandle = null;
     }
+    if (audioThreadWatchdogHandle) {
+      clearInterval(audioThreadWatchdogHandle);
+      audioThreadWatchdogHandle = null;
+    }
     if (heapSnapshotSignalEnabled) {
       process.off('SIGUSR2', heapSnapshotSignalHandler);
     }
@@ -918,6 +931,49 @@ export async function startApp() {
   process.on('SIGTERM', () => {
     shutdown('SIGTERM').catch(() => process.exit(1));
   });
+
+  if (config.audioThreadIdleRestart > 0 || config.audioThreadRestart > 0) {
+    const audioThreadPolicy = {
+      idleRestartLeakedThreads: config.audioThreadIdleRestart,
+      restartLeakedThreads: config.audioThreadRestart,
+    };
+    audioThreadWatchdogHandle = setInterval(() => {
+      if (shuttingDown) return;
+      void countAudioCaptureThreads().then((captureThreads) => {
+        if (captureThreads == null || shuttingDown) return;
+        metricSet.audioCaptureThreads.set(captureThreads);
+
+        const telemetry = sessions.getMemoryTelemetry();
+        const sample = {
+          captureThreads,
+          voiceConnectionsConnected: telemetry.voiceConnectionsConnected,
+          playersPlaying: telemetry.playersPlaying,
+        };
+        const verdict = evaluateAudioThreadWatchdog(audioThreadPolicy, sample);
+        if (verdict === 'ok') {
+          audioThreadBreaches = 0;
+          return;
+        }
+
+        audioThreadBreaches += 1;
+        const meta = {
+          ...sample,
+          leakedThreads: leakedAudioThreads(sample),
+          verdict,
+          audioThreadBreaches,
+          requiredBreaches: AUDIO_THREAD_WATCHDOG_REQUIRED_BREACHES,
+        };
+        if (audioThreadBreaches < AUDIO_THREAD_WATCHDOG_REQUIRED_BREACHES) {
+          logger.warn('Leaked audio capture threads above threshold', meta);
+          return;
+        }
+
+        logger.error('Restarting to release leaked audio capture threads', meta);
+        shutdown('audio-thread-watchdog').catch(() => process.exit(1));
+      });
+    }, AUDIO_THREAD_WATCHDOG_INTERVAL_MS);
+    audioThreadWatchdogHandle.unref?.();
+  }
 
   process.on('unhandledRejection', (reason) => {
     logger.error('Unhandled promise rejection', {

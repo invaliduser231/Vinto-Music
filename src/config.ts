@@ -280,6 +280,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     memoryTelemetryIntervalMs: parsePositiveInt(env.MEMORY_TELEMETRY_INTERVAL_MS, 15_000),
     memoryTelemetryLogIntervalMs: parseNonNegativeInt(env.MEMORY_TELEMETRY_LOG_INTERVAL_MS, 300_000),
     memoryRssExitMb: parseNonNegativeInt(env.MEMORY_RSS_EXIT_MB, 0),
+    audioThreadIdleRestart: parseNonNegativeInt(env.AUDIO_THREAD_IDLE_RESTART, 150),
+    audioThreadRestart: parseNonNegativeInt(env.AUDIO_THREAD_RESTART, 400),
     heapSnapshotSignalEnabled: parseBool(env.HEAP_SNAPSHOT_SIGNAL_ENABLED, true),
     heapSnapshotDir: env.HEAP_SNAPSHOT_DIR?.trim() || '.heap-snapshots',
 
