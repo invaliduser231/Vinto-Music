@@ -105,6 +105,8 @@ Most runtime environment variables are parsed in `src/config.ts`. `.env.example`
 | `MEMORY_TELEMETRY_INTERVAL_MS` | `15000` | Sampling interval for runtime memory telemetry collection. |
 | `MEMORY_TELEMETRY_LOG_INTERVAL_MS` | `300000` | Log interval for aggregated runtime memory telemetry. Set `0` to disable periodic memory log emission. |
 | `MEMORY_RSS_EXIT_MB` | `0` | Optional RSS watchdog threshold in MB. When greater than `0`, the process exits with code `1` after repeated over-threshold samples so a supervisor can restart it. |
+| `AUDIO_THREAD_IDLE_RESTART` | `150` | Leaked native audio capture threads (capture threads minus connected voice connections) at which the process restarts gracefully while nothing is playing. Set `0` to disable. Linux only. |
+| `AUDIO_THREAD_RESTART` | `400` | Leaked native audio capture threads at which the process restarts gracefully even during playback. Sessions are persisted and restored after the restart. Set `0` to disable. |
 | `HEAP_SNAPSHOT_SIGNAL_ENABLED` | `1` | Allow runtime heap snapshot signal handling. |
 | `HEAP_SNAPSHOT_DIR` | `.heap-snapshots` | Directory used for heap snapshot output. |
 
