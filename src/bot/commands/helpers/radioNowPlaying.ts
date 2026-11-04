@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import ffmpegPath from 'ffmpeg-static';
+import { HTTP_STREAM_USER_AGENT } from '../../../player/musicPlayer/constants.ts';
 
 const RADIO_LOOKUP_CACHE_TTL_MS = 45_000;
 const RADIO_LOOKUP_CACHE_MAX_SIZE = 512;
@@ -277,7 +278,7 @@ async function readAudioSampleWithFfmpeg(url: string): Promise<AudioSample | nul
     const args = [
       '-nostdin',
       '-v', 'error',
-      '-user_agent', 'Mozilla/5.0 (compatible; FluxerBot/1.0)',
+      '-user_agent', HTTP_STREAM_USER_AGENT,
       '-t', String(RADIO_FFMPEG_SAMPLE_SECONDS),
       '-i', url,
       '-vn',

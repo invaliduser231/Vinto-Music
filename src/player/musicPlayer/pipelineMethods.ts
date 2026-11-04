@@ -4,7 +4,7 @@ import playdl from 'play-dl';
 import { LiveAudioProcessor, isLiveFilterPresetSupported } from '../LiveAudioProcessor.ts';
 import { SpectrumAnalyzer } from '../audio/SpectrumAnalyzer.ts';
 import { ValidationError } from '../../core/errors.ts';
-import { FILTER_PRESETS } from './constants.ts';
+import { FILTER_PRESETS, HTTP_STREAM_USER_AGENT } from './constants.ts';
 import type { MusicPlayer } from '../MusicPlayer.ts';
 import { readField } from '../../utils/unknownData.ts';
 
@@ -219,7 +219,7 @@ export const pipelineMethods: PipelineMethodMembers & ThisType<MusicPlayer> = {
     const args = [
       ...(isLive ? ['-re'] : []),
       '-nostdin',
-      '-user_agent', 'Mozilla/5.0 (compatible; FluxerBot/1.0)',
+      '-user_agent', HTTP_STREAM_USER_AGENT,
     ];
 
     if (proxyUrl) {
@@ -961,7 +961,7 @@ export const pipelineMethods: PipelineMethodMembers & ThisType<MusicPlayer> = {
       : 'ffprobe';
     const args = [
       '-nostdin',
-      '-user_agent', 'Mozilla/5.0 (compatible; FluxerBot/1.0)',
+      '-user_agent', HTTP_STREAM_USER_AGENT,
       '-v', 'error',
       '-show_entries', 'format=duration:stream=duration:format_tags=title,artist:stream_tags=title,artist',
       '-of', 'json',
