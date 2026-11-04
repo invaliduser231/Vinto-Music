@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.14.7] - 2026-11-04
+
+- Fixes: radio streams that reject bot user agents (e.g. revma) play again, ffmpeg now sends a regular browser user agent
+- Tests: stream user agent
+
 ## [0.14.6] - 2026-11-04
 
 - Fixes: graceful restarts no longer post a "session closed" warning, since sessions resume afterwards
