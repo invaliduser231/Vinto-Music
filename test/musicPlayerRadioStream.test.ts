@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { MusicPlayer } from '../src/player/MusicPlayer.ts';
+import { HTTP_STREAM_USER_AGENT } from '../src/player/musicPlayer/constants.ts';
 
 type ResponseInitShape = {
   url: string;
@@ -304,7 +305,7 @@ test('live HTTP pipeline args pace radio streams in realtime and request icy met
     '-re',
     '-nostdin',
     '-user_agent',
-    'Mozilla/5.0 (compatible; FluxerBot/1.0)',
+    HTTP_STREAM_USER_AGENT,
     '-headers',
   ]);
   assert.equal(args[5], 'Icy-MetaData:1\r\n');
@@ -411,8 +412,6 @@ test('non-youtube m3u8 urls bypass play-dl validation and use the generic url re
   } finally {}
 });
 
-
-
-
-
-
+test('stream user agent does not identify as a bot', () => {
+  assert.doesNotMatch(HTTP_STREAM_USER_AGENT, /bot/i);
+});
