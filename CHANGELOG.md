@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.14.6] - 2026-11-04
+
+- Fixes: graceful restarts no longer post a "session closed" warning, since sessions resume afterwards
+- Tests: session closed announcements on shutdown
+
 ## [0.14.5] - 2026-11-03
 
 - Runtime:
