@@ -760,7 +760,7 @@ export class CommandRouter {
       }
       const channelId = this._resolveEventChannelId(session);
       if (!channelId) return;
-      if (reason === 'manual_command') return;
+      if (reason === 'manual_command' || reason === 'shutdown') return;
 
       const eventT = createTranslator(await this._resolveGuildLocale(session?.guildId ?? null));
       const reasonText = reason === 'idle_timeout'
