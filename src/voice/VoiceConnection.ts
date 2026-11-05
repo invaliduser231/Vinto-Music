@@ -2,6 +2,7 @@ import {
   AudioStream,
   AudioFrame,
   AudioSource,
+  DisconnectReason,
   LocalAudioTrack,
   Room,
   RoomEvent,
@@ -287,7 +288,7 @@ export class VoiceConnection {
   _transportStatsState: { bytesSent: number; tsMs: number } | null;
   _pumpStats: PumpStats;
   _pumpStatsSample: { tsMs: number; bytesIn: number; framesCaptured: number } | null;
-  roomDisconnectedListener: (() => void) | null;
+  roomDisconnectedListener: ((reason?: unknown) => void) | null;
   roomTrackSubscribedListener: ((track: unknown, publication: unknown, participant: unknown) => void) | null;
   roomTrackUnsubscribedListener: ((track: unknown, publication: unknown, participant: unknown) => void) | null;
   roomParticipantDisconnectedListener: ((participant: unknown) => void) | null;
@@ -693,7 +694,7 @@ export class VoiceConnection {
     this._reconnectInProgress = false;
   }
 
-  _handleUnexpectedRoomDisconnect(room: Room) {
+  _handleUnexpectedRoomDisconnect(room: Room, reason?: unknown) {
     if (this.room !== room) return;
 
     const channelId = this.channelId;
@@ -703,6 +704,7 @@ export class VoiceConnection {
       guildId: this.guildId,
       channelId,
       willReconnect,
+      reason: typeof reason === 'number' ? DisconnectReason[reason] ?? reason : null,
     });
 
     if (!willReconnect) return;
@@ -883,8 +885,8 @@ export class VoiceConnection {
     };
     if (typeof roomLike.on !== 'function') return;
 
-    this.roomDisconnectedListener = () => {
-      this._handleUnexpectedRoomDisconnect(room);
+    this.roomDisconnectedListener = (reason) => {
+      this._handleUnexpectedRoomDisconnect(room, reason);
     };
     this.roomTrackSubscribedListener = (track, _publication, participant) => {
       this._monitorRemoteAudioTrack(track, participant).catch((err) => {
