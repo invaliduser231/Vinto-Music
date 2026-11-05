@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.14.8] - 2026-11-05
+
+- Voice: unexpected room disconnects log the livekit disconnect reason
+- Tests: disconnect reason logging
+
 ## [0.14.7] - 2026-11-04
 
 - Fixes: radio streams that reject bot user agents (e.g. revma) play again, ffmpeg now sends a regular browser user agent
