@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { RoomEvent } from '@livekit/rtc-node';
+import { DisconnectReason, RoomEvent } from '@livekit/rtc-node';
 
 import { GATEWAY_OFFLINE_MESSAGE, VoiceConnection } from '../src/voice/VoiceConnection.ts';
 
@@ -24,7 +24,7 @@ type FakeRoom = {
   off(event: unknown, listener: (...args: unknown[]) => void): void;
   disconnect(): Promise<void>;
   removeAllListeners(): void;
-  emitDisconnected(): void;
+  emitDisconnected(reason?: number): void;
 };
 
 function createRoom(): FakeRoom {
@@ -46,10 +46,10 @@ function createRoom(): FakeRoom {
     removeAllListeners() {
       this.listeners.clear();
     },
-    emitDisconnected() {
+    emitDisconnected(reason?: number) {
       this.isConnected = false;
       for (const listener of this.listeners.get(RoomEvent.Disconnected) ?? []) {
-        listener();
+        listener(reason);
       }
     },
   };
@@ -373,4 +373,26 @@ test('capture retries continue for a transient invalid state', async () => {
   await connection._captureFrameWithRetry(source as never, {} as never, 7);
 
   assert.equal(captureCalls, 3);
+});
+
+test('an unexpected room disconnect logs the livekit disconnect reason', async () => {
+  const warnings: Array<{ message: string; meta: Record<string, unknown> }> = [];
+  const connection = new VoiceConnection(createGateway(), 'guild-1', {
+    logger: {
+      warn(message: string, meta: Record<string, unknown>) {
+        warnings.push({ message, meta });
+      },
+    },
+  } as never);
+  connection.autoReconnectEnabled = false;
+  const room = createRoom();
+
+  connection.room = room as never;
+  connection.channelId = 'voice-1';
+  connection._attachRoomListeners(room as never);
+
+  room.emitDisconnected(DisconnectReason.PARTICIPANT_REMOVED);
+
+  assert.equal(warnings[0]?.message, 'Voice room disconnected');
+  assert.equal(warnings[0]?.meta.reason, 'PARTICIPANT_REMOVED');
 });
