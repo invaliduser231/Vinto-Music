@@ -814,4 +814,6 @@ export const ptBR: Catalog = {
   'errors.unsafeUrl': 'Esse link aponta para um endereço de rede privado ou local e não pode ser reproduzido.',
   'errors.invalidUrl': 'Esse link não é uma URL válida.',
   'errors.tooManyRedirects': 'Esse link redireciona vezes demais.',
+  'events.sessionClosedRemoved': 'Fui desconectado do canal de voz, então parei a reprodução.',
+  'events.sessionClosedRemovedRepeatedly': 'Fui desconectado deste canal 24/7 várias vezes seguidas, então vou ficar fora por enquanto. Use join para me trazer de volta.',
 };

@@ -766,7 +766,11 @@ export class CommandRouter {
       const eventT = createTranslator(await this._resolveGuildLocale(session?.guildId ?? null));
       const reasonText = reason === 'idle_timeout'
         ? eventT('events.sessionClosedIdle')
-        : eventT('events.sessionClosed', { reason: String(reason) });
+        : reason === 'removed_from_voice'
+          ? eventT('events.sessionClosedRemoved')
+          : reason === 'removed_from_voice_repeatedly'
+            ? eventT('events.sessionClosedRemovedRepeatedly')
+            : eventT('events.sessionClosed', { reason: String(reason) });
 
       await this._safeReply(channelId, 'warning', reasonText, null, null, session?.settings?.minimalMode ? { minimalMode: true } : undefined);
       await this._emitWebhookEvent(session, 'session_closed', reasonText);

@@ -814,4 +814,6 @@ export const de: Catalog = {
   'errors.unsafeUrl': 'Der Link zeigt auf eine private oder lokale Netzwerkadresse und kann nicht abgespielt werden.',
   'errors.invalidUrl': 'Das ist kein gültiger Link.',
   'errors.tooManyRedirects': 'Der Link leitet zu oft weiter.',
+  'events.sessionClosedRemoved': 'Ich wurde aus dem Sprachkanal entfernt und habe die Wiedergabe beendet.',
+  'events.sessionClosedRemovedRepeatedly': 'Ich wurde mehrmals hintereinander aus diesem 24/7-Kanal entfernt und bleibe deshalb vorerst draußen. Mit join holst du mich zurück.',
 };

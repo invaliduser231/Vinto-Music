@@ -812,4 +812,6 @@ export const en = {
   'errors.unsafeUrl': "That link points at a private or local network address, so it can't be played.",
   'errors.invalidUrl': 'That link is not a valid URL.',
   'errors.tooManyRedirects': 'That link redirects too many times.',
+  'events.sessionClosedRemoved': 'I was disconnected from the voice channel, so I stopped playback.',
+  'events.sessionClosedRemovedRepeatedly': "I was disconnected from this 24/7 channel several times in a row, so I'm staying out for now. Use join to bring me back.",
 } as const;

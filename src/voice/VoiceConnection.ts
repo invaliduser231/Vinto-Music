@@ -609,6 +609,15 @@ export class VoiceConnection {
     }
   }
 
+  async forceRejoin(channelId: string) {
+    this._cancelAutoReconnect();
+    this.connectionId = null;
+    this._needsVoiceStateReset = false;
+    await this._discardStaleRoom();
+    this.channelId = channelId;
+    await this._runAutoReconnect(channelId);
+  }
+
   async disconnect() {
     this._cancelAutoReconnect();
     this._stopAudioPump();

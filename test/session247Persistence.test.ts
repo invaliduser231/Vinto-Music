@@ -656,6 +656,7 @@ test('missing persistent voice channel is cleared before restore attempt', async
     voiceChannelId: '888888',
     textChannelId: '999999',
     restored: false,
+    permanent: true,
     reason: 'voice_channel_missing',
   }]);
   assert.equal(patches.length, 1);

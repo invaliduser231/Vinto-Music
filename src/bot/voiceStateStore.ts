@@ -11,6 +11,7 @@ type VoiceStatePayload = {
   deaf?: boolean | null;
   self_deaf?: boolean | null;
   mute?: boolean | null;
+  connection_id?: string | null;
 };
 
 type GatewayPayload = {
@@ -89,6 +90,7 @@ export class VoiceStateStore extends EventEmitter {
         channelId: payload?.channel_id ?? null,
         previousChannelId,
         mute: payload?.mute === true,
+        connectionId: payload?.connection_id ?? null,
       });
     });
 

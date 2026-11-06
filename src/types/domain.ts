@@ -153,6 +153,7 @@ export interface VoiceStateChange {
   channelId: string | null;
   previousChannelId: string | null;
   mute: boolean;
+  connectionId?: string | null;
 }
 
 export interface VoiceConnectionLike {

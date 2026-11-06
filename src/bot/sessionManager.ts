@@ -26,6 +26,14 @@ import {
   toChannelId,
 } from './sessionManager/runtimeHelpers.ts';
 import { runtimeMethods } from './sessionManager/runtimeMethods.ts';
+import {
+  VOICE_WATCHDOG_INTERVAL_MS,
+  handleBotVoiceRemoval,
+  queuePendingRestore,
+  runVoiceWatchdogSweep,
+  type PendingRestore,
+  type WatchdogHost,
+} from './sessionManager/voiceWatchdog.ts';
 
 const PERSISTENT_RESTORE_CONNECT_RETRY_ATTEMPTS = 3;
 const PERSISTENT_RESTORE_CONNECT_RETRY_DELAY_MS = 2_000;
@@ -54,6 +62,15 @@ function delay(ms: number): Promise<void> {
     setTimeout(resolve, ms);
   });
 }
+
+type PersistentRestoreResult = {
+  guildId: string;
+  voiceChannelId: string;
+  textChannelId: string | null;
+  restored: boolean;
+  permanent: boolean;
+  reason: string;
+};
 
 type PlayerSessionListeners = {
   tracksAdded: (...args: unknown[]) => void;
@@ -144,6 +161,8 @@ export class SessionManager extends EventEmitter {
   snapshotFlushHandle: NodeJS.Timeout | null;
   playerSessionListeners: Map<string, PlayerSessionListeners>;
   persistentSyncTimers: Map<string, NodeJS.Timeout>;
+  pendingRestores: Map<string, PendingRestore>;
+  voiceWatchdogHandle: NodeJS.Timeout | null;
 
   constructor(options: SessionManagerOptions) {
     super();
@@ -162,7 +181,10 @@ export class SessionManager extends EventEmitter {
     this.persistentSyncTimers = new Map();
     this.snapshotFlushHandle = null;
     this.playerSessionListeners = new Map();
+    this.pendingRestores = new Map();
+    this.voiceWatchdogHandle = null;
     this._startSnapshotFlushLoop();
+    this._startVoiceWatchdog();
     this.voiceStateStore?.on?.('change', (change) => this.handleVoiceStateChange(change));
   }
 
@@ -495,8 +517,34 @@ export class SessionManager extends EventEmitter {
     }
   }
 
+  _startVoiceWatchdog(): void {
+    if (this.voiceWatchdogHandle) return;
+    this.voiceWatchdogHandle = setInterval(() => {
+      runVoiceWatchdogSweep(this as unknown as WatchdogHost).catch((err: unknown) => {
+        this.logger?.warn?.('Voice watchdog sweep failed', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }, VOICE_WATCHDOG_INTERVAL_MS);
+    this.voiceWatchdogHandle.unref?.();
+  }
+
+  _stopVoiceWatchdog(): void {
+    if (!this.voiceWatchdogHandle) return;
+    clearInterval(this.voiceWatchdogHandle);
+    this.voiceWatchdogHandle = null;
+  }
+
   handleVoiceStateChange(change: VoiceStateChange): void {
     const isBot = this.botUserId != null && String(change.userId) === this.botUserId;
+    if (isBot && !change.channelId) {
+      handleBotVoiceRemoval(this as unknown as WatchdogHost, change).catch((err: unknown) => {
+        this.logger?.warn?.('Handling bot voice removal failed', {
+          guildId: change.guildId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }
     for (const session of this.listByGuild(change.guildId)) {
       const channelId = toChannelId(session.connection?.channelId);
       if (!channelId) continue;
@@ -1059,6 +1107,8 @@ export class SessionManager extends EventEmitter {
   }
 
   async shutdown(): Promise<void> {
+    this._stopVoiceWatchdog();
+    this.pendingRestores.clear();
     const sessions = [...this.sessions.values()];
     const guildIds = [...new Set([
       ...sessions.map((session) => String(session?.guildId ?? '').trim()).filter(Boolean),
@@ -1096,118 +1146,127 @@ export class SessionManager extends EventEmitter {
       return [];
     });
 
-    const results = [];
+    const results: PersistentRestoreResult[] = [];
     let restoreIndex = 0;
     for (const binding of bindings) {
-      if (restoreIndex > 0) await delay(PERSISTENT_RESTORE_STAGGER_MS);
-      restoreIndex += 1;
-
       const guildId = String(binding?.guildId ?? '').trim();
       const voiceChannelId = toChannelId(binding?.voiceChannelId);
       const textChannelId = normalizeSessionChannelId(binding?.textChannelId);
       if (!guildId || !voiceChannelId) continue;
       if (!this._ownsGuild(guildId)) continue;
 
-      const guildConfig = await this._loadGuildConfig(guildId);
+      if (restoreIndex > 0) await delay(PERSISTENT_RESTORE_STAGGER_MS);
+      restoreIndex += 1;
 
-      const channelState = await this._inspectPersistentVoiceChannel(guildId, voiceChannelId);
-      if (channelState === 'missing') {
-        await this._clearPersistentVoiceBinding(guildId, voiceChannelId).catch(() => null);
-        results.push({ guildId, voiceChannelId, textChannelId, restored: false, reason: 'voice_channel_missing' });
-        continue;
-      }
-
-      const hadSession = this.has(guildId, { voiceChannelId });
-      const session = await this.ensure(guildId, guildConfig, { voiceChannelId, textChannelId });
-      if (textChannelId) {
-        session.textChannelId = textChannelId;
-      }
-
-      if (session.connection.connected && session.connection.channelId === voiceChannelId) {
-        await this.restoreSessionSnapshot(session).catch((err: unknown) => {
-          this.logger?.warn?.('Failed to restore persistent playback snapshot', {
-            guildId,
-            channelId: voiceChannelId,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        });
-        await this.syncPersistentVoiceState(guildId).catch(() => null);
-        results.push({ guildId, voiceChannelId, textChannelId, restored: true, reason: 'already_connected' });
-        continue;
-      }
-
-      try {
-        if (typeof session.connection.connect !== 'function') {
-          throw new Error('Session connection cannot connect.');
-        }
-        let lastConnectError: unknown = null;
-        for (let attempt = 1; attempt <= PERSISTENT_RESTORE_CONNECT_RETRY_ATTEMPTS; attempt += 1) {
-          try {
-            await session.connection.connect(voiceChannelId);
-            lastConnectError = null;
-            break;
-          } catch (err) {
-            lastConnectError = err;
-            const shouldRetry = (
-              attempt < PERSISTENT_RESTORE_CONNECT_RETRY_ATTEMPTS
-              && isRetryablePersistentRestoreConnectFailure(err)
-            );
-            if (!shouldRetry) {
-              throw err;
-            }
-            this.logger?.warn?.('Retrying persistent voice session restore after transient voice connect failure', {
-              guildId,
-              channelId: voiceChannelId,
-              attempt,
-              maxAttempts: PERSISTENT_RESTORE_CONNECT_RETRY_ATTEMPTS,
-              error: err instanceof Error ? err.message : String(err),
-            });
-            await session.connection.disconnect?.().catch(() => null);
-            await delay(persistentRestoreRetryDelayMs(attempt));
-          }
-        }
-        if (lastConnectError) {
-          throw lastConnectError;
-        }
-        await this.restoreSessionSnapshot(session).catch((err: unknown) => {
-          this.logger?.warn?.('Failed to restore persistent playback snapshot', {
-            guildId,
-            channelId: voiceChannelId,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        });
-        await this.syncPersistentVoiceState(guildId).catch(() => null);
-        this.logger?.info?.('Restored persistent voice session', {
-          guildId,
-          channelId: voiceChannelId,
-          textChannelId,
-        });
-        results.push({ guildId, voiceChannelId, textChannelId, restored: true, reason: 'connected' });
-      } catch (err) {
-        this.logger?.warn?.('Failed to restore persistent voice session', {
-          guildId,
-          channelId: voiceChannelId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-
-        if (this._isPermanentPersistentVoiceFailure(err)) {
-          await this._clearPersistentVoiceBinding(guildId, voiceChannelId).catch(() => null);
-        }
-
-        if (!hadSession) {
-          await this.destroy(guildId, 'restore_failed', { sessionId: session.sessionId! }).catch(() => null);
-        }
-        results.push({
-          guildId,
-          voiceChannelId,
-          textChannelId,
-          restored: false,
-          reason: err instanceof Error ? err.message : String(err),
-        });
+      const result = await this._restorePersistentBinding({ guildId, voiceChannelId, textChannelId });
+      results.push(result);
+      if (!result.restored && !result.permanent) {
+        queuePendingRestore(this as unknown as WatchdogHost, { guildId, voiceChannelId, textChannelId });
       }
     }
 
     return results;
+  }
+
+  async _restorePersistentBinding(binding: { guildId: string; voiceChannelId: string; textChannelId: string | null }): Promise<PersistentRestoreResult> {
+    const { guildId, voiceChannelId, textChannelId } = binding;
+    const guildConfig = await this._loadGuildConfig(guildId);
+
+    const channelState = await this._inspectPersistentVoiceChannel(guildId, voiceChannelId);
+    if (channelState === 'missing') {
+      await this._clearPersistentVoiceBinding(guildId, voiceChannelId).catch(() => null);
+      return { guildId, voiceChannelId, textChannelId, restored: false, permanent: true, reason: 'voice_channel_missing' };
+    }
+
+    const hadSession = this.has(guildId, { voiceChannelId });
+    const session = await this.ensure(guildId, guildConfig, { voiceChannelId, textChannelId });
+    if (textChannelId) {
+      session.textChannelId = textChannelId;
+    }
+
+    if (session.connection.connected && session.connection.channelId === voiceChannelId) {
+      await this.restoreSessionSnapshot(session).catch((err: unknown) => {
+        this.logger?.warn?.('Failed to restore persistent playback snapshot', {
+          guildId,
+          channelId: voiceChannelId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+      await this.syncPersistentVoiceState(guildId).catch(() => null);
+      return { guildId, voiceChannelId, textChannelId, restored: true, permanent: false, reason: 'already_connected' };
+    }
+
+    try {
+      if (typeof session.connection.connect !== 'function') {
+        throw new Error('Session connection cannot connect.');
+      }
+      let lastConnectError: unknown = null;
+      for (let attempt = 1; attempt <= PERSISTENT_RESTORE_CONNECT_RETRY_ATTEMPTS; attempt += 1) {
+        try {
+          await session.connection.connect(voiceChannelId);
+          lastConnectError = null;
+          break;
+        } catch (err) {
+          lastConnectError = err;
+          const shouldRetry = (
+            attempt < PERSISTENT_RESTORE_CONNECT_RETRY_ATTEMPTS
+            && isRetryablePersistentRestoreConnectFailure(err)
+          );
+          if (!shouldRetry) {
+            throw err;
+          }
+          this.logger?.warn?.('Retrying persistent voice session restore after transient voice connect failure', {
+            guildId,
+            channelId: voiceChannelId,
+            attempt,
+            maxAttempts: PERSISTENT_RESTORE_CONNECT_RETRY_ATTEMPTS,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          await session.connection.disconnect?.().catch(() => null);
+          await delay(persistentRestoreRetryDelayMs(attempt));
+        }
+      }
+      if (lastConnectError) {
+        throw lastConnectError;
+      }
+      await this.restoreSessionSnapshot(session).catch((err: unknown) => {
+        this.logger?.warn?.('Failed to restore persistent playback snapshot', {
+          guildId,
+          channelId: voiceChannelId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+      await this.syncPersistentVoiceState(guildId).catch(() => null);
+      this.logger?.info?.('Restored persistent voice session', {
+        guildId,
+        channelId: voiceChannelId,
+        textChannelId,
+      });
+      return { guildId, voiceChannelId, textChannelId, restored: true, permanent: false, reason: 'connected' };
+    } catch (err) {
+      this.logger?.warn?.('Failed to restore persistent voice session', {
+        guildId,
+        channelId: voiceChannelId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+
+      const permanent = this._isPermanentPersistentVoiceFailure(err);
+      if (permanent) {
+        await this._clearPersistentVoiceBinding(guildId, voiceChannelId).catch(() => null);
+      }
+
+      if (!hadSession) {
+        await this.destroy(guildId, 'restore_failed', { sessionId: session.sessionId! }).catch(() => null);
+      }
+      return {
+        guildId,
+        voiceChannelId,
+        textChannelId,
+        restored: false,
+        permanent,
+        reason: err instanceof Error ? err.message : String(err),
+      };
+    }
   }
 
 }
