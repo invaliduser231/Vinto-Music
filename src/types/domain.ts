@@ -81,6 +81,7 @@ export interface GuildConfig {
     voteSkipMinVotes?: number;
     djRoleIds?: string[];
     commandChannelIds?: string[];
+    nowPlayingCard?: string | null;
     musicLogChannelId?: ChannelId;
     language?: string | null;
   };

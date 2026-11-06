@@ -69,6 +69,12 @@ function normalizeStoredLanguage(value: unknown) {
 }
 
 const MAX_COMMAND_CHANNELS = 5;
+const NOW_PLAYING_CARD_STYLES = new Set(['ambient', 'split', 'vinyl', 'off']);
+
+function normalizeCardStyle(value: unknown) {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  return NOW_PLAYING_CARD_STYLES.has(normalized) ? normalized : null;
+}
 
 function normalizeChannelIds(values: unknown) {
   if (!Array.isArray(values)) return [];
@@ -107,6 +113,7 @@ function cloneConfig(config: GuildConfigDocument) {
       voteSkipMinVotes: config.settings.voteSkipMinVotes,
       djRoleIds: [...config.settings.djRoleIds],
       commandChannelIds: [...(config.settings.commandChannelIds ?? [])],
+      nowPlayingCard: config.settings.nowPlayingCard ?? null,
       musicLogChannelId: config.settings.musicLogChannelId,
       language: config.settings.language,
     },
@@ -134,6 +141,7 @@ type GuildConfigPatch = {
     voteSkipMinVotes?: unknown;
     djRoleIds?: unknown;
     commandChannelIds?: unknown;
+    nowPlayingCard?: unknown;
     musicLogChannelId?: unknown;
     language?: unknown;
   } | null;
@@ -152,6 +160,7 @@ type GuildConfigDocLike = {
     voteSkipMinVotes?: unknown;
     djRoleIds?: unknown;
     commandChannelIds?: unknown;
+    nowPlayingCard?: unknown;
     musicLogChannelId?: unknown;
     language?: unknown;
   } | null;
@@ -199,6 +208,7 @@ export class GuildConfigStore {
         voteSkipMinVotes: toPositiveInt(options.defaults?.settings?.voteSkipMinVotes, 2),
         djRoleIds: normalizeRoleIds(options.defaults?.settings?.djRoleIds ?? []) as string[],
         commandChannelIds: [],
+        nowPlayingCard: null,
         musicLogChannelId: normalizeChannelId(options.defaults?.settings?.musicLogChannelId),
         language: normalizeStoredLanguage(options.defaults?.settings?.language),
       },
@@ -287,6 +297,7 @@ export class GuildConfigStore {
             voteSkipMinVotes: next.settings.voteSkipMinVotes,
             djRoleIds: [...next.settings.djRoleIds],
             commandChannelIds: [...(next.settings.commandChannelIds ?? [])],
+            nowPlayingCard: next.settings.nowPlayingCard ?? null,
             musicLogChannelId: next.settings.musicLogChannelId,
             language: next.settings.language,
           },
@@ -366,6 +377,10 @@ export class GuildConfigStore {
         next.settings.djRoleIds = normalizeRoleIds(settingsPatch.djRoleIds);
       }
 
+      if (settingsPatch.nowPlayingCard !== undefined) {
+        next.settings.nowPlayingCard = normalizeCardStyle(settingsPatch.nowPlayingCard);
+      }
+
       if (settingsPatch.commandChannelIds !== undefined) {
         next.settings.commandChannelIds = normalizeChannelIds(settingsPatch.commandChannelIds);
       }
@@ -404,6 +419,7 @@ export class GuildConfigStore {
         voteSkipMinVotes: toPositiveInt(settings.voteSkipMinVotes, this.defaults.settings.voteSkipMinVotes),
         djRoleIds: normalizeRoleIds(settings.djRoleIds),
         commandChannelIds: normalizeChannelIds(settings.commandChannelIds),
+        nowPlayingCard: normalizeCardStyle(settings.nowPlayingCard),
         musicLogChannelId: normalizeChannelId(settings.musicLogChannelId),
         language: normalizeStoredLanguage(settings.language) ?? this.defaults.settings.language ?? null,
       },
@@ -430,6 +446,7 @@ export class GuildConfigStore {
     if (as.language !== bs.language) return false;
 
     if ((as.commandChannelIds ?? []).join(',') !== (bs.commandChannelIds ?? []).join(',')) return false;
+    if ((as.nowPlayingCard ?? null) !== (bs.nowPlayingCard ?? null)) return false;
 
     if (as.djRoleIds.length !== bs.djRoleIds.length) return false;
     for (let i = 0; i < as.djRoleIds.length; i += 1) {
@@ -480,6 +497,7 @@ type GuildConfigSettings = {
   voteSkipMinVotes: number;
   djRoleIds: string[];
   commandChannelIds?: string[];
+  nowPlayingCard?: string | null;
   musicLogChannelId?: string | null | undefined;
   language?: string | null | undefined;
 };

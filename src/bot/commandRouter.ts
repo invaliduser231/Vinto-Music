@@ -5,7 +5,8 @@ import { parseCommand } from '../utils/commandParser.ts';
 import { safeFetch } from '../utils/safeHttp.ts';
 import { findFallbackAutoplayTrack, type AutoplayTrackLike } from './autoplayFallback.ts';
 import { buildEmbed, makeResponder, sourceColor } from './messageFormatter.ts';
-import { maskedLink } from './fluxerMarkdown.ts';
+import { maskedLink, subtext } from './fluxerMarkdown.ts';
+import { buildNowPlayingCardFile, resolveCardStyle, type CardStyle, type CardTrack } from './cards/cardService.ts';
 import { buildTrackAuthor } from './commands/helpers/formatting.ts';
 import { CommandRegistry } from './commandRegistry.ts';
 import { registerCommands } from './commands/index.ts';
@@ -63,7 +64,7 @@ type RouterConfig = {
 };
 
 type GuildConfigResolver = {
-  get: (guildId: string) => Promise<{ prefix?: string; settings?: { minimalMode?: boolean; language?: string | null; commandChannelIds?: string[] } } | null>;
+  get: (guildId: string) => Promise<{ prefix?: string; settings?: { minimalMode?: boolean; language?: string | null; commandChannelIds?: string[]; nowPlayingCard?: string | null } } | null>;
 };
 
 type RouterRest = {
@@ -73,6 +74,11 @@ type RouterRest = {
   removeUserReactionFromMessage?: (channelId: string, messageId: string, emoji: string, userId: string) => Promise<unknown>;
   sendMessage: (channelId: string, payload: MessagePayload) => Promise<unknown>;
   deleteMessage?: (channelId: string, messageId: string) => Promise<unknown>;
+  sendFile?: (
+    channelId: string,
+    file: { filename: string; contentType: string; data: Uint8Array; description?: string | null },
+    payload?: MessagePayload,
+  ) => Promise<unknown>;
   listCurrentUserGuilds?: (options?: { limit?: number; after?: string | null }) => Promise<unknown>;
 };
 
@@ -255,7 +261,7 @@ export class CommandRouter {
   guildOpLocks: Map<string, number>;
   helpPaginations: Map<string, HelpPaginationState>;
   searchReactionSelections: Map<string, SearchReactionState>;
-  nowPlayingMessages: Map<string, { channelId: string; messageId: string }>;
+  nowPlayingMessages: Map<string, { channelId: string; messageId: string; isCard?: boolean }>;
   commandChannelNotices: Map<string, number>;
   lastPlayedTracks: Map<string, Record<string, unknown>>;
   autoplaySeeds: Map<string, { artist: string; track: string; playedIdentity: string }>;
@@ -1071,13 +1077,18 @@ export class CommandRouter {
     const duration = String(track?.duration ?? '').trim() || 'Unknown';
     const url = String(track?.url ?? '').trim();
     const requestedBy = String(track?.requestedBy ?? '').trim();
+    const scrobblerFooter = await this._buildScrobbleFooter(session, eventT);
+
+    const cardSent = await this._publishNowPlayingCard(session, track, channelId, messageKey, requestedBy, scrobblerFooter, eventT);
+    if (cardSent) return true;
 
     const descriptionParts = [maskedLink(`**${title}**`, url) || `**${title}**`, `\`${duration}\``];
     if (requestedBy) descriptionParts.push(`| <@${requestedBy}>`);
 
-    const scrobblerFooter = await this._buildScrobbleFooter(session, eventT);
     const embed = buildEmbed({
-      title: `Now playing${voiceChannelTag}`,
+      title: session?.connection?.channelId
+        ? eventT('events.nowPlayingTitleIn', { channel: `<#${String(session.connection.channelId)}>` })
+        : eventT('events.nowPlayingTitle'),
       description: descriptionParts.join(' '),
       color: sourceColor(track?.source as string | null | undefined),
       thumbnailUrl: (track?.thumbnailUrl as string | null | undefined) ?? null,
@@ -1091,9 +1102,13 @@ export class CommandRouter {
     };
 
     const existing = this.nowPlayingMessages.get(messageKey);
-    if (existing && existing.channelId === channelId) {
+    if (existing && existing.channelId === channelId && !existing.isCard) {
       const edited = await this.rest.editMessage(channelId, existing.messageId, payload).catch(() => null);
       if (edited) return true;
+      this.nowPlayingMessages.delete(messageKey);
+    }
+    if (existing?.isCard) {
+      await this.rest.deleteMessage?.(existing.channelId, existing.messageId).catch(() => null);
       this.nowPlayingMessages.delete(messageKey);
     }
 
@@ -1109,6 +1124,66 @@ export class CommandRouter {
 
     const messageId = String((sent as { id?: unknown })?.id ?? '').trim();
     if (messageId) this.nowPlayingMessages.set(messageKey, { channelId, messageId });
+    return true;
+  }
+
+  async _publishNowPlayingCard(
+    session: SessionLookup | null | undefined,
+    track: Record<string, unknown>,
+    channelId: string,
+    messageKey: string,
+    requestedBy: string,
+    scrobblerFooter: string | null,
+    eventT: ReturnType<typeof createTranslator>,
+  ): Promise<boolean> {
+    if (!this.rest.sendFile) return false;
+    const guildConfig = await this._resolveGuildConfig(String(session?.guildId ?? '').trim() || null);
+    const fallbackStyle = resolveCardStyle(this.config.nowPlayingCardStyle, 'ambient');
+    const style: CardStyle = resolveCardStyle(guildConfig?.settings?.nowPlayingCard, fallbackStyle);
+    if (style === 'off') return false;
+
+    const pending = Array.isArray(session?.player?.pendingTracks) ? session.player.pendingTracks : [];
+    const card = await buildNowPlayingCardFile(track as CardTrack, {
+      style,
+      upNext: (pending[0] as CardTrack | undefined) ?? null,
+      queueLength: pending.length,
+      labels: {
+        upNext: eventT('card.upNext'),
+        live: eventT('card.live'),
+        moreInQueue: eventT('card.moreInQueue', { count: '{count}' }),
+      },
+    });
+    if (!card) return false;
+
+    const voiceChannelId = String(session?.connection?.channelId ?? '').trim();
+    const details = [
+      requestedBy ? eventT('card.requestedBy', { user: `<@${requestedBy}>` }) : eventT('card.autoplay'),
+      voiceChannelId ? `<#${voiceChannelId}>` : null,
+      scrobblerFooter,
+    ].filter(Boolean).join(' | ');
+
+    const sent = await this.rest.sendFile(channelId, {
+      ...card,
+      description: String(track?.title ?? '').slice(0, 1000) || null,
+    }, {
+      content: subtext(details),
+      allowed_mentions: { parse: [], users: [], roles: [], replied_user: false },
+    }).catch((error: unknown) => {
+      this.logger?.debug?.('Failed to publish now playing card', {
+        channelId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    });
+    if (!sent) return false;
+
+    const previous = this.nowPlayingMessages.get(messageKey);
+    if (previous) {
+      await this.rest.deleteMessage?.(previous.channelId, previous.messageId).catch(() => null);
+    }
+    const messageId = String((sent as { id?: unknown })?.id ?? '').trim();
+    if (messageId) this.nowPlayingMessages.set(messageKey, { channelId, messageId, isCard: true });
+    else this.nowPlayingMessages.delete(messageKey);
     return true;
   }
 

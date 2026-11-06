@@ -30,6 +30,7 @@
   ],
   "dependencies": {
     "@livekit/rtc-node": "^0.13.34",
+    "@napi-rs/canvas": "^1.1.0",
     "@sentry/node": "^10.72.0",
     "dotenv": "^17.4.2",
     "egoroof-blowfish": "^4.0.3",

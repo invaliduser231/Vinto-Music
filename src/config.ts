@@ -151,6 +151,13 @@ function normalizeNodeLinkRoutingMode(value: unknown): 'smart' | 'all' | 'youtub
   throw new ConfigurationError('NODELINK_ROUTING_MODE must be one of: smart, all, youtube-only, auto');
 }
 
+function normalizeCardStyle(value: unknown): 'ambient' | 'split' | 'vinyl' | 'off' {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (!normalized) return 'ambient';
+  if (normalized === 'ambient' || normalized === 'split' || normalized === 'vinyl' || normalized === 'off') return normalized;
+  throw new ConfigurationError('NOW_PLAYING_CARD_STYLE must be one of: ambient, split, vinyl, off');
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
   const token = env.BOT_TOKEN?.trim();
   if (!token) {
@@ -172,6 +179,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     gatewayPresenceEnabled: parseBool(env.GATEWAY_PRESENCE_ENABLED, false),
     dnsResultOrder: normalizeDnsResultOrder(env.DNS_RESULT_ORDER),
     allowPrivateMediaUrls: parseBool(env.ALLOW_PRIVATE_MEDIA_URLS, false),
+    nowPlayingCardStyle: normalizeCardStyle(env.NOW_PLAYING_CARD_STYLE),
     autoGatewayUrl: parseBool(env.AUTO_GATEWAY_URL, true),
     gatewayOnlyMode: parseBool(env.GATEWAY_ONLY_MODE, false),
     strictStartupCheck: parseBool(env.STRICT_STARTUP_CHECK, false),

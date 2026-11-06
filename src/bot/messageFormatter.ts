@@ -45,6 +45,11 @@ const SOURCE_LABELS: Record<string, string> = {
   vkmusic: 'VK Music',
   jiosaavn: 'JioSaavn',
   'radio-stream': 'Radio',
+  audius: 'Audius',
+  ytmusic: 'YouTube Music',
+  amazonmusic: 'Amazon Music',
+  audiomack: 'Audiomack',
+  mixcloud: 'Mixcloud',
 };
 
 const BOT_BRAND = 'Vinto';
@@ -59,6 +64,11 @@ export function sourceLabel(source: string | null | undefined): string {
   if (SOURCE_LABELS[key]) return SOURCE_LABELS[key];
   if (!key) return 'Unknown';
   return key.charAt(0).toUpperCase() + key.slice(1);
+}
+
+export function knownSourceLabel(source: string | null | undefined): string | null {
+  const key = String(source ?? '').trim().toLowerCase();
+  return SOURCE_LABELS[key] ?? null;
 }
 
 interface BuildEmbedOptions {

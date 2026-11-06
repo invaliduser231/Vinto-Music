@@ -30,6 +30,7 @@ export type GuildConfigLike = {
     voteSkipMinVotes: number;
     djRoleIds: string[];
     commandChannelIds?: string[];
+    nowPlayingCard?: string | null;
     musicLogChannelId: string | null;
     language?: string | null;
   };

@@ -3,6 +3,7 @@ import { describePermissionFailure, ensurePermissionCheck, permissionCheckFields
 import type { PermissionFlag } from '../permissions/flags.ts';
 import { parseVoiceChannelArgument } from './helpers/formatting.ts';
 import { describePerkDelta } from '../services/votePerks.ts';
+import { resolveCardStyle } from '../cards/cardService.ts';
 import {
   localeFlag,
   localeLabel,
@@ -342,6 +343,32 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
   }));
 
   registry.register(createCommand({
+    name: 'npcard',
+    aliases: ['cardstyle', 'nowplayingcard'],
+    description: 'Choose how the now playing card looks, or turn it off.',
+    usage: 'npcard [ambient|split|vinyl|off]',
+    async execute(ctx: CommandContextLike) {
+      ensureGuild(ctx);
+      const guildConfig = await getGuildConfigOrThrow(ctx);
+      const fallback = resolveCardStyle(ctx.config?.nowPlayingCardStyle, 'ambient');
+      const current = resolveCardStyle(guildConfig.settings.nowPlayingCard, fallback);
+
+      if (!ctx.args.length) {
+        await ctx.reply.info(ctx.t('npcard.current', { style: ctx.t(`npcard.style.${current}`) }));
+        return;
+      }
+
+      await ensureManageGuildAccess(ctx, 'access.changeCardStyle');
+      const raw = String(ctx.args[0] ?? '').trim().toLowerCase();
+      const next = resolveCardStyle(raw, 'off');
+      if (next !== raw) throw new ValidationError(ctx.t('npcard.usage', { prefix: ctx.prefix }));
+
+      await updateGuildConfig(ctx, { settings: { nowPlayingCard: next } });
+      await ctx.reply.success(ctx.t('npcard.set', { style: ctx.t(`npcard.style.${next}`) }));
+    },
+  }));
+
+  registry.register(createCommand({
     name: 'musiclog',
     aliases: ['logchannel'],
     description: 'Set a dedicated channel for player event logs.',
@@ -473,6 +500,11 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
         { name: ctx.t('config.voteMin'), value: String(guildConfig.settings.voteSkipMinVotes), inline: true },
         { name: ctx.t('config.djRoles'), value: roles },
         { name: ctx.t('config.musicLogChannel'), value: guildConfig.settings.musicLogChannelId ? `<#${guildConfig.settings.musicLogChannelId}>` : ctx.t('common.disabledLower') },
+        {
+          name: ctx.t('config.cardStyle'),
+          value: ctx.t(`npcard.style.${resolveCardStyle(guildConfig.settings.nowPlayingCard, resolveCardStyle(ctx.config?.nowPlayingCardStyle, 'ambient'))}`),
+          inline: true,
+        },
         {
           name: ctx.t('config.commandChannels'),
           value: guildConfig.settings.commandChannelIds?.length

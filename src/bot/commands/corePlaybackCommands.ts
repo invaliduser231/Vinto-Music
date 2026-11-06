@@ -38,7 +38,8 @@ import {
   requireLibrary,
 } from './commandHelpers.ts';
 import { buildEmbed, sourceColor } from '../messageFormatter.ts';
-import { maskedLink } from '../fluxerMarkdown.ts';
+import { maskedLink, subtext } from '../fluxerMarkdown.ts';
+import { buildNowPlayingCardFile, resolveCardStyle, type CardTrack } from '../cards/cardService.ts';
 import type { Translator } from '../../i18n/index.ts';
 import { buildExportFilename, buildQueueCsv } from './helpers/csvExport.ts';
 import {
@@ -61,6 +62,47 @@ import { collectPlayableAttachmentUrls } from './helpers/attachments.ts';
 import type { EmbedField, MessagePayload } from '../../types/core.ts';
 import type { CommandContextLike, SessionLike, TrackDataLike } from './helpers/types.ts';
 import { buildCommandUsage, buildHelpPayload } from './helpers/formatting.ts';
+
+async function sendNowPlayingCard(
+  ctx: PlaybackCommandContext,
+  session: SessionLike,
+  current: TrackDataLike,
+  progressSec: number,
+): Promise<boolean> {
+  if (!ctx.rest?.sendFile || ctx.config?.minimalMode === true || ctx.config?.enableEmbeds === false) return false;
+  const style = resolveCardStyle(
+    ctx.guildConfig?.settings?.nowPlayingCard,
+    resolveCardStyle(ctx.config?.nowPlayingCardStyle, 'ambient'),
+  );
+  if (style === 'off') return false;
+
+  const pending = session.player.pendingTracks ?? [];
+  const card = await buildNowPlayingCardFile(current as CardTrack, {
+    style,
+    positionSec: progressSec,
+    upNext: (pending[0] as CardTrack | undefined) ?? null,
+    queueLength: pending.length,
+    labels: {
+      upNext: ctx.t('card.upNext'),
+      live: ctx.t('card.live'),
+      moreInQueue: ctx.t('card.moreInQueue', { count: '{count}' }),
+    },
+  });
+  if (!card) return false;
+
+  const requestedBy = String(current.requestedBy ?? '').trim();
+  const details = [
+    requestedBy ? ctx.t('card.requestedBy', { user: `<@${requestedBy}>` }) : null,
+    `${ctx.t('now.loop')} ${String(session.player.loopMode ?? 'off')}`,
+    `${ctx.t('common.volume')} ${session.player.volumePercent ?? 100}%`,
+  ].filter(Boolean).join(' | ');
+
+  const sent = await ctx.rest.sendFile(ctx.channelId, {
+    ...card,
+    description: String(current.title ?? '').slice(0, 1000) || null,
+  }, withCommandReplyReference(ctx, { content: subtext(details) })).catch(() => null);
+  return Boolean(sent);
+}
 
 const RADIO_RECOGNITION_SUPPORT_FOOTER = 'Radio recognition costs money to run. Support: https://ko-fi.com/Q5Q31VDH1Z';
 const DIRECT_YOUTUBE_METADATA_GRACE_MS = 150;
@@ -1523,6 +1565,8 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
         await ctx.rest.sendMessage?.(ctx.channelId, withCommandReplyReference(ctx, finalPayload));
         return;
       }
+
+      if (await sendNowPlayingCard(ctx, session, current, progressSec)) return;
 
       const payload = buildNowPlayingPayload(fields);
       await ctx.rest.sendMessage?.(ctx.channelId, withCommandReplyReference(ctx, payload));

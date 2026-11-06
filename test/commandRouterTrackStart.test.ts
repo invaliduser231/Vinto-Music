@@ -138,7 +138,7 @@ test('now playing embed links the track title instead of the heading', async () 
 
   try {
     const published = await router._publishNowPlaying(
-      { guildId: 'guild-1', settings: {} } as never,
+      { guildId: 'guild-1', settings: {}, connection: { channelId: 'voice-1' } } as never,
       { title: 'Loser', duration: '3:43', url: 'https://www.deezer.com/track/3602329332', source: 'deezer', requestedBy: '42' },
       'text-1',
       ' in <#voice-1>',
