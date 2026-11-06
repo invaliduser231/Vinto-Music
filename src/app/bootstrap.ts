@@ -23,6 +23,7 @@ import { EarrapeProfileStore } from '../bot/services/earrapeProfileStore.ts';
 import { MonitoringServer } from '../monitoring/server.ts';
 import { DashboardServer } from '../monitoring/dashboardServer.ts';
 import { initializeSentry } from '../monitoring/sentry.ts';
+import { createErrorChannelReporter } from '../monitoring/errorChannel.ts';
 import { NodeLinkClient } from '../player/musicPlayer/NodeLinkClient.ts';
 import { LastFmClient } from '../integrations/lastfm/LastFmClient.ts';
 import { parseEncryptionKey } from '../integrations/lastfm/secretBox.ts';
@@ -115,7 +116,7 @@ export async function startApp() {
   setPrivateUrlPolicy({ allowPrivate: config.allowPrivateMediaUrls });
 
   await initializePlayDlAuth(config, logger.child('media-auth'));
-  const errorReporter = await initializeSentry(config, logger.child('sentry'));
+  const sentryReporter = await initializeSentry(config, logger.child('sentry'));
 
   const rest = new RestClient({
     token: config.token,
@@ -129,6 +130,28 @@ export async function startApp() {
       restRateLimitedTotal: metricSet.restRateLimitedTotal,
       restGlobalRateLimitWaitMs: metricSet.restGlobalRateLimitWaitMs,
     },
+  });
+  const errorReporter = createErrorChannelReporter({
+    channelId: config.errorChannelId,
+    rest,
+    inner: sentryReporter,
+    logger: logger.child('error-channel'),
+    shardLabel: config.shardCount > 1 ? String(config.shardId) : null,
+    secrets: [
+      config.token,
+      config.mongoUri,
+      config.spotifyClientSecret,
+      config.spotifyRefreshToken,
+      config.tidalToken,
+      config.deezerArl,
+      config.lastfmApiSecret,
+      config.lastfmEncryptionKey,
+      config.nodeLinkPassword,
+      config.auddApiToken,
+      config.fluxerlistApiKey,
+      config.dashboardApiSecret,
+      config.sentryDsn,
+    ],
   });
 
   const mongo = new MongoService({

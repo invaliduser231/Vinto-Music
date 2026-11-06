@@ -316,6 +316,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     unhealthyCheckIntervalMs: parsePositiveInt(env.UNHEALTHY_CHECK_INTERVAL_MS, 5_000),
 
     sentryDsn: env.SENTRY_DSN?.trim() || null,
+    errorChannelId: /^\d{6,}$/.test(env.ERROR_CHANNEL_ID?.trim() ?? '') ? env.ERROR_CHANNEL_ID!.trim() : null,
     sentryEnvironment: (env.SENTRY_ENVIRONMENT?.trim() || env.NODE_ENV?.trim() || 'production'),
   };
 

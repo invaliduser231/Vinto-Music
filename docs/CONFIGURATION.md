@@ -249,6 +249,7 @@ Notes:
 | `UNHEALTHY_CHECK_INTERVAL_MS` | `5000` | How often the runtime checks whether unhealthy state should trigger a forced exit. |
 | `SENTRY_DSN` | empty | Optional Sentry DSN. |
 | `SENTRY_ENVIRONMENT` | `production` | Sentry environment label. |
+| `ERROR_CHANNEL_ID` | empty | Fluxer text channel that receives runtime errors, failed commands, and crashes. Messages are redacted (configured secrets, credentials in URLs, `authorization` values), identical errors are posted once per 5 minutes, and at most 10 posts go out per 5 minutes. Works alongside Sentry. |
 
 ## FluxerList
 
