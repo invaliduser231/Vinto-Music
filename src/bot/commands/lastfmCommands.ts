@@ -361,11 +361,10 @@ export function registerLastFmCommands(registry: RegistryLike) {
 
   registry.register(createCommand({
     name: 'autoplay',
-    description: 'Keep playback going with Last.fm recommendations when the queue runs out.',
+    description: 'Keep playback going with related tracks when the queue runs out.',
     usage: 'autoplay [on|off]',
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
-      requireLastFm(ctx);
       const library = requireLibrary(ctx);
       const guildConfig = await getGuildConfigOrThrow(ctx);
       const voiceChannelId = await resolveActiveVoiceChannelOrThrow(ctx, { fallbackCommand: 'autoplay' });

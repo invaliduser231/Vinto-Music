@@ -353,3 +353,63 @@ test('autoplay only gives up when neither source knows anything', async () => {
   assert.equal(await router._tryAutoplay(session as never), null);
   assert.equal(previewCalls.length, 0);
 });
+
+test('autoplay falls back to the YouTube mix when Last.fm is not configured', async () => {
+  const enqueued: unknown[] = [];
+  const player = {
+    playing: false,
+    historyTracks: [],
+    async previewTracks(query: string) {
+      if (!query.includes('list=RD')) return [];
+      return [
+        { title: 'Seed Song', url: 'https://www.youtube.com/watch?v=seed0000001', duration: '3:00' },
+        { title: 'Mix Song', url: 'https://www.youtube.com/watch?v=mix00000001', duration: '3:30' },
+      ];
+    },
+    enqueueResolvedTracks(tracks: unknown[]) {
+      enqueued.push(...tracks);
+      return tracks;
+    },
+    async play() {
+      this.playing = true;
+    },
+  };
+  const session = {
+    guildId: 'guild-1',
+    sessionId: 'session-1',
+    settings: { autoplayEnabled: true },
+    connection: { channelId: 'voice-1' },
+    player,
+  };
+  const router = new CommandRouter({
+    config: { prefix: '!', sessionIdleMs: 300_000 },
+    rest: {
+      async sendTyping() {},
+      async sendMessage() {},
+      async editMessage() {},
+    },
+    gateway: {},
+    sessions: {
+      has: () => true,
+      bindTextChannel: () => null,
+      get: () => session,
+      destroy: async () => null,
+      on: () => null,
+      sessions: new Map(),
+    },
+    voiceStateStore: { countUsersInChannel: () => 1 },
+    lyrics: null,
+    lastfm: null,
+  });
+  router.lastPlayedTracks.set('session-1', {
+    title: 'Seed Song',
+    url: 'https://www.youtube.com/watch?v=seed0000001',
+    duration: '3:00',
+  });
+
+  const title = await router._tryAutoplay(session);
+
+  assert.equal(title, 'Mix Song');
+  assert.equal(enqueued.length, 1);
+  assert.equal(player.playing, true);
+});

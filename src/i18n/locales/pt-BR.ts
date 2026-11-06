@@ -810,7 +810,7 @@ export const ptBR: Catalog = {
   'cmd.fmplay.description': 'Colocar na fila a última faixa enviada por alguém.',
   'cmd.love.description': 'Marcar a faixa atual como favorita no Last.fm.',
   'cmd.unlove.description': 'Remover a marca de favorita da faixa atual no Last.fm.',
-  'cmd.autoplay.description': 'Continuar tocando com recomendações do Last.fm quando a fila acabar.',
+  'cmd.autoplay.description': 'Continuar tocando com músicas parecidas quando a fila acabar.',
   'errors.unsafeUrl': 'Esse link aponta para um endereço de rede privado ou local e não pode ser reproduzido.',
   'errors.invalidUrl': 'Esse link não é uma URL válida.',
   'errors.tooManyRedirects': 'Esse link redireciona vezes demais.',
