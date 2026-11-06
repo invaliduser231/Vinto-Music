@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.15.0] - 2026-11-06
+
+- Player:
+  - now playing cards with cover art, progress and the next track, styles `ambient`, `split` and `vinyl` via `npcard`
+  - `play` and `search` accept source prefixes such as `sc:`, `dz:`, `yt:` or `sp:`
+  - autoplay works without last.fm, using the youtube mix or the same artist
+- Last.fm: `lastfm play <loved|top|recent>` queues tracks from someone's lists
+- Guild config: `musicchannel` limits music commands to chosen channels
+- Voice:
+  - watchdog rejoins dropped 24/7 channels and retries failed restores with backoff
+  - removal by an admin ends regular sessions, 24/7 gives up after three removals in 15 minutes
+- Permissions: warning after joining when embed, reaction, history or file permissions are missing
+- Monitoring: optional `ERROR_CHANNEL_ID` for redacted error reports in fluxer
+- Security: links that resolve to private or local addresses are refused, `ALLOW_PRIVATE_MEDIA_URLS` lifts this
+- Dependencies: added `@napi-rs/canvas` and `undici`, inter font bundled
+- Fixes: plain queries with a colon are no longer sent to nodelink as a source identifier
+- Tests: url guard, voice watchdog, source prefixes, autoplay fallback, command channels, error channel, permission warning, last.fm lists, now playing cards
+
 ## [0.14.8] - 2026-11-05
 
 - Voice: unexpected room disconnects log the livekit disconnect reason
