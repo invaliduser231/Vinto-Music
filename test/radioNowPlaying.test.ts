@@ -7,6 +7,9 @@ import {
   __setRadioNowPlayingSpawnForTests,
   detectRadioNowPlaying,
 } from '../src/bot/commands/helpers/radioNowPlaying.ts';
+import { _setSafeFetchTransport } from '../src/utils/safeHttp.ts';
+
+_setSafeFetchTransport((url, init) => globalThis.fetch(url, init as RequestInit));
 
 type RadioResponseInit = {
   ok?: boolean;

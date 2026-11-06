@@ -94,6 +94,7 @@ Most runtime environment variables are parsed in `src/config.ts`. `.env.example`
 | `PLAY_COMMAND_COOLDOWN_MS` | `2000` | Per-user cooldown for `play`, `playnext`, and `search`. |
 | `SEARCH_RESULT_LIMIT` | `5` | Interactive search result count, must be `<= 10`. |
 | `SEARCH_PICK_TIMEOUT_MS` | `45000` | Time window for search result picking. |
+| `ALLOW_PRIVATE_MEDIA_URLS` | `0` | Allow `play`, `radio`, and webhook URLs that resolve to private, loopback, or link-local addresses. Leave off on public instances, otherwise users can make the bot and NodeLink request services inside your network. |
 | `PLAYBACK_DIAGNOSTICS_ENABLED` | `0` | Emit periodic playback diagnostics logs while audio is active. |
 | `PLAYBACK_DIAGNOSTICS_INTERVAL_MS` | `1000` | Diagnostics interval. |
 | `AUDD_API_TOKEN` | empty | Optional Audd token for radio now-playing recognition fallback. |

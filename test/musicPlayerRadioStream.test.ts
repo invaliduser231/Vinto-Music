@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 
 import { MusicPlayer } from '../src/player/MusicPlayer.ts';
 import { HTTP_STREAM_USER_AGENT } from '../src/player/musicPlayer/constants.ts';
+import { _setSafeFetchTransport } from '../src/utils/safeHttp.ts';
+
+_setSafeFetchTransport((url, init) => globalThis.fetch(url, init as RequestInit));
 
 type ResponseInitShape = {
   url: string;

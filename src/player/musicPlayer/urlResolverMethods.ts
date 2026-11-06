@@ -1,5 +1,6 @@
 import playdl from 'play-dl';
 import { ValidationError } from '../../core/errors.ts';
+import { safeFetch } from '../../utils/safeHttp.ts';
 import { pickBestMirrorCandidate } from './mirrorMatch.ts';
 import type { MirrorReference } from './mirrorMatch.ts';
 import type { MusicPlayer } from '../MusicPlayer.ts';
@@ -503,7 +504,7 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
   },
 
   async _resolveDirectHttpAudioTrack(url: string, requestedBy: string | null) {
-    const response = await fetch(url, {
+    const response = await safeFetch(url, {
       method: 'GET',
       redirect: 'follow',
       signal: AbortSignal.timeout(10_000),
@@ -537,7 +538,7 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
   },
 
   async _looksLikeWebPage(url: string): Promise<boolean> {
-    const response = await fetch(url, {
+    const response = await safeFetch(url, {
       method: 'GET',
       redirect: 'follow',
       headers: { range: 'bytes=0-0' },
@@ -564,7 +565,7 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
     if (!normalizedUrl || visited.has(normalizedUrl)) return null;
     visited.add(normalizedUrl);
 
-    const response = await fetch(normalizedUrl, {
+    const response = await safeFetch(normalizedUrl, {
       method: 'GET',
       redirect: 'follow',
       headers: {
@@ -741,12 +742,12 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
           return cached.url;
         }
 
-        const response = await fetch(trimmed, {
+        const response = await safeFetch(trimmed, {
           method: 'HEAD',
           redirect: 'follow',
           signal: AbortSignal.timeout(SHORT_URL_HEAD_TIMEOUT_MS),
         }).catch(() => null)
-          ?? await fetch(trimmed, {
+          ?? await safeFetch(trimmed, {
             method: 'GET',
             redirect: 'follow',
             signal: AbortSignal.timeout(SHORT_URL_GET_TIMEOUT_MS),

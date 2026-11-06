@@ -809,4 +809,7 @@ export const en = {
   'cmd.love.description': 'Love the currently playing track on Last.fm.',
   'cmd.unlove.description': 'Remove the love mark from the current track on Last.fm.',
   'cmd.autoplay.description': 'Keep playback going with Last.fm recommendations when the queue runs out.',
+  'errors.unsafeUrl': "That link points at a private or local network address, so it can't be played.",
+  'errors.invalidUrl': 'That link is not a valid URL.',
+  'errors.tooManyRedirects': 'That link redirects too many times.',
 } as const;

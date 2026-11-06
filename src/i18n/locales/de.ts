@@ -811,4 +811,7 @@ export const de: Catalog = {
   'cmd.love.description': 'Den laufenden Titel auf Last.fm als Lieblingslied markieren.',
   'cmd.unlove.description': 'Die Markierung als Lieblingslied für den laufenden Titel entfernen.',
   'cmd.autoplay.description': 'Bei leerer Warteschlange mit Last.fm-Empfehlungen weiterspielen.',
+  'errors.unsafeUrl': 'Der Link zeigt auf eine private oder lokale Netzwerkadresse und kann nicht abgespielt werden.',
+  'errors.invalidUrl': 'Das ist kein gültiger Link.',
+  'errors.tooManyRedirects': 'Der Link leitet zu oft weiter.',
 };

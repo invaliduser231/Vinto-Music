@@ -32,6 +32,7 @@ import { ScrobbleService } from '../bot/services/scrobbleService.ts';
 import { ShardRegistry } from '../bot/services/shardRegistry.ts';
 import { fetchGlobalGuildCount } from '../bot/commands/helpers/guildStats.ts';
 import { sanitizeBrokenLocalProxyEnv } from './proxy.ts';
+import { setPrivateUrlPolicy } from '../utils/safeHttp.ts';
 import { verifyApiConnectivity, resolveGatewayUrl } from './connectivity.ts';
 import { bindGatewayMetrics, bindSessionMetrics, createAppMetrics } from './metrics.ts';
 import { isGatewayRecovering, unhealthyExitThresholdMs } from './unhealthyExit.ts';
@@ -111,6 +112,7 @@ export async function startApp() {
 
   (dns as DnsWithDefaultOrder).setDefaultResultOrder?.(config.dnsResultOrder);
   logger.info('DNS resolution order configured', { order: config.dnsResultOrder });
+  setPrivateUrlPolicy({ allowPrivate: config.allowPrivateMediaUrls });
 
   await initializePlayDlAuth(config, logger.child('media-auth'));
   const errorReporter = await initializeSentry(config, logger.child('sentry'));

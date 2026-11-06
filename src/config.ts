@@ -171,6 +171,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     ...parseShardAssignment(env.SHARD_ID, env.SHARD_COUNT),
     gatewayPresenceEnabled: parseBool(env.GATEWAY_PRESENCE_ENABLED, false),
     dnsResultOrder: normalizeDnsResultOrder(env.DNS_RESULT_ORDER),
+    allowPrivateMediaUrls: parseBool(env.ALLOW_PRIVATE_MEDIA_URLS, false),
     autoGatewayUrl: parseBool(env.AUTO_GATEWAY_URL, true),
     gatewayOnlyMode: parseBool(env.GATEWAY_ONLY_MODE, false),
     strictStartupCheck: parseBool(env.STRICT_STARTUP_CHECK, false),

@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import ffmpegPath from 'ffmpeg-static';
 import { HTTP_STREAM_USER_AGENT } from '../../../player/musicPlayer/constants.ts';
+import { safeFetch } from '../../../utils/safeHttp.ts';
 
 const RADIO_LOOKUP_CACHE_TTL_MS = 45_000;
 const RADIO_LOOKUP_CACHE_MAX_SIZE = 512;
@@ -133,7 +134,7 @@ function parseIcyMetadataString(raw: unknown): { artist: string | null; title: s
 }
 
 async function readIcyMetadata(url: string): Promise<{ artist: string | null; title: string | null } | null> {
-  const response = await fetch(url, {
+  const response = await safeFetch(url, {
     method: 'GET',
     headers: {
       'Icy-MetaData': '1',
@@ -222,7 +223,7 @@ async function readIcyMetadata(url: string): Promise<{ artist: string | null; ti
 }
 
 async function readAudioSample(url: string): Promise<AudioSample | null> {
-  const response = await fetch(url, {
+  const response = await safeFetch(url, {
     method: 'GET',
     headers: {
       accept: '*/*',

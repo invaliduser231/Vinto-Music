@@ -2,6 +2,7 @@ import { ValidationError } from '../core/errors.ts';
 import { createTranslator, DEFAULT_LOCALE, resolveLocale, type Locale } from '../i18n/index.ts';
 import { resolveLimits } from './services/votePerks.ts';
 import { parseCommand } from '../utils/commandParser.ts';
+import { safeFetch } from '../utils/safeHttp.ts';
 import { buildEmbed, makeResponder, sourceColor } from './messageFormatter.ts';
 import { maskedLink } from './fluxerMarkdown.ts';
 import { buildTrackAuthor } from './commands/helpers/formatting.ts';
@@ -1045,7 +1046,7 @@ export class CommandRouter {
       content: `[music:${type}] ${text}`.slice(0, 1900),
     };
 
-    await fetch(webhookUrl, {
+    await safeFetch(webhookUrl, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(payload),

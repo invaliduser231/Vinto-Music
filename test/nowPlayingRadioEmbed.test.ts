@@ -4,6 +4,9 @@ import assert from 'node:assert/strict';
 import { registerCommands } from '../src/bot/commands/index.ts';
 import { CommandRegistry } from '../src/bot/commandRegistry.ts';
 import { createTranslator } from '../src/i18n/index.ts';
+import { _setSafeFetchTransport } from '../src/utils/safeHttp.ts';
+
+_setSafeFetchTransport((url, init) => globalThis.fetch(url, init as RequestInit));
 
 type MessagePayload = {
   embeds?: Array<{

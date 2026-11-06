@@ -1,6 +1,7 @@
 import playdl from 'play-dl';
 import type { InfoData, YouTubePlayList } from 'play-dl';
 import { ValidationError } from '../../core/errors.ts';
+import { assertPublicHttpUrl } from '../../utils/safeHttp.ts';
 import { isPlayDlBrowseFailure } from './errorUtils.ts';
 import type { Track, TrackInput } from '../../types/domain.ts';
 import {
@@ -327,6 +328,7 @@ export const resolverMethods: ResolverMethodMembers & ThisType<MusicPlayer> = {
     }
 
     const url = await this.sources.resolver.normalizeInputUrl(raw);
+    await assertPublicHttpUrl(url);
     const nodeLinkAvailable = Boolean(this.nodeLinkEnabled && this.nodeLinkClient?.enabled);
     const nodeLinkOnly = requiresNodeLinkResolution(url);
     const shouldBypassNodeLink = !nodeLinkOnly && shouldBypassNodeLinkForDirectStreamUrl(url, nodeLinkRoutingMode);
