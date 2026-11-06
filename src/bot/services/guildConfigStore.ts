@@ -69,11 +69,11 @@ function normalizeStoredLanguage(value: unknown) {
 }
 
 const MAX_COMMAND_CHANNELS = 5;
-const NOW_PLAYING_CARD_STYLES = new Set(['ambient', 'split', 'vinyl', 'off']);
+const NOW_PLAYING_CARD_STATES = new Set(['on', 'off']);
 
-function normalizeCardStyle(value: unknown) {
+function normalizeCardState(value: unknown) {
   const normalized = String(value ?? '').trim().toLowerCase();
-  return NOW_PLAYING_CARD_STYLES.has(normalized) ? normalized : null;
+  return NOW_PLAYING_CARD_STATES.has(normalized) ? normalized : null;
 }
 
 function normalizeChannelIds(values: unknown) {
@@ -378,7 +378,7 @@ export class GuildConfigStore {
       }
 
       if (settingsPatch.nowPlayingCard !== undefined) {
-        next.settings.nowPlayingCard = normalizeCardStyle(settingsPatch.nowPlayingCard);
+        next.settings.nowPlayingCard = normalizeCardState(settingsPatch.nowPlayingCard);
       }
 
       if (settingsPatch.commandChannelIds !== undefined) {
@@ -419,7 +419,7 @@ export class GuildConfigStore {
         voteSkipMinVotes: toPositiveInt(settings.voteSkipMinVotes, this.defaults.settings.voteSkipMinVotes),
         djRoleIds: normalizeRoleIds(settings.djRoleIds),
         commandChannelIds: normalizeChannelIds(settings.commandChannelIds),
-        nowPlayingCard: normalizeCardStyle(settings.nowPlayingCard),
+        nowPlayingCard: normalizeCardState(settings.nowPlayingCard),
         musicLogChannelId: normalizeChannelId(settings.musicLogChannelId),
         language: normalizeStoredLanguage(settings.language) ?? this.defaults.settings.language ?? null,
       },

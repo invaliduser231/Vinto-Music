@@ -3,7 +3,7 @@ import { describePermissionFailure, ensurePermissionCheck, permissionCheckFields
 import type { PermissionFlag } from '../permissions/flags.ts';
 import { parseVoiceChannelArgument } from './helpers/formatting.ts';
 import { describePerkDelta } from '../services/votePerks.ts';
-import { resolveCardStyle } from '../cards/cardService.ts';
+import { isCardEnabled } from '../cards/cardService.ts';
 import {
   localeFlag,
   localeLabel,
@@ -344,27 +344,25 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
 
   registry.register(createCommand({
     name: 'npcard',
-    aliases: ['cardstyle', 'nowplayingcard'],
-    description: 'Choose how the now playing card looks, or turn it off.',
-    usage: 'npcard [ambient|split|vinyl|off]',
+    aliases: ['nowplayingcard'],
+    description: 'Turn the now playing card on or off.',
+    usage: 'npcard [on|off]',
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
       const guildConfig = await getGuildConfigOrThrow(ctx);
-      const fallback = resolveCardStyle(ctx.config?.nowPlayingCardStyle, 'ambient');
-      const current = resolveCardStyle(guildConfig.settings.nowPlayingCard, fallback);
+      const current = isCardEnabled(guildConfig.settings.nowPlayingCard, ctx.config?.nowPlayingCardEnabled !== false);
 
       if (!ctx.args.length) {
-        await ctx.reply.info(ctx.t('npcard.current', { style: ctx.t(`npcard.style.${current}`) }));
+        await ctx.reply.info(ctx.t('npcard.current', { state: ctx.t(current ? 'common.on' : 'common.off') }));
         return;
       }
 
       await ensureManageGuildAccess(ctx, 'access.changeCardStyle');
-      const raw = String(ctx.args[0] ?? '').trim().toLowerCase();
-      const next = resolveCardStyle(raw, 'off');
-      if (next !== raw) throw new ValidationError(ctx.t('npcard.usage', { prefix: ctx.prefix }));
+      const value = parseOnOff(ctx.args[0], null);
+      if (value == null) throw new ValidationError(ctx.t('config.useOnOff'));
 
-      await updateGuildConfig(ctx, { settings: { nowPlayingCard: next } });
-      await ctx.reply.success(ctx.t('npcard.set', { style: ctx.t(`npcard.style.${next}`) }));
+      await updateGuildConfig(ctx, { settings: { nowPlayingCard: value ? 'on' : 'off' } });
+      await ctx.reply.success(ctx.t('npcard.set', { state: ctx.t(value ? 'common.on' : 'common.off') }));
     },
   }));
 
@@ -502,7 +500,7 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
         { name: ctx.t('config.musicLogChannel'), value: guildConfig.settings.musicLogChannelId ? `<#${guildConfig.settings.musicLogChannelId}>` : ctx.t('common.disabledLower') },
         {
           name: ctx.t('config.cardStyle'),
-          value: ctx.t(`npcard.style.${resolveCardStyle(guildConfig.settings.nowPlayingCard, resolveCardStyle(ctx.config?.nowPlayingCardStyle, 'ambient'))}`),
+          value: ctx.t(isCardEnabled(guildConfig.settings.nowPlayingCard, ctx.config?.nowPlayingCardEnabled !== false) ? 'common.on' : 'common.off'),
           inline: true,
         },
         {

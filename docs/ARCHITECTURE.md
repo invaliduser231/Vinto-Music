@@ -121,7 +121,7 @@ Important behavior:
 
 ## Now Playing Cards
 
-`src/bot/cards/nowPlayingCard.ts` draws the card with `@napi-rs/canvas` and the Inter fonts in `assets/fonts`. `src/bot/cards/cardService.ts` loads the cover through `safeFetch`, caches it for ten minutes, crops letterboxed YouTube thumbnails to the video area, and cleans titles for display. The router posts the card as an attachment on track start and deletes the previous card of that session, so a channel holds one card per session. A guild picks the style with `npcard`, `NOW_PLAYING_CARD_STYLE` sets the default. When the upload fails, the style is `off`, minimal mode is on, or a title needs glyphs Inter does not have, the router falls back to the embed.
+`src/bot/cards/nowPlayingCard.ts` draws the card with `@napi-rs/canvas` and the Inter fonts in `assets/fonts`. `src/bot/cards/cardService.ts` loads the cover through `safeFetch`, caches it for ten minutes, crops letterboxed YouTube thumbnails to the video area, and cleans titles for display. The router posts the card as an attachment on track start and deletes the previous card of that session, so a channel holds one card per session. A guild turns cards on or off with `npcard`, `NOW_PLAYING_CARD_ENABLED` sets the default. When the upload fails, cards are off, minimal mode is on, or a title needs glyphs Inter does not have, the router falls back to the embed.
 
 ## Data Model
 

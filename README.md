@@ -46,7 +46,7 @@ Resilient, self-hosted music bot for Fluxer with persistent music data, queue sa
 - Reliable gateway handling with reconnect, resume, heartbeat watchdogs, and REST retry logic.
 - Playback through NodeLink from YouTube, SoundCloud, Deezer, Audius, radio streams, and mirrored imports from Spotify, Apple Music, Amazon Music, Tidal, Bandcamp, Audiomack, Mixcloud, and JioSaavn URLs.
 - Source prefixes for `play` and `search`: `yt:`, `ytm:`, `sc:`, `dz:`, `sp:`, `am:`, `td:`, `bc:`, `js:` search only that service.
-- Now playing cards: an image with cover art, title, artist, progress, and the next track, in three styles per guild (`npcard`).
+- Now playing cards: an image with the blurred cover as background, the cover, title, artist, progress, and the next track (`npcard` turns them off per guild).
 - Independent multi-voice playback sessions per guild, with separate queues per voice channel.
 - Voice-channel-scoped 24/7 mode plus one-shot restart recovery for active non-24/7 sessions. A watchdog rejoins dropped 24/7 channels with backoff. If an admin disconnects the bot, a regular session ends, and a 24/7 channel is left alone after three removals within 15 minutes.
 - Fast playlist UX with first-track start plus background queueing for large external playlists and mixes.
@@ -313,7 +313,7 @@ A track is scrobbled once it is longer than 30 seconds and the listener heard at
 - `djrole`
 - `musiclog`
 - `musicchannel [off|#channel ...]` limits music commands to up to five channels; commands elsewhere are removed with a short pointer to the right channel
-- `npcard [ambient|split|vinyl|off]` picks the now playing card style
+- `npcard [on|off]` turns the now playing card on or off
 - `voteskipcfg`
 - `247`
 - `dedupe`

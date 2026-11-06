@@ -6,7 +6,7 @@ import { safeFetch } from '../utils/safeHttp.ts';
 import { findFallbackAutoplayTrack, type AutoplayTrackLike } from './autoplayFallback.ts';
 import { buildEmbed, makeResponder, sourceColor } from './messageFormatter.ts';
 import { maskedLink, subtext } from './fluxerMarkdown.ts';
-import { buildNowPlayingCardFile, resolveCardStyle, type CardStyle, type CardTrack } from './cards/cardService.ts';
+import { buildNowPlayingCardFile, isCardEnabled, type CardTrack } from './cards/cardService.ts';
 import { buildTrackAuthor } from './commands/helpers/formatting.ts';
 import { CommandRegistry } from './commandRegistry.ts';
 import { registerCommands } from './commands/index.ts';
@@ -1138,13 +1138,10 @@ export class CommandRouter {
   ): Promise<boolean> {
     if (!this.rest.sendFile) return false;
     const guildConfig = await this._resolveGuildConfig(String(session?.guildId ?? '').trim() || null);
-    const fallbackStyle = resolveCardStyle(this.config.nowPlayingCardStyle, 'ambient');
-    const style: CardStyle = resolveCardStyle(guildConfig?.settings?.nowPlayingCard, fallbackStyle);
-    if (style === 'off') return false;
+    if (!isCardEnabled(guildConfig?.settings?.nowPlayingCard, this.config.nowPlayingCardEnabled !== false)) return false;
 
     const pending = Array.isArray(session?.player?.pendingTracks) ? session.player.pendingTracks : [];
     const card = await buildNowPlayingCardFile(track as CardTrack, {
-      style,
       upNext: (pending[0] as CardTrack | undefined) ?? null,
       queueLength: pending.length,
       labels: {

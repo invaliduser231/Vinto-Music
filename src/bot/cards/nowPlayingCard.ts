@@ -3,8 +3,6 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GlobalFonts, createCanvas, loadImage, type Image, type SKRSContext2D } from '@napi-rs/canvas';
 
-export type CardVariant = 'ambient' | 'split' | 'vinyl';
-
 export interface NowPlayingCardInput {
   title: string;
   artist?: string | null;
@@ -362,119 +360,7 @@ function renderAmbient(layout: Layout): void {
   drawSource(layout, WIDTH - 56, 52, 'rgba(255, 255, 255, 0.6)');
 }
 
-function renderSplit(layout: Layout): void {
-  const { ctx, image, crop, accent } = layout;
-  const background = 0x141418;
-
-  ctx.fillStyle = rgb(background);
-  ctx.fillRect(0, 0, WIDTH, HEIGHT);
-
-  drawCover(ctx, image, crop, 0, 0, HEIGHT, accent);
-  const fade = ctx.createLinearGradient(HEIGHT - 160, 0, HEIGHT, 0);
-  fade.addColorStop(0, rgb(background, 0));
-  fade.addColorStop(1, rgb(background, 1));
-  ctx.fillStyle = fade;
-  ctx.fillRect(HEIGHT - 160, 0, 161, HEIGHT);
-
-  const glow = ctx.createRadialGradient(WIDTH, 0, 0, WIDTH, 0, 700);
-  glow.addColorStop(0, rgb(accent, 0.28));
-  glow.addColorStop(1, rgb(accent, 0));
-  ctx.fillStyle = glow;
-  ctx.fillRect(HEIGHT, 0, WIDTH - HEIGHT, HEIGHT);
-
-  const bright = mix(accent, 0xffffff, 0.25);
-  const textX = HEIGHT + 24;
-  const textWidth = WIDTH - textX - 56;
-  drawTextBlock(layout, textX, textWidth, {
-    primary: '#f5f5f7',
-    secondary: rgb(bright),
-    muted: 'rgba(245, 245, 247, 0.5)',
-  });
-  drawProgress(layout, textX, 322, textWidth, {
-    track: 'rgba(255, 255, 255, 0.12)',
-    fill: rgb(bright),
-    text: 'rgba(245, 245, 247, 0.6)',
-    knob: '#ffffff',
-  });
-  drawSource(layout, WIDTH - 56, 52, 'rgba(245, 245, 247, 0.45)');
-}
-
-function renderVinyl(layout: Layout): void {
-  const { ctx, image, crop, accent } = layout;
-  const deep = mix(accent, 0x000000, 0.72);
-
-  const background = ctx.createLinearGradient(0, 0, WIDTH, HEIGHT);
-  background.addColorStop(0, rgb(mix(accent, 0x000000, 0.55)));
-  background.addColorStop(1, rgb(deep));
-  ctx.fillStyle = background;
-  ctx.fillRect(0, 0, WIDTH, HEIGHT);
-
-  const centerX = 200;
-  const centerY = HEIGHT / 2;
-  const radius = 160;
-
-  ctx.save();
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-  ctx.shadowBlur = 40;
-  ctx.beginPath();
-  ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-  ctx.fillStyle = '#0c0c0e';
-  ctx.fill();
-  ctx.restore();
-
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-  ctx.lineWidth = 1.5;
-  for (let ring = radius - 8; ring > radius * 0.5; ring -= 7) {
-    ctx.beginPath();
-    ctx.arc(centerX, centerY, ring, 0, Math.PI * 2);
-    ctx.stroke();
-  }
-
-  const labelRadius = radius * 0.46;
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(centerX, centerY, labelRadius, 0, Math.PI * 2);
-  ctx.clip();
-  drawCover(ctx, image, crop, centerX - labelRadius, centerY - labelRadius, labelRadius * 2, accent);
-  ctx.restore();
-
-  ctx.beginPath();
-  ctx.arc(centerX, centerY, 7, 0, Math.PI * 2);
-  ctx.fillStyle = rgb(deep);
-  ctx.fill();
-
-  const sheen = ctx.createLinearGradient(centerX - radius, centerY - radius, centerX + radius, centerY + radius);
-  sheen.addColorStop(0.35, 'rgba(255, 255, 255, 0)');
-  sheen.addColorStop(0.5, 'rgba(255, 255, 255, 0.07)');
-  sheen.addColorStop(0.65, 'rgba(255, 255, 255, 0)');
-  ctx.beginPath();
-  ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-  ctx.fillStyle = sheen;
-  ctx.fill();
-
-  const textX = centerX + radius + 64;
-  const textWidth = WIDTH - textX - 56;
-  drawTextBlock(layout, textX, textWidth, {
-    primary: '#ffffff',
-    secondary: 'rgba(255, 255, 255, 0.75)',
-    muted: 'rgba(255, 255, 255, 0.5)',
-  });
-  drawProgress(layout, textX, 322, textWidth, {
-    track: 'rgba(255, 255, 255, 0.18)',
-    fill: rgb(mix(accent, 0xffffff, 0.45)),
-    text: 'rgba(255, 255, 255, 0.7)',
-    knob: '#ffffff',
-  });
-  drawSource(layout, WIDTH - 56, 52, 'rgba(255, 255, 255, 0.5)');
-}
-
-const RENDERERS: Record<CardVariant, (layout: Layout) => void> = {
-  ambient: renderAmbient,
-  split: renderSplit,
-  vinyl: renderVinyl,
-};
-
-export async function renderNowPlayingCard(input: NowPlayingCardInput, variant: CardVariant = 'ambient'): Promise<Buffer | null> {
+export async function renderNowPlayingCard(input: NowPlayingCardInput): Promise<Buffer | null> {
   if (!ensureCardFonts()) return null;
   if (!canRenderCardText(input.title, input.artist, input.upNext)) return null;
 
@@ -490,7 +376,7 @@ export async function renderNowPlayingCard(input: NowPlayingCardInput, variant: 
   roundedRect(ctx, 0, 0, WIDTH, HEIGHT, 28);
   ctx.clip();
 
-  RENDERERS[variant]({
+  renderAmbient({
     ctx,
     input,
     labels: { ...DEFAULT_LABELS, ...(input.labels ?? {}) },

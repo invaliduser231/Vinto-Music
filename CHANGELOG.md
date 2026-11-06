@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 ## [0.15.0] - 2026-11-06
 
 - Player:
-  - now playing cards with cover art, progress and the next track, styles `ambient`, `split` and `vinyl` via `npcard`
+  - now playing cards with cover art, progress and the next track, `npcard` turns them off per guild
   - `play` and `search` accept source prefixes such as `sc:`, `dz:`, `yt:` or `sp:`
   - autoplay works without last.fm, using the youtube mix or the same artist
 - Last.fm: `lastfm play <loved|top|recent>` queues tracks from someone's lists

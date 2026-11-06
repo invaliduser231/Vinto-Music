@@ -39,7 +39,7 @@ import {
 } from './commandHelpers.ts';
 import { buildEmbed, sourceColor } from '../messageFormatter.ts';
 import { maskedLink, subtext } from '../fluxerMarkdown.ts';
-import { buildNowPlayingCardFile, resolveCardStyle, type CardTrack } from '../cards/cardService.ts';
+import { buildNowPlayingCardFile, isCardEnabled, type CardTrack } from '../cards/cardService.ts';
 import type { Translator } from '../../i18n/index.ts';
 import { buildExportFilename, buildQueueCsv } from './helpers/csvExport.ts';
 import {
@@ -70,15 +70,10 @@ async function sendNowPlayingCard(
   progressSec: number,
 ): Promise<boolean> {
   if (!ctx.rest?.sendFile || ctx.config?.minimalMode === true || ctx.config?.enableEmbeds === false) return false;
-  const style = resolveCardStyle(
-    ctx.guildConfig?.settings?.nowPlayingCard,
-    resolveCardStyle(ctx.config?.nowPlayingCardStyle, 'ambient'),
-  );
-  if (style === 'off') return false;
+  if (!isCardEnabled(ctx.guildConfig?.settings?.nowPlayingCard, ctx.config?.nowPlayingCardEnabled !== false)) return false;
 
   const pending = session.player.pendingTracks ?? [];
   const card = await buildNowPlayingCardFile(current as CardTrack, {
-    style,
     positionSec: progressSec,
     upNext: (pending[0] as CardTrack | undefined) ?? null,
     queueLength: pending.length,

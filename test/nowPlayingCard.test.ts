@@ -6,7 +6,7 @@ import {
   cleanDisplayArtist,
   cleanDisplayTitle,
   isLetterboxedThumbnail,
-  resolveCardStyle,
+  isCardEnabled,
 } from '../src/bot/cards/cardService.ts';
 import { canRenderCardText, renderNowPlayingCard } from '../src/bot/cards/nowPlayingCard.ts';
 import { CommandRouter } from '../src/bot/commandRouter.ts';
@@ -24,11 +24,11 @@ test('display titles drop video noise and a repeated artist prefix', () => {
   assert.equal(cleanDisplayArtist('RickAstleyVEVO'), 'RickAstley');
 });
 
-test('card style resolution falls back for unknown values', () => {
-  assert.equal(resolveCardStyle('split'), 'split');
-  assert.equal(resolveCardStyle('VINYL'), 'vinyl');
-  assert.equal(resolveCardStyle('neon', 'off'), 'off');
-  assert.equal(resolveCardStyle(null), 'ambient');
+test('the guild card switch overrides the default only when set', () => {
+  assert.equal(isCardEnabled('on', false), true);
+  assert.equal(isCardEnabled('OFF', true), false);
+  assert.equal(isCardEnabled(null, true), true);
+  assert.equal(isCardEnabled('ambient', false), false);
 });
 
 test('youtube default thumbnails are treated as letterboxed', () => {
@@ -42,26 +42,23 @@ test('text the bundled font cannot draw is detected', () => {
   assert.equal(canRenderCardText('夜に駆ける'), false);
 });
 
-test('every card style renders a png without a cover', async () => {
-  for (const style of ['ambient', 'split', 'vinyl'] as const) {
-    const png = await renderNowPlayingCard({
-      title: 'Glatteis',
-      artist: 'Nina Chuba',
-      durationSec: 170,
-      positionSec: 30,
-      sourceLabel: 'Deezer',
-      upNext: 'Ok Kid - Alleine',
-      queueLength: 3,
-    }, style);
-    assert.ok(png, style);
-    assert.deepEqual([...png!.subarray(0, 4)], PNG_SIGNATURE);
-  }
+test('the card renders a png without a cover', async () => {
+  const png = await renderNowPlayingCard({
+    title: 'Glatteis',
+    artist: 'Nina Chuba',
+    durationSec: 170,
+    positionSec: 30,
+    sourceLabel: 'Deezer',
+    upNext: 'Ok Kid - Alleine',
+    queueLength: 3,
+  });
+  assert.ok(png);
+  assert.deepEqual([...png!.subarray(0, 4)], PNG_SIGNATURE);
 });
 
-test('buildNowPlayingCardFile skips the card when the style is off or the text is unsupported', async () => {
-  assert.equal(await buildNowPlayingCardFile({ title: 'Song' }, { style: 'off' }), null);
-  assert.equal(await buildNowPlayingCardFile({ title: '夜に駆ける', artist: 'YOASOBI' }, { style: 'ambient' }), null);
-  const file = await buildNowPlayingCardFile({ title: 'Song', artist: 'Artist', duration: '3:00' }, { style: 'split' });
+test('buildNowPlayingCardFile skips titles the font cannot draw', async () => {
+  assert.equal(await buildNowPlayingCardFile({ title: '夜に駆ける', artist: 'YOASOBI' }, {}), null);
+  const file = await buildNowPlayingCardFile({ title: 'Song', artist: 'Artist', duration: '3:00' }, {});
   assert.equal(file?.contentType, 'image/png');
 });
 
@@ -70,7 +67,7 @@ function createRouter(sendFile: ((...args: unknown[]) => Promise<unknown>) | nul
   const messages: unknown[] = [];
   const deleted: string[] = [];
   const router = new CommandRouter({
-    config: { prefix: '!', sessionIdleMs: 300_000, enableEmbeds: true, nowPlayingCardStyle: 'ambient' },
+    config: { prefix: '!', sessionIdleMs: 300_000, enableEmbeds: true, nowPlayingCardEnabled: true },
     rest: {
       async sendTyping() {},
       async editMessage() { return {}; },
