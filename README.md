@@ -8,7 +8,7 @@ Resilient, self-hosted music bot for Fluxer with persistent music data, queue sa
 
 [![Node.js](https://img.shields.io/badge/Node.js-24%2B-339933?style=for-the-badge&logo=node.js&logoColor=white)](#requirements)
 [![MongoDB](https://img.shields.io/badge/MongoDB-Required-47A248?style=for-the-badge&logo=mongodb&logoColor=white)](#requirements)
-[![yt-dlp](https://img.shields.io/badge/yt--dlp-Recommended-ffcc00?style=for-the-badge)](#requirements)
+[![NodeLink](https://img.shields.io/badge/NodeLink-Playback-7c3aed?style=for-the-badge)](#requirements)
 [![Monitoring](https://img.shields.io/badge/Monitoring-healthz%20%7C%20readyz%20%7C%20metrics-0A66C2?style=for-the-badge)](#what-it-does)
 
 [![Invite Bot](https://img.shields.io/badge/Invite-Hosted%20Bot-ff2d78?style=for-the-badge)](https://web.fluxer.app/oauth2/authorize?client_id=1474774210677452817&scope=bot&permissions=3525696)
@@ -25,8 +25,9 @@ Resilient, self-hosted music bot for Fluxer with persistent music data, queue sa
 
 | Area | Highlights |
 | --- | --- |
-| Playback | YouTube, SoundCloud, Deezer, Audius, radio streams, and mirrored imports from Spotify, Apple Music, Amazon Music, Tidal, Bandcamp, Audiomack, Mixcloud, and JioSaavn |
-| Reliability | reconnect, playback resume, heartbeat watchdogs, REST retries, graceful shutdown |
+| Playback | NodeLink-backed YouTube, SoundCloud, Deezer, Audius, radio streams, and mirrored imports from Spotify, Apple Music, Amazon Music, Tidal, Bandcamp, Audiomack, Mixcloud, and JioSaavn |
+| Reliability | reconnect, playback resume, 24/7 voice watchdog, heartbeat watchdogs, REST retries, graceful shutdown |
+| Look and feel | now playing cards with cover art, replies in English, German, and Brazilian Portuguese |
 | Persistence | playlists, favorites, history, templates, recap state, reputation/taste signals |
 | Operations | `/healthz`, `/readyz`, `/metrics`, structured logging, optional Sentry |
 
@@ -43,15 +44,20 @@ Resilient, self-hosted music bot for Fluxer with persistent music data, queue sa
 ## What It Does
 
 - Reliable gateway handling with reconnect, resume, heartbeat watchdogs, and REST retry logic.
-- Playback from YouTube, SoundCloud, Deezer, Audius, radio streams, and mirrored imports from Spotify, Apple Music, Amazon Music, Tidal, Bandcamp, Audiomack, Mixcloud, and JioSaavn URLs.
+- Playback through NodeLink from YouTube, SoundCloud, Deezer, Audius, radio streams, and mirrored imports from Spotify, Apple Music, Amazon Music, Tidal, Bandcamp, Audiomack, Mixcloud, and JioSaavn URLs.
+- Source prefixes for `play` and `search`: `yt:`, `ytm:`, `sc:`, `dz:`, `sp:`, `am:`, `td:`, `bc:`, `js:` search only that service.
+- Now playing cards: an image with cover art, title, artist, progress, and the next track, in three styles per guild (`npcard`).
 - Independent multi-voice playback sessions per guild, with separate queues per voice channel.
-- Voice-channel-scoped 24/7 mode plus one-shot restart recovery for active non-24/7 sessions.
+- Voice-channel-scoped 24/7 mode plus one-shot restart recovery for active non-24/7 sessions. A watchdog rejoins dropped 24/7 channels with backoff. If an admin disconnects the bot, a regular session ends, and a 24/7 channel is left alone after three removals within 15 minutes.
 - Fast playlist UX with first-track start plus background queueing for large external playlists and mixes.
 - Optional opportunistic YouTube startup prefetch to reduce time-to-audio for direct video playback.
 - Persistent guild playlists, favorites, history, queue templates, recap data, and lightweight user taste/reputation signals in MongoDB.
-- Optional Last.fm support: everyone listening in a voice channel can scrobble to their own profile, plus profile stats, taste comparison, channel blends, and recommendation-driven autoplay.
+- Autoplay that keeps the queue going with related tracks (YouTube mix or same artist), and with Last.fm recommendations first when Last.fm is set up.
+- Optional Last.fm support: everyone listening in a voice channel can scrobble to their own profile, plus profile stats, taste comparison, channel blends, and queueing loved, top, or recent tracks.
+- Guild controls such as limiting music commands to chosen channels, and a warning when the bot lacks text permissions after joining.
+- Links that resolve to private or local network addresses are refused, so `play` cannot be used to reach services inside your network.
 - Built-in `/healthz`, `/readyz`, and Prometheus `/metrics` endpoints.
-- Optional Sentry reporting, opt-in runtime playback diagnostics, and memory telemetry / heap snapshot controls.
+- Optional Sentry reporting, an optional Fluxer error channel with redacted reports, opt-in runtime playback diagnostics, and memory telemetry / heap snapshot controls.
 
 ## Self-Hosting On Fluxer
 
@@ -68,8 +74,8 @@ For most operators, the practical requirements are:
 
 - a valid Fluxer bot token
 - MongoDB
-- `ffmpeg`
-- ideally `yt-dlp`
+- NodeLink (bundled in `docker-compose.yml`)
+- `ffmpeg` for radio streams and direct audio links
 
 `GATEWAY_ONLY_MODE=1` only skips the startup REST health check and gateway discovery. During normal Fluxer operation the bot still talks to the Fluxer REST API.
 
@@ -79,8 +85,8 @@ For most operators, the practical requirements are:
 | --- | --- |
 | Node.js | `>= 24` |
 | MongoDB | local or managed |
-| `ffmpeg` | on `PATH` or via `FFMPEG_BIN` |
-| `yt-dlp` | strongly recommended for YouTube playback |
+| NodeLink | playback backend, run with `NODELINK_ENABLELOADSTREAMENDPOINT=true` |
+| `ffmpeg` | on `PATH` or via `FFMPEG_BIN`, used for radio streams and direct audio links |
 
 ## Quick Start
 
@@ -110,6 +116,10 @@ Copy-Item .env.example .env
 ```env
 BOT_TOKEN=your_fluxer_bot_token
 MONGODB_URI=mongodb://127.0.0.1:27017
+NODELINK_ENABLED=1
+NODELINK_BASE_URL=http://127.0.0.1:3001
+NODELINK_PASSWORD=your_nodelink_password
+NODELINK_ROUTING_MODE=all
 ```
 
 ### 3. Start the bot
@@ -149,7 +159,9 @@ If you use an external MongoDB instead of the bundled container, set:
 MONGODB_URI=mongodb://user:password@your-mongo-host:27017
 ```
 
-The container image already installs `ffmpeg`, the standalone `yt-dlp` package, and the `bgutil-ytdlp-pot-provider` plugin. The bundled Compose file also starts the matching PO-token provider sidecar for harder YouTube hosts. YouTube cookies are not enabled by default; set `YTDLP_COOKIES_FILE=/app/cookies.txt` only when a video really needs account access. If YouTube blocks the server IP, set `YTDLP_PROXY_URL` so only failed YouTube attempts are retried through that proxy.
+The bundled Compose file starts NodeLink next to the bot, and playback runs through it. The image still ships `ffmpeg` for radio streams and direct audio links, plus `yt-dlp` with the `bgutil-ytdlp-pot-provider` plugin as a resolver fallback for setups that do not route everything through NodeLink. With `NODELINK_ROUTING_MODE=all`, yt-dlp is never used for playback.
+
+If the bot runs on a different server than a self-hosted Fluxer instance, set `rtc.use_external_ip: true` in that instance's `livekit.yaml`. Otherwise the bot joins voice but logs `Playback pipeline did not produce audio output in time`.
 
 ## Recommended Setups
 
@@ -160,9 +172,9 @@ Good for the simplest Fluxer self-hosted deployment.
 
 - keep `ENABLE_YT_SEARCH=1`
 - keep `ENABLE_YT_PLAYBACK=1`
+- run NodeLink with `NODELINK_ROUTING_MODE=all`
 - leave Spotify, Deezer, and Tidal credentials empty
 - install `ffmpeg`
-- install `yt-dlp`
 
 This still supports YouTube, SoundCloud, Audius, radio streams, and keyless metadata mirroring from Bandcamp, Audiomack, Mixcloud, and JioSaavn URLs.
 
@@ -198,7 +210,8 @@ With `DEEZER_ARL` configured, plain text `play` resolution prefers Deezer before
 
 | Problem | What to check |
 | --- | --- |
-| YouTube playback fails | `ffmpeg`, `yt-dlp`, `YTDLP_COOKIES_FILE`, `YTDLP_COOKIES_FROM_BROWSER`, `YTDLP_YOUTUBE_CLIENT`, `YTDLP_EXTRA_ARGS`, `YTDLP_PROXY_URL`, `bgutil-pot` |
+| YouTube playback fails | NodeLink reachability (`/readyz` shows a `nodelink` object), `NODELINK_PASSWORD`, `NODELINK_ENABLELOADSTREAMENDPOINT=true` on NodeLink, `NODELINK_SOURCES_YOUTUBE_PROXIES` if YouTube blocks the server IP |
+| A link is refused as a private address | The URL resolves to a private, loopback, or link-local address. Set `ALLOW_PRIVATE_MEDIA_URLS=1` only on private instances that need LAN streams |
 | Commands fail but gateway connects | `API_BASE`, token validity, runtime REST access |
 | Voice joins but no audio | Fluxer voice-side setup, `VOICE_MAX_BITRATE`, LiveKit-based publisher flow, and whether a restart recovery snapshot existed before reboot |
 | Container becomes `unhealthy` and just sits there | Docker does not restart a process only because the healthcheck failed. Keep `UNHEALTHY_EXIT_ENABLED=1` so prolonged `/readyz` failure forces a real restart, and inspect gateway/API reachability |
@@ -208,14 +221,11 @@ With `DEEZER_ARL` configured, plain text `play` resolution prefers Deezer before
 
 ### Bot starts but cannot play YouTube
 
-- make sure `ffmpeg` works on the host
-- install `yt-dlp`
-- if a video needs account access, set `YTDLP_COOKIES_FILE` or `YTDLP_COOKIES_FROM_BROWSER`; avoid account cookies for normal public playback
-- for Docker, keep the default `bgutil-pot` sidecar, `YTDLP_YOUTUBE_CLIENT=mweb`, and `YTDLP_EXTRA_ARGS` with the `youtubepot-bgutilhttp` provider URL
-- if your server IP is blocked but a residential proxy works, set `YTDLP_PROXY_URL=http://user:pass@host:port`; the bot retries YouTube through it only after direct yt-dlp fails with a block-like error
-- if a specific YouTube extractor profile is unstable outside Docker, try `YTDLP_YOUTUBE_CLIENT=mweb,android_vr,web_safari`
-- the runtime now retries multiple `yt-dlp` client strategies and can fall back to `play-dl`, so outright startup failures usually point to host binaries or provider-side blocking
-- `ENABLE_YOUTUBE_PREFETCHED_PLAYBACK=1` can improve startup latency for direct YouTube playback, but trades some robustness for speed
+- check that NodeLink is up and that `/readyz` reports it as reachable
+- make sure `NODELINK_PASSWORD` matches `NODELINK_SERVER_PASSWORD` on NodeLink and that NodeLink runs with `NODELINK_ENABLELOADSTREAMENDPOINT=true`
+- if YouTube blocks the server IP, give NodeLink a proxy pool through `NODELINK_SOURCES_YOUTUBE_PROXIES`
+- with `NODELINK_ROUTING_MODE=all` a failed stream is retried through NodeLink and then mirrored to another source, so a single YouTube failure does not stop the queue
+- without NodeLink, the yt-dlp settings in [docs/CONFIGURATION.md](docs/CONFIGURATION.md) still apply
 
 ### Bot connects to gateway but commands fail
 
@@ -258,6 +268,7 @@ Default prefix: `!`
 - `join`, `leave`
 - `radio <station|random|url>`, `stations [filter] [page]`
 - `play <query|url>`, `playnext <query|url>`, `search <query>`, `pick <index>`
+- start a query with `yt:`, `ytm:`, `sc:`, `dz:`, `sp:`, `am:`, `td:`, `bc:`, or `js:` to search a single service, for example `play sc: lofi beats`
 - `play` with an attached audio or video file queues the file
 - `skip`, `skipto <index>`, `voteskip`, `pause`, `resume`, `seek <time>`
 - `now`, `queue [page]`, `history [page]`, `previous`, `replay`
@@ -285,9 +296,11 @@ Available when `LASTFM_ENABLED=1`. Each listener links their own account, nothin
 - `lastfm leaderboard [guild|global]`
 - `lastfm whoknows [artist]` ranks linked members for an artist, the playing one by default; the top listener with at least 30 plays holds the crown
 - `lastfm crowns [@user]`
+- `lastfm play <loved|top|recent> [@user] [7d|1m|3m|6m|1y|all]` queues up to 15 tracks from someone's Last.fm lists
 - `fmplay [@user]` queues the track someone scrobbled last
 - `love` / `unlove` for the currently playing track
-- `autoplay [on|off]` controls Last.fm recommendations for the current voice channel
+
+`autoplay [on|off]` works without Last.fm too. It picks from the YouTube mix of the last track or from the same artist, and asks Last.fm first when Last.fm is enabled.
 
 A track is scrobbled once it is longer than 30 seconds and the listener heard at least half of it or four minutes, whichever comes first. Listeners who join mid-track are counted from the moment they join. Live streams and radio are never scrobbled.
 
@@ -299,6 +312,8 @@ A track is scrobbled once it is longer than 30 seconds and the listener heard at
 - `volumedefault [0-200]`
 - `djrole`
 - `musiclog`
+- `musicchannel [off|#channel ...]` limits music commands to up to five channels; commands elsewhere are removed with a short pointer to the right channel
+- `npcard [ambient|split|vinyl|off]` picks the now playing card style
 - `voteskipcfg`
 - `247`
 - `dedupe`

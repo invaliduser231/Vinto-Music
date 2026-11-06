@@ -40,7 +40,7 @@ Operationally that means:
 
 1. Gateway emits `MESSAGE_CREATE`.
 2. `CommandRouter` parses the prefix and command name.
-3. Rate limits, permissions, guild context, and command-specific preconditions are checked.
+3. Guild command channels (`musicchannel`), rate limits, permissions, guild context, and command-specific preconditions are checked.
 4. The command resolves or creates a voice-channel session through `SessionManager`.
 5. `MusicPlayer` resolves tracks, mutates queue state, and starts or updates playback.
 6. `VoiceConnection` publishes PCM frames into the platform voice session.
@@ -57,6 +57,10 @@ External payloads (provider APIs, `yt-dlp` and `ffprobe` JSON) are read as `unkn
 A track is only closed once its audio has actually been played, not when the source stream ends. The pump deliberately keeps up to `MAX_QUEUE_MS` buffered, so both moments are up to a second apart, and tearing the pump down at the source-stream end would cut off the tail. `MusicPlayer` therefore awaits `VoiceConnection.waitForPlaybackDrain()` before `_handleTrackClose`, bounded by a timeout and skipped for skips and seeks, where the buffer is meant to be discarded.
 
 ## Playback Resolution Strategy
+
+Every user-supplied URL goes through `src/utils/safeHttp.ts` before the bot or NodeLink touches it. `assertPublicHttpUrl` rejects non-HTTP schemes, embedded credentials, and hosts that resolve to private, loopback, link-local, or CGNAT ranges. `safeFetch` repeats that check on every redirect hop and connects through an undici agent whose DNS lookup drops blocked addresses, so a DNS answer that changes between the check and the connect cannot reach the internal network. `ALLOW_PRIVATE_MEDIA_URLS=1` lifts the address check for private instances.
+
+A text query that starts with a known alias (`sc:`, `dz:`, `yt:` and the others in `src/player/musicPlayer/searchPrefix.ts`) is sent to NodeLink with that source's search identifier. Plain queries never pass through as raw identifiers unless the prefix is a real NodeLink source such as `ytsearch` or `dzisrc`, so a title like `Artist: Song` is searched as text.
 
 Resolution is intentionally layered:
 
@@ -111,7 +115,13 @@ Important behavior:
 - 24/7 is voice-channel-scoped and comes from `guild_features.voiceProfiles[channelId].stayInVoiceEnabled`
 - active non-24/7 sessions still persist restart-recovery state so playback can be restored after a bot restart
 - active sessions flush progress snapshots periodically while audio is running, so restart recovery resumes closer to the current position instead of the last command boundary
+- a voice watchdog (`src/bot/sessionManager/voiceWatchdog.ts`) runs every minute. It reconnects 24/7 sessions that are disconnected and not already reconnecting, and retries 24/7 restores that failed at startup, both with a backoff of 2, 4, 8, 16, and 32 minutes, then hourly
+- when the gateway reports the bot's own voice state as gone for the `connection_id` a session still holds, an admin removed it. A regular session ends with a notice. A 24/7 session rejoins, and after three removals within 15 minutes it ends as well
 - each `VoiceConnection` keeps the Fluxer `connection_id` from its `VOICE_SERVER_UPDATE` grant and matches grants by channel as well as guild. Voice state updates and leaves carry that id, so a session only ever changes or drops its own connection. A guild-wide leave without an id is only sent when no sibling session exists in the guild
+
+## Now Playing Cards
+
+`src/bot/cards/nowPlayingCard.ts` draws the card with `@napi-rs/canvas` and the Inter fonts in `assets/fonts`. `src/bot/cards/cardService.ts` loads the cover through `safeFetch`, caches it for ten minutes, crops letterboxed YouTube thumbnails to the video area, and cleans titles for display. The router posts the card as an attachment on track start and deletes the previous card of that session, so a channel holds one card per session. A guild picks the style with `npcard`, `NOW_PLAYING_CARD_STYLE` sets the default. When the upload fails, the style is `off`, minimal mode is on, or a title needs glyphs Inter does not have, the router falls back to the embed.
 
 ## Data Model
 
@@ -177,6 +187,7 @@ Autoplay lives in the command router. Each voice profile can override `autoplayE
   - `/readyz`
   - `/metrics`
 - Last.fm exposes `lastfm_scrobbles_total`, `lastfm_scrobble_failures_total`, `lastfm_now_playing_total` and `lastfm_accounts_linked`.
+- With `ERROR_CHANNEL_ID` set, `src/monitoring/errorChannel.ts` wraps the Sentry reporter and also posts each captured error to that Fluxer channel. Configured secrets and credential patterns are redacted, identical errors are posted once per 5 minutes, and at most 10 posts go out per 5 minutes.
 - Shutdown handles active sessions, monitoring server, MongoDB, and Sentry flushing.
 
 ## Practical Self-Hosting Implication
