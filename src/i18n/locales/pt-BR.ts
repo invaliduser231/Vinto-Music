@@ -713,7 +713,7 @@ export const ptBR: Catalog = {
   'lastfm.overviewAccount': 'Conta',
   'lastfm.overviewAccountValue': '`{prefix}lastfm connect`, `{prefix}lastfm status`, `{prefix}lastfm on|off`, `{prefix}lastfm disconnect`',
   'lastfm.overviewStats': 'Estatísticas',
-  'lastfm.overviewStatsValue': '`{prefix}lastfm profile`, `{prefix}lastfm recent`, `{prefix}lastfm top [artists|tracks|albums] [7d|1m|3m|6m|1y|all]`',
+  'lastfm.overviewStatsValue': '`{prefix}lastfm profile`, `{prefix}lastfm recent`, `{prefix}lastfm top [artists|tracks|albums] [7d|1m|3m|6m|1y|all]`, `{prefix}lastfm play <loved|top|recent>`',
   'lastfm.overviewSocial': 'Em grupo',
   'lastfm.overviewSocialValue': '`{prefix}lastfm compare @user`, `{prefix}lastfm blend`, `{prefix}lastfm leaderboard [guild|global]`, `{prefix}lastfm whoknows [artista]`, `{prefix}lastfm crowns [@user]`, `{prefix}fmplay`, `{prefix}love`',
 
@@ -828,4 +828,18 @@ export const ptBR: Catalog = {
   'musicchannel.redirect': 'Comandos de música vão em {channels}.',
   'cmd.musicchannel.description': 'Limitar comandos de música a canais de texto específicos.',
   'permcheck.joinHint': 'A reprodução funciona, mas embeds, reações ou cartões de tocando agora podem faltar aqui até isso ser corrigido.',
+  'lastfm.playUsage': 'Uso: `{prefix}lastfm play <loved|top|recent> [@user] [7d|1m|3m|6m|1y|all]`',
+  'lastfm.playEmpty': 'Nada para colocar na fila de **{user}** no Last.fm.',
+  'lastfm.playQueued.loved': {
+    one: '**{count}** música favorita de **{user}** na fila.',
+    other: '**{count}** músicas favoritas de **{user}** na fila.',
+  },
+  'lastfm.playQueued.top': {
+    one: '**{count}** música mais ouvida de **{user}** na fila.',
+    other: '**{count}** músicas mais ouvidas de **{user}** na fila.',
+  },
+  'lastfm.playQueued.recent': {
+    one: '**{count}** música ouvida recentemente por **{user}** na fila.',
+    other: '**{count}** músicas ouvidas recentemente por **{user}** na fila.',
+  },
 };

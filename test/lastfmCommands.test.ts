@@ -56,6 +56,13 @@ function createLastFm(overrides: Record<string, unknown> = {}) {
     async userGetTopArtists() {
       return [{ name: 'M83', artist: null, url: null, playcount: 120 }];
     },
+    async userGetLovedTracks() {
+      return [
+        { artist: 'Ok Kid', track: 'Alleine', match: 1 },
+        { artist: 'Ok Kid', track: 'Alleine', match: 1 },
+        { artist: 'Nina Chuba', track: 'Wildberry Lillet', match: 1 },
+      ];
+    },
     async userGetInfo() {
       return {
         name: 'listener',
@@ -533,4 +540,26 @@ test('crowns lists the crowns a member holds', async () => {
   await execute(context);
 
   assert.deepEqual(replyCalls, ['info:listener holds 1 crown:1. M83 `120`']);
+});
+
+test('lastfm play loved queues the loved tracks once each', async () => {
+  const execute = resolveExecute('lastfm');
+  const shared = createLastFm();
+  shared.linked.set(AUTHOR_ID, 'listener');
+  const { context, enqueued, replyCalls } = createContext({ args: ['play', 'loved'], lastfm: shared });
+
+  await execute(context);
+
+  const titles = enqueued.map((entry) => (entry as { title?: string }).title).sort();
+  assert.deepEqual(titles, ['Nina Chuba - Wildberry Lillet', 'Ok Kid - Alleine']);
+  assert.ok(replyCalls.some((entry) => entry.startsWith('success:') && entry.includes('loved tracks')));
+});
+
+test('lastfm play needs a known list', async () => {
+  const execute = resolveExecute('lastfm');
+  const shared = createLastFm();
+  shared.linked.set(AUTHOR_ID, 'listener');
+  const { context } = createContext({ args: ['play', 'everything'], lastfm: shared });
+
+  await assert.rejects(() => Promise.resolve(execute(context)), ValidationError);
 });

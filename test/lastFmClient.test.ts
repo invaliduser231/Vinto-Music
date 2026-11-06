@@ -186,3 +186,25 @@ test('the auth url carries the api key and token', () => {
   assert.equal(url.searchParams.get('api_key'), 'test-key');
   assert.equal(url.searchParams.get('token'), 'abc123');
 });
+
+test('loved tracks read the nested artist name', async () => {
+  const stub = stubFetch([{
+    body: {
+      lovedtracks: {
+        track: [
+          { name: 'Alleine', artist: { name: 'Ok Kid', mbid: '' } },
+          { name: '', artist: { name: 'Nobody' } },
+        ],
+      },
+    },
+  }]);
+  try {
+    const client = createClient();
+    const loved = await client.userGetLovedTracks('listener', 10);
+
+    assert.deepEqual(loved, [{ artist: 'Ok Kid', track: 'Alleine', match: 1 }]);
+    assert.match(stub.calls[0]!.url, /method=user\.getLovedTracks/);
+  } finally {
+    stub.restore();
+  }
+});

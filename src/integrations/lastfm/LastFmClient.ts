@@ -326,6 +326,18 @@ export class LastFmClient {
     }).filter((entry) => entry.artist && entry.track);
   }
 
+  async userGetLovedTracks(user: string, limit: number = 50): Promise<LastFmSimilarTrack[]> {
+    const payload = await this._call('user.getLovedTracks', { user, limit: Math.max(1, Math.min(1000, limit)) });
+    return toArray(asRecord(payload.lovedtracks).track).map((raw) => {
+      const record = asRecord(raw);
+      return {
+        artist: readText(asRecord(record.artist).name ?? record.artist),
+        track: readText(record.name),
+        match: 1,
+      };
+    }).filter((entry) => entry.artist && entry.track);
+  }
+
   async userGetTopArtists(user: string, period: LastFmPeriod = 'overall', limit: number = 10): Promise<LastFmRankedEntry[]> {
     const payload = await this._call('user.getTopArtists', { user, period, limit: Math.max(1, Math.min(1000, limit)) });
     return toArray(asRecord(payload.topartists).artist).map((raw) => {

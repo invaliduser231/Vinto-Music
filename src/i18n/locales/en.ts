@@ -711,7 +711,7 @@ export const en = {
   'lastfm.overviewAccount': 'Account',
   'lastfm.overviewAccountValue': '`{prefix}lastfm connect`, `{prefix}lastfm status`, `{prefix}lastfm on|off`, `{prefix}lastfm disconnect`',
   'lastfm.overviewStats': 'Stats',
-  'lastfm.overviewStatsValue': '`{prefix}lastfm profile`, `{prefix}lastfm recent`, `{prefix}lastfm top [artists|tracks|albums] [7d|1m|3m|6m|1y|all]`',
+  'lastfm.overviewStatsValue': '`{prefix}lastfm profile`, `{prefix}lastfm recent`, `{prefix}lastfm top [artists|tracks|albums] [7d|1m|3m|6m|1y|all]`, `{prefix}lastfm play <loved|top|recent>`',
   'lastfm.overviewSocial': 'Together',
   'lastfm.overviewSocialValue': '`{prefix}lastfm compare @user`, `{prefix}lastfm blend`, `{prefix}lastfm leaderboard [guild|global]`, `{prefix}lastfm whoknows [artist]`, `{prefix}lastfm crowns [@user]`, `{prefix}fmplay`, `{prefix}love`',
 
@@ -826,4 +826,18 @@ export const en = {
   'musicchannel.redirect': 'Music commands go in {channels}.',
   'cmd.musicchannel.description': 'Limit music commands to specific text channels.',
   'permcheck.joinHint': 'Playback works, but embeds, reactions or now-playing cards may be missing here until this is fixed.',
+  'lastfm.playUsage': 'Usage: `{prefix}lastfm play <loved|top|recent> [@user] [7d|1m|3m|6m|1y|all]`',
+  'lastfm.playEmpty': 'Nothing to queue from **{user}** on Last.fm.',
+  'lastfm.playQueued.loved': {
+    one: 'Queued **{count}** loved track from **{user}**.',
+    other: 'Queued **{count}** loved tracks from **{user}**.',
+  },
+  'lastfm.playQueued.top': {
+    one: 'Queued **{count}** top track from **{user}**.',
+    other: 'Queued **{count}** top tracks from **{user}**.',
+  },
+  'lastfm.playQueued.recent': {
+    one: 'Queued **{count}** recently played track from **{user}**.',
+    other: 'Queued **{count}** recently played tracks from **{user}**.',
+  },
 } as const;

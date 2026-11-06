@@ -29,6 +29,8 @@ const BLEND_TRACKS_PER_USER = 3;
 const BLEND_MAX_TRACKS = 24;
 const COMPARE_ARTIST_SAMPLE = 100;
 const RECENT_LOOKBACK = 10;
+const LIST_PLAY_MAX_TRACKS = 15;
+const LIST_PLAY_FETCH = 50;
 const WHOKNOWS_MAX_USERS = 25;
 const WHOKNOWS_LIST_SIZE = 10;
 const CROWNS_LIST_SIZE = 15;
@@ -218,7 +220,7 @@ export function registerLastFmCommands(registry: RegistryLike) {
     name: 'lastfm',
     aliases: ['fm', 'lfm'],
     description: 'Link your Last.fm account and browse your listening data.',
-    usage: 'lastfm <connect|disconnect|status|on|off|profile|recent|top|compare|blend|leaderboard|whoknows|crowns>',
+    usage: 'lastfm <connect|disconnect|status|on|off|profile|recent|top|play|compare|blend|leaderboard|whoknows|crowns>',
     async execute(ctx: CommandContextLike) {
       const lastfm = requireLastFm(ctx);
       const sub = String(ctx.args[0] ?? '').trim().toLowerCase();
@@ -268,6 +270,11 @@ export function registerLastFmCommands(registry: RegistryLike) {
 
       if (sub === 'top') {
         await handleTop(ctx, lastfm);
+        return;
+      }
+
+      if (sub === 'play' || sub === 'queue') {
+        await handleListPlay(ctx, lastfm);
         return;
       }
 
@@ -600,6 +607,64 @@ async function handleCompare(ctx: CommandContextLike, lastfm: LastFmBundle): Pro
   }
 
   await ctx.reply.info(ctx.t('lastfm.compareTitle', { left: ownName, right: otherName }), fields);
+}
+
+type LastFmPlayList = 'loved' | 'top' | 'recent';
+
+const LIST_ALIASES: Record<string, LastFmPlayList> = {
+  loved: 'loved',
+  love: 'loved',
+  likes: 'loved',
+  top: 'top',
+  recent: 'recent',
+  last: 'recent',
+};
+
+async function handleListPlay(ctx: CommandContextLike, lastfm: LastFmBundle): Promise<void> {
+  ensureGuild(ctx);
+  const list = LIST_ALIASES[String(ctx.args[1] ?? '').trim().toLowerCase()];
+  if (!list) throw new ValidationError(ctx.t('lastfm.playUsage', { prefix: ctx.prefix }));
+
+  const rest = ctx.args.slice(2);
+  const targetUserId = parseUserId(rest.find((arg) => parseUserId(arg) !== null), ctx.authorId);
+  if (!targetUserId) throw new ValidationError(ctx.t('errors.userIdUnresolved'));
+  const period = rest.map((arg) => parsePeriod(arg)).find((value) => value !== null) ?? '3month';
+  const username = await resolveLinkedUsername(ctx, targetUserId);
+
+  const entries = await withLastFmErrors(ctx, async () => {
+    if (list === 'loved') {
+      return (await lastfm.client.userGetLovedTracks(username, LIST_PLAY_FETCH))
+        .map((entry) => `${entry.artist} - ${entry.track}`);
+    }
+    if (list === 'top') {
+      return (await lastfm.client.userGetTopTracks(username, period, LIST_PLAY_FETCH))
+        .filter((entry) => entry.artist)
+        .map((entry) => `${entry.artist} - ${entry.name}`);
+    }
+    return (await lastfm.client.userGetRecentTracks(username, LIST_PLAY_FETCH))
+      .map((entry) => `${entry.artist} - ${entry.track}`);
+  });
+
+  const unique = [...new Set(entries)];
+  const picks = list === 'recent' ? unique : shuffleInPlace(unique);
+  if (!picks.length) {
+    await ctx.reply.warning(ctx.t('lastfm.playEmpty', { user: username }));
+    return;
+  }
+
+  const session = await ensureConnectedSession(ctx);
+  await applyVoiceProfileIfConfigured(ctx, session);
+
+  const added = await queueSearchQueries(ctx, session, picks.slice(0, LIST_PLAY_MAX_TRACKS));
+  if (!added.length) {
+    await ctx.reply.warning(ctx.t('lastfm.playEmpty', { user: username }));
+    return;
+  }
+
+  if (!session.player.playing) await session.player.play();
+  (ctx as LastFmCommandContext).sessions.markSnapshotDirty?.(session, true);
+
+  await ctx.reply.success(ctx.t(`lastfm.playQueued.${list}`, { count: added.length, user: username }));
 }
 
 async function handleBlend(ctx: CommandContextLike, lastfm: LastFmBundle): Promise<void> {

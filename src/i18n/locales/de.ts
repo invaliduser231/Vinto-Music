@@ -713,7 +713,7 @@ export const de: Catalog = {
   'lastfm.overviewAccount': 'Konto',
   'lastfm.overviewAccountValue': '`{prefix}lastfm connect`, `{prefix}lastfm status`, `{prefix}lastfm on|off`, `{prefix}lastfm disconnect`',
   'lastfm.overviewStats': 'Statistik',
-  'lastfm.overviewStatsValue': '`{prefix}lastfm profile`, `{prefix}lastfm recent`, `{prefix}lastfm top [artists|tracks|albums] [7d|1m|3m|6m|1y|all]`',
+  'lastfm.overviewStatsValue': '`{prefix}lastfm profile`, `{prefix}lastfm recent`, `{prefix}lastfm top [artists|tracks|albums] [7d|1m|3m|6m|1y|all]`, `{prefix}lastfm play <loved|top|recent>`',
   'lastfm.overviewSocial': 'Gemeinsam',
   'lastfm.overviewSocialValue': '`{prefix}lastfm compare @user`, `{prefix}lastfm blend`, `{prefix}lastfm leaderboard [guild|global]`, `{prefix}lastfm whoknows [Künstler]`, `{prefix}lastfm crowns [@user]`, `{prefix}fmplay`, `{prefix}love`',
 
@@ -828,4 +828,18 @@ export const de: Catalog = {
   'musicchannel.redirect': 'Musikbefehle gehören in {channels}.',
   'cmd.musicchannel.description': 'Musikbefehle auf bestimmte Textkanäle beschränken.',
   'permcheck.joinHint': 'Die Wiedergabe läuft, aber Embeds, Reaktionen oder Now-Playing-Karten können hier fehlen, bis das behoben ist.',
+  'lastfm.playUsage': 'Verwendung: `{prefix}lastfm play <loved|top|recent> [@user] [7d|1m|3m|6m|1y|all]`',
+  'lastfm.playEmpty': 'Bei **{user}** auf Last.fm gibt es nichts zum Einreihen.',
+  'lastfm.playQueued.loved': {
+    one: '**{count}** Lieblingstitel von **{user}** eingereiht.',
+    other: '**{count}** Lieblingstitel von **{user}** eingereiht.',
+  },
+  'lastfm.playQueued.top': {
+    one: '**{count}** Top-Titel von **{user}** eingereiht.',
+    other: '**{count}** Top-Titel von **{user}** eingereiht.',
+  },
+  'lastfm.playQueued.recent': {
+    one: '**{count}** zuletzt gehörten Titel von **{user}** eingereiht.',
+    other: '**{count}** zuletzt gehörte Titel von **{user}** eingereiht.',
+  },
 };
