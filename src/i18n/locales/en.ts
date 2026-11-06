@@ -77,7 +77,7 @@ export const en = {
   'radio.tuning': 'Tuning into {track}.',
   'radio.queued': 'Queued station: {track}.',
 
-  'play.usage': 'Usage: {prefix}play <query>',
+  'play.usage': 'Usage: {prefix}play <query>. Start the query with yt:, sc:, dz:, sp:, am: or td: to search one source.',
   'play.duplicate': 'Track already exists in queue (dedupe enabled).',
   'play.noTracksAdded': 'No tracks were added.',
   'play.playlistNoneQueued': 'No additional tracks were queued.',
@@ -107,7 +107,7 @@ export const en = {
     other: 'Queued {count} playlist tracks at the front.',
   },
 
-  'search.usage': 'Usage: {prefix}search <query>',
+  'search.usage': 'Usage: {prefix}search <query>. Start the query with yt:, sc:, dz:, sp:, am: or td: to search one source.',
   'search.noResults': 'No search results found.',
   'search.results': 'Results',
   'search.pick': 'Pick',
@@ -571,7 +571,7 @@ export const en = {
   'cmd.replay.description': 'Restart current track or replay the last played track.',
   'cmd.reputation.description': 'Show requester reputation score.',
   'cmd.resume.description': 'Resume playback.',
-  'cmd.search.description': 'Search YouTube and pick one of the top results.',
+  'cmd.search.description': 'Search for a song and pick one of the top results.',
   'cmd.seek.description': 'Seek in current track (seconds or mm:ss or hh:mm:ss).',
   'cmd.settings.description': 'Show effective guild music-bot settings.',
   'cmd.shuffle.description': 'Shuffle pending queue tracks.',
@@ -814,4 +814,6 @@ export const en = {
   'errors.tooManyRedirects': 'That link redirects too many times.',
   'events.sessionClosedRemoved': 'I was disconnected from the voice channel, so I stopped playback.',
   'events.sessionClosedRemovedRepeatedly': "I was disconnected from this 24/7 channel several times in a row, so I'm staying out for now. Use join to bring me back.",
+  'errors.searchSourceUnavailable': 'Searching {source} is not available on this bot.',
+  'errors.searchSourceEmpty': 'No results on {source}.',
 } as const;

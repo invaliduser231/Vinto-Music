@@ -1185,7 +1185,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
   registry.register(createCommand({
     name: 'search',
     aliases: ['find'],
-    description: 'Search YouTube and pick one of the top results.',
+    description: 'Search for a song and pick one of the top results.',
     usage: 'search <query>',
     async execute(ctx: PlaybackCommandContext) {
       ensureGuild(ctx);

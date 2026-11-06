@@ -79,7 +79,7 @@ export const de: Catalog = {
   'radio.tuning': 'Schalte um auf {track}.',
   'radio.queued': 'Sender eingereiht: {track}.',
 
-  'play.usage': 'Verwendung: {prefix}play <Suche>',
+  'play.usage': 'Verwendung: {prefix}play <Suche>. Mit yt:, sc:, dz:, sp:, am: oder td: vor der Suche suchst du nur in einer Quelle.',
   'play.duplicate': 'Der Titel steht bereits in der Warteschlange (Duplikatschutz aktiv).',
   'play.noTracksAdded': 'Es wurden keine Titel hinzugefügt.',
   'play.playlistNoneQueued': 'Es wurden keine weiteren Titel eingereiht.',
@@ -109,7 +109,7 @@ export const de: Catalog = {
     other: '{count} Playlist-Titel ganz vorn eingereiht.',
   },
 
-  'search.usage': 'Verwendung: {prefix}search <Suche>',
+  'search.usage': 'Verwendung: {prefix}search <Suche>. Mit yt:, sc:, dz:, sp:, am: oder td: vor der Suche suchst du nur in einer Quelle.',
   'search.noResults': 'Keine Suchergebnisse gefunden.',
   'search.results': 'Ergebnisse',
   'search.pick': 'Auswahl',
@@ -573,7 +573,7 @@ export const de: Catalog = {
   'cmd.replay.description': 'Aktuellen Titel neu starten oder den zuletzt gespielten wiederholen.',
   'cmd.reputation.description': 'Reputationspunkte eines Bestellers anzeigen.',
   'cmd.resume.description': 'Wiedergabe fortsetzen.',
-  'cmd.search.description': 'YouTube durchsuchen und eines der Top-Ergebnisse wählen.',
+  'cmd.search.description': 'Nach einem Song suchen und eines der Top-Ergebnisse wählen.',
   'cmd.seek.description': 'Im aktuellen Titel springen (Sekunden, mm:ss oder hh:mm:ss).',
   'cmd.settings.description': 'Die geltenden Musikbot-Einstellungen der Guild anzeigen.',
   'cmd.shuffle.description': 'Wartende Titel in der Warteschlange mischen.',
@@ -816,4 +816,6 @@ export const de: Catalog = {
   'errors.tooManyRedirects': 'Der Link leitet zu oft weiter.',
   'events.sessionClosedRemoved': 'Ich wurde aus dem Sprachkanal entfernt und habe die Wiedergabe beendet.',
   'events.sessionClosedRemovedRepeatedly': 'Ich wurde mehrmals hintereinander aus diesem 24/7-Kanal entfernt und bleibe deshalb vorerst draußen. Mit join holst du mich zurück.',
+  'errors.searchSourceUnavailable': 'Die Suche bei {source} ist auf diesem Bot nicht verfügbar.',
+  'errors.searchSourceEmpty': 'Keine Treffer bei {source}.',
 };

@@ -1425,3 +1425,55 @@ test('in all mode the mirror search never falls back to a local YouTube search',
   assert.equal(mirror, null);
   assert.equal(localSearchCalls, 0);
 });
+
+test('NodeLink search honors a source prefix in play and search queries', async () => {
+  const originalFetch = globalThis.fetch;
+  const identifiers: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    identifiers.push(String(new URL(String(input)).searchParams.get('identifier')));
+    return new Response(JSON.stringify({
+      loadType: 'search',
+      data: [nodeLinkTrack('Prefixed Hit', 'encoded-prefixed', 'soundcloud')],
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  try {
+    const player = createPlayer({ nodeLinkDefaultSearch: 'ytsearch' });
+    const played = await player.previewTracks('sc: lofi beats', { requestedBy: 'user-1', limit: 1 });
+    const searched = await player.searchCandidates('dz:alleine', 3, { requestedBy: 'user-1' });
+
+    assert.equal(played[0]!.title, 'Prefixed Hit');
+    assert.equal(searched.length, 1);
+    assert.deepEqual(identifiers, ['scsearch:lofi beats', 'dzsearch:alleine']);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('NodeLink search keeps colons in plain queries instead of treating them as a source', async () => {
+  const originalFetch = globalThis.fetch;
+  const identifiers: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    identifiers.push(String(new URL(String(input)).searchParams.get('identifier')));
+    return new Response(JSON.stringify({
+      loadType: 'search',
+      data: [nodeLinkTrack('Plain Hit', 'encoded-plain', 'youtube')],
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  try {
+    const player = createPlayer({ nodeLinkDefaultSearch: 'ytsearch' });
+    await player.previewTracks('Lecrae: Blessings', { requestedBy: 'user-1', limit: 1 });
+    await player.previewTracks('scsearch:raw identifier', { requestedBy: 'user-1', limit: 1 });
+
+    assert.deepEqual(identifiers, ['ytsearch:Lecrae: Blessings', 'scsearch:raw identifier']);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

@@ -1,6 +1,7 @@
 import { Readable } from 'node:stream';
 import { ValidationError } from '../../core/errors.ts';
 import type { Track } from '../../types/domain.ts';
+import { isNodeLinkSourceIdentifier } from './searchPrefix.ts';
 
 export function describeNodeLinkErrorBody(body: string, fallback: string): string {
   const trimmed = body.trim();
@@ -166,7 +167,7 @@ export class NodeLinkClient {
   buildIdentifier(query: string, options: LoadTracksOptions = {}): string {
     const raw = String(query ?? '').trim();
     if (/^https?:\/\//i.test(raw)) return raw;
-    if (/^[A-Za-z0-9]+:.+/.test(raw)) return raw;
+    if (isNodeLinkSourceIdentifier(raw)) return raw;
     const searchIdentifier = normalizeSearchIdentifier(options.searchIdentifier ?? this.defaultSearchIdentifier);
     return `${searchIdentifier}:${raw}`;
   }

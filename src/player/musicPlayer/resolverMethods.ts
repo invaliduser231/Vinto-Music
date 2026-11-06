@@ -2,6 +2,7 @@ import playdl from 'play-dl';
 import type { InfoData, YouTubePlayList } from 'play-dl';
 import { ValidationError } from '../../core/errors.ts';
 import { assertPublicHttpUrl } from '../../utils/safeHttp.ts';
+import { parseSearchPrefix, type SearchPrefix } from './searchPrefix.ts';
 import { isPlayDlBrowseFailure } from './errorUtils.ts';
 import type { Track, TrackInput } from '../../types/domain.ts';
 import {
@@ -67,6 +68,7 @@ export interface ResolverMethodMembers {
   _isNodeLinkOnlyModeForSourceTrack(track: Partial<Track> | null | undefined, trackUrl?: string | null): boolean;
   _resolveTracks(query: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
   _resolveTracksFromSource(url: string, requestedBy: string | null, limit?: number | null): Promise<Track[]>;
+  _resolvePrefixedSearch(prefix: SearchPrefix, requestedBy: string | null, limit: number): Promise<Track[]>;
   _resolveSearchTrack(query: string, requestedBy: string | null): Promise<Track[]>;
   getDiagnostics(): ResolverDiagnostics;
   searchCandidates(query: string, limit?: number, options?: { requestedBy?: string | null }): Promise<Track[]>;
@@ -324,6 +326,8 @@ export const resolverMethods: ResolverMethodMembers & ThisType<MusicPlayer> = {
     const safeLimit = normalizeResolveLimit(limit, this.maxPlaylistTracks);
     const nodeLinkRoutingMode = getNodeLinkRoutingMode(this.nodeLinkRoutingMode);
     if (!isHttpUrl(raw)) {
+      const prefixed = parseSearchPrefix(raw);
+      if (prefixed) return this._resolvePrefixedSearch(prefixed, requestedBy, 1);
       return this._resolveSearchTrack(raw, requestedBy);
     }
 
@@ -405,6 +409,31 @@ export const resolverMethods: ResolverMethodMembers & ThisType<MusicPlayer> = {
     }
   },
 
+  async _resolvePrefixedSearch(prefix: SearchPrefix, requestedBy: string | null, limit: number) {
+    const nodeLinkAvailable = Boolean(this.nodeLinkEnabled && this.nodeLinkClient?.enabled);
+    let tracks: Track[] = [];
+    if (nodeLinkAvailable) {
+      tracks = await this._resolveNodeLinkTracks(prefix.query, requestedBy, limit, { searchIdentifier: prefix.identifier });
+    } else if (prefix.identifier === 'ytsearch' && this.enableYtSearch && this.enableYtPlayback) {
+      tracks = await this._searchYouTubeTracks(prefix.query, limit, requestedBy);
+    } else if (prefix.identifier === 'dzsearch' && this.deezerArl && this.enableDeezerImport) {
+      tracks = await this.sources.deezer.searchTracks(prefix.query, limit, requestedBy);
+    } else {
+      throw new ValidationError(`Searching ${prefix.label} is not available on this bot.`, {
+        translationKey: 'errors.searchSourceUnavailable',
+        translationParams: { source: prefix.label },
+      });
+    }
+
+    if (!tracks.length) {
+      throw new ValidationError(`No results on ${prefix.label}.`, {
+        translationKey: 'errors.searchSourceEmpty',
+        translationParams: { source: prefix.label },
+      });
+    }
+    return tracks;
+  },
+
   async _resolveSearchTrack(query: string, requestedBy: string | null) {
     const nodeLinkRoutingMode = getNodeLinkRoutingMode(this.nodeLinkRoutingMode);
     const nodeLinkAvailable = Boolean(
@@ -466,6 +495,8 @@ export const resolverMethods: ResolverMethodMembers & ThisType<MusicPlayer> = {
   async searchCandidates(query: string, limit = 5, options: { requestedBy?: string | null } = { requestedBy: null }) {
     const requestedBy = options.requestedBy ?? null;
     const safeLimit = Math.max(1, Math.min(10, Number.parseInt(String(limit), 10) || 5));
+    const prefixed = parseSearchPrefix(query);
+    if (prefixed) return this._resolvePrefixedSearch(prefixed, requestedBy, safeLimit);
     if (this.deezerArl && this.enableDeezerImport) {
       const deezer = await this.sources.deezer.searchTracks(query, safeLimit, requestedBy).catch(() => []);
       if (deezer.length) return deezer;

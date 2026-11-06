@@ -79,7 +79,7 @@ export const ptBR: Catalog = {
   'radio.tuning': 'Sintonizando {track}.',
   'radio.queued': 'Estação na fila: {track}.',
 
-  'play.usage': 'Uso: {prefix}play <busca>',
+  'play.usage': 'Uso: {prefix}play <busca>. Comece a busca com yt:, sc:, dz:, sp:, am: ou td: para buscar em uma fonte só.',
   'play.duplicate': 'A faixa já está na fila (proteção contra duplicatas ativa).',
   'play.noTracksAdded': 'Nenhuma faixa foi adicionada.',
   'play.playlistNoneQueued': 'Nenhuma faixa adicional foi colocada na fila.',
@@ -109,7 +109,7 @@ export const ptBR: Catalog = {
     other: '{count} faixas da playlist colocadas no início da fila.',
   },
 
-  'search.usage': 'Uso: {prefix}search <busca>',
+  'search.usage': 'Uso: {prefix}search <busca>. Comece a busca com yt:, sc:, dz:, sp:, am: ou td: para buscar em uma fonte só.',
   'search.noResults': 'Nenhum resultado encontrado.',
   'search.results': 'Resultados',
   'search.pick': 'Escolha',
@@ -573,7 +573,7 @@ export const ptBR: Catalog = {
   'cmd.replay.description': 'Reiniciar a faixa atual ou repetir a última tocada.',
   'cmd.reputation.description': 'Mostrar a pontuação de reputação de quem pede músicas.',
   'cmd.resume.description': 'Retomar a reprodução.',
-  'cmd.search.description': 'Buscar no YouTube e escolher um dos primeiros resultados.',
+  'cmd.search.description': 'Buscar uma música e escolher um dos primeiros resultados.',
   'cmd.seek.description': 'Avançar na faixa atual (segundos, mm:ss ou hh:mm:ss).',
   'cmd.settings.description': 'Mostrar as configurações efetivas do bot de música na guild.',
   'cmd.shuffle.description': 'Embaralhar as faixas pendentes da fila.',
@@ -816,4 +816,6 @@ export const ptBR: Catalog = {
   'errors.tooManyRedirects': 'Esse link redireciona vezes demais.',
   'events.sessionClosedRemoved': 'Fui desconectado do canal de voz, então parei a reprodução.',
   'events.sessionClosedRemovedRepeatedly': 'Fui desconectado deste canal 24/7 várias vezes seguidas, então vou ficar fora por enquanto. Use join para me trazer de volta.',
+  'errors.searchSourceUnavailable': 'A busca em {source} não está disponível neste bot.',
+  'errors.searchSourceEmpty': 'Nenhum resultado em {source}.',
 };
