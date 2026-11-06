@@ -827,4 +827,5 @@ export const ptBR: Catalog = {
   'musicchannel.provideChannel': 'Informe `off` ou até cinco menções ou ids de canal.',
   'musicchannel.redirect': 'Comandos de música vão em {channels}.',
   'cmd.musicchannel.description': 'Limitar comandos de música a canais de texto específicos.',
+  'permcheck.joinHint': 'A reprodução funciona, mas embeds, reações ou cartões de tocando agora podem faltar aqui até isso ser corrigido.',
 };

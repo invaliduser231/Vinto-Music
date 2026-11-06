@@ -827,4 +827,5 @@ export const de: Catalog = {
   'musicchannel.provideChannel': 'Gib `off` oder bis zu fünf Kanal-Erwähnungen oder IDs an.',
   'musicchannel.redirect': 'Musikbefehle gehören in {channels}.',
   'cmd.musicchannel.description': 'Musikbefehle auf bestimmte Textkanäle beschränken.',
+  'permcheck.joinHint': 'Die Wiedergabe läuft, aber Embeds, Reaktionen oder Now-Playing-Karten können hier fehlen, bis das behoben ist.',
 };

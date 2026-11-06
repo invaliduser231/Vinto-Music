@@ -1,5 +1,5 @@
 import { ValidationError } from '../../../core/errors.ts';
-import { ensurePermissionCheck } from '../../permissions/require.ts';
+import { describePermissionFailure, ensurePermissionCheck } from '../../permissions/require.ts';
 import type { PermissionFlag } from '../../permissions/flags.ts';
 import { applyMoodPreset } from '../advancedCommands.ts';
 import type { CommandContextLike, GuildConfigLike, LibraryLike, SessionLike } from './types.ts';
@@ -252,6 +252,36 @@ async function connectWithRetry(
   throw lastError;
 }
 
+const JOIN_TEXT_PERMISSIONS: readonly PermissionFlag[] = ['EMBED_LINKS', 'ADD_REACTIONS', 'READ_MESSAGE_HISTORY', 'ATTACH_FILES'];
+const PERMISSION_WARNING_COOLDOWN_MS = 6 * 60 * 60_000;
+const permissionWarningsSent = new Map<string, number>();
+
+export function _resetPermissionWarnings(): void {
+  permissionWarningsSent.clear();
+}
+
+export async function warnAboutMissingTextPermissions(ctx: CommandContextLike): Promise<boolean> {
+  const check = ctx.permissionService?.checkBotPermissions;
+  if (!check || !ctx.guildId || !ctx.channelId) return false;
+
+  const key = `${ctx.guildId}:${ctx.channelId}`;
+  const now = Date.now();
+  const lastSent = permissionWarningsSent.get(key) ?? 0;
+  if (now - lastSent < PERMISSION_WARNING_COOLDOWN_MS) return false;
+
+  const result = await check.call(ctx.permissionService, ctx.guildId, ctx.channelId, JOIN_TEXT_PERMISSIONS).catch(() => null);
+  if (!result?.known || !result.missing.length) return false;
+
+  permissionWarningsSent.set(key, now);
+  for (const [entry, sentAt] of permissionWarningsSent) {
+    if (now - sentAt > PERMISSION_WARNING_COOLDOWN_MS) permissionWarningsSent.delete(entry);
+  }
+  const summary = describePermissionFailure(ctx.t, result, { channelMention: `<#${ctx.channelId}>` });
+  await ctx.reply.warning(`${summary}
+${ctx.t('permcheck.joinHint')}`).catch(() => null);
+  return true;
+}
+
 export async function connectPreparedSession(
   ctx: CommandContextLike,
   prepared: PreparedSessionConnection,
@@ -264,6 +294,7 @@ export async function connectPreparedSession(
     await connectWithRetry(session, resolvedVoice);
     ctx.sessions.adoptVoiceChannel?.(session, resolvedVoice);
     await ctx.sessions.syncPersistentVoiceState?.(ctx.guildId);
+    void warnAboutMissingTextPermissions(ctx);
   } catch (err: unknown) {
     const message = String((err as { message?: string })?.message ?? '').toLowerCase();
     const shouldResetSession = (

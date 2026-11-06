@@ -825,4 +825,5 @@ export const en = {
   'musicchannel.provideChannel': 'Provide `off` or up to five channel mentions or ids.',
   'musicchannel.redirect': 'Music commands go in {channels}.',
   'cmd.musicchannel.description': 'Limit music commands to specific text channels.',
+  'permcheck.joinHint': 'Playback works, but embeds, reactions or now-playing cards may be missing here until this is fixed.',
 } as const;
