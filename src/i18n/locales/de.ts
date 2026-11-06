@@ -818,4 +818,13 @@ export const de: Catalog = {
   'events.sessionClosedRemovedRepeatedly': 'Ich wurde mehrmals hintereinander aus diesem 24/7-Kanal entfernt und bleibe deshalb vorerst draußen. Mit join holst du mich zurück.',
   'errors.searchSourceUnavailable': 'Die Suche bei {source} ist auf diesem Bot nicht verfügbar.',
   'errors.searchSourceEmpty': 'Keine Treffer bei {source}.',
+  'access.changeMusicChannel': 'die Musik-Befehlskanäle zu ändern',
+  'config.commandChannels': 'Musik-Befehlskanäle',
+  'musicchannel.current': 'Musikbefehle funktionieren nur in {channels}.',
+  'musicchannel.currentDisabled': 'Musikbefehle funktionieren in jedem Kanal.',
+  'musicchannel.disabled': 'Musikbefehle funktionieren wieder in jedem Kanal.',
+  'musicchannel.set': 'Musikbefehle funktionieren jetzt nur noch in {channels}.',
+  'musicchannel.provideChannel': 'Gib `off` oder bis zu fünf Kanal-Erwähnungen oder IDs an.',
+  'musicchannel.redirect': 'Musikbefehle gehören in {channels}.',
+  'cmd.musicchannel.description': 'Musikbefehle auf bestimmte Textkanäle beschränken.',
 };

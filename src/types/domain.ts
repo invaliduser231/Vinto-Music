@@ -80,6 +80,7 @@ export interface GuildConfig {
     voteSkipRatio?: number;
     voteSkipMinVotes?: number;
     djRoleIds?: string[];
+    commandChannelIds?: string[];
     musicLogChannelId?: ChannelId;
     language?: string | null;
   };

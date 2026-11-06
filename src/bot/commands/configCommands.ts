@@ -302,6 +302,46 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
   }));
 
   registry.register(createCommand({
+    name: 'musicchannel',
+    aliases: ['commandchannel', 'botchannel'],
+    description: 'Limit music commands to specific text channels.',
+    usage: 'musicchannel [off|#channel ...]',
+    async execute(ctx: CommandContextLike) {
+      ensureGuild(ctx);
+      const guildConfig = await getGuildConfigOrThrow(ctx);
+      await ensureManageGuildAccess(ctx, 'access.changeMusicChannel');
+
+      const current = guildConfig.settings.commandChannelIds ?? [];
+      if (!ctx.args.length) {
+        await ctx.reply.info(
+          current.length
+            ? ctx.t('musicchannel.current', { channels: current.map((id: string) => `<#${id}>`).join(', ') })
+            : ctx.t('musicchannel.currentDisabled')
+        );
+        return;
+      }
+
+      const raw = String(ctx.args[0] ?? '').trim().toLowerCase();
+      if (raw === 'off' || raw === 'none' || raw === 'disable') {
+        await updateGuildConfig(ctx, { settings: { commandChannelIds: [] } });
+        await ctx.reply.success(ctx.t('musicchannel.disabled'));
+        return;
+      }
+
+      const channelIds = ctx.args.map((arg: string) => parseTextChannelId(arg));
+      if (!channelIds.length || channelIds.some((id: string | null) => !id)) {
+        throw new ValidationError(ctx.t('musicchannel.provideChannel'));
+      }
+
+      const updated = await updateGuildConfig(ctx, { settings: { commandChannelIds: channelIds } });
+      const saved = updated.settings.commandChannelIds ?? [];
+      await ctx.reply.success(ctx.t('musicchannel.set', {
+        channels: saved.map((id: string) => `<#${id}>`).join(', '),
+      }));
+    },
+  }));
+
+  registry.register(createCommand({
     name: 'musiclog',
     aliases: ['logchannel'],
     description: 'Set a dedicated channel for player event logs.',
@@ -433,6 +473,12 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
         { name: ctx.t('config.voteMin'), value: String(guildConfig.settings.voteSkipMinVotes), inline: true },
         { name: ctx.t('config.djRoles'), value: roles },
         { name: ctx.t('config.musicLogChannel'), value: guildConfig.settings.musicLogChannelId ? `<#${guildConfig.settings.musicLogChannelId}>` : ctx.t('common.disabledLower') },
+        {
+          name: ctx.t('config.commandChannels'),
+          value: guildConfig.settings.commandChannelIds?.length
+            ? guildConfig.settings.commandChannelIds.map((id: string) => `<#${id}>`).join(', ')
+            : ctx.t('common.disabledLower'),
+        },
         { name: ctx.t('config.sessionActive'), value: ctx.t(session ? 'common.yes' : 'common.no'), inline: true },
       ]);
     },

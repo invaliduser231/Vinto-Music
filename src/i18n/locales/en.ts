@@ -816,4 +816,13 @@ export const en = {
   'events.sessionClosedRemovedRepeatedly': "I was disconnected from this 24/7 channel several times in a row, so I'm staying out for now. Use join to bring me back.",
   'errors.searchSourceUnavailable': 'Searching {source} is not available on this bot.',
   'errors.searchSourceEmpty': 'No results on {source}.',
+  'access.changeMusicChannel': 'change the music command channels',
+  'config.commandChannels': 'Music Command Channels',
+  'musicchannel.current': 'Music commands only work in {channels}.',
+  'musicchannel.currentDisabled': 'Music commands work in every channel.',
+  'musicchannel.disabled': 'Music commands work in every channel again.',
+  'musicchannel.set': 'Music commands now only work in {channels}.',
+  'musicchannel.provideChannel': 'Provide `off` or up to five channel mentions or ids.',
+  'musicchannel.redirect': 'Music commands go in {channels}.',
+  'cmd.musicchannel.description': 'Limit music commands to specific text channels.',
 } as const;

@@ -818,4 +818,13 @@ export const ptBR: Catalog = {
   'events.sessionClosedRemovedRepeatedly': 'Fui desconectado deste canal 24/7 várias vezes seguidas, então vou ficar fora por enquanto. Use join para me trazer de volta.',
   'errors.searchSourceUnavailable': 'A busca em {source} não está disponível neste bot.',
   'errors.searchSourceEmpty': 'Nenhum resultado em {source}.',
+  'access.changeMusicChannel': 'alterar os canais de comandos de música',
+  'config.commandChannels': 'Canais de comandos de música',
+  'musicchannel.current': 'Comandos de música só funcionam em {channels}.',
+  'musicchannel.currentDisabled': 'Comandos de música funcionam em todos os canais.',
+  'musicchannel.disabled': 'Comandos de música voltaram a funcionar em todos os canais.',
+  'musicchannel.set': 'Comandos de música agora só funcionam em {channels}.',
+  'musicchannel.provideChannel': 'Informe `off` ou até cinco menções ou ids de canal.',
+  'musicchannel.redirect': 'Comandos de música vão em {channels}.',
+  'cmd.musicchannel.description': 'Limitar comandos de música a canais de texto específicos.',
 };

@@ -603,6 +603,12 @@ export class RestClient {
     });
   }
 
+  async deleteMessage(channelId: string, messageId: string) {
+    return this.request('DELETE', `/channels/${channelId}/messages/${messageId}`, {
+      retryUnsafe: true,
+    });
+  }
+
   async addReactionToMessage(channelId: string, messageId: string, emoji: string, options: ReactionOptions = {}) {
     const encoded = encodeURIComponent(String(emoji ?? '').trim());
     const query: Record<string, string> = {};

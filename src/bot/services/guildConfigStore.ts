@@ -68,6 +68,18 @@ function normalizeStoredLanguage(value: unknown) {
   return normalizeLocale(value);
 }
 
+const MAX_COMMAND_CHANNELS = 5;
+
+function normalizeChannelIds(values: unknown) {
+  if (!Array.isArray(values)) return [];
+  const set = new Set<string>();
+  for (const value of values) {
+    const channelId = normalizeChannelId(value);
+    if (channelId) set.add(channelId);
+  }
+  return [...set].slice(0, MAX_COMMAND_CHANNELS);
+}
+
 function normalizeChannelId(value: unknown) {
   if (value == null) return null;
   const normalized = String(value).trim();
@@ -94,6 +106,7 @@ function cloneConfig(config: GuildConfigDocument) {
       voteSkipRatio: config.settings.voteSkipRatio,
       voteSkipMinVotes: config.settings.voteSkipMinVotes,
       djRoleIds: [...config.settings.djRoleIds],
+      commandChannelIds: [...(config.settings.commandChannelIds ?? [])],
       musicLogChannelId: config.settings.musicLogChannelId,
       language: config.settings.language,
     },
@@ -120,6 +133,7 @@ type GuildConfigPatch = {
     voteSkipRatio?: unknown;
     voteSkipMinVotes?: unknown;
     djRoleIds?: unknown;
+    commandChannelIds?: unknown;
     musicLogChannelId?: unknown;
     language?: unknown;
   } | null;
@@ -137,6 +151,7 @@ type GuildConfigDocLike = {
     voteSkipRatio?: unknown;
     voteSkipMinVotes?: unknown;
     djRoleIds?: unknown;
+    commandChannelIds?: unknown;
     musicLogChannelId?: unknown;
     language?: unknown;
   } | null;
@@ -183,6 +198,7 @@ export class GuildConfigStore {
         voteSkipRatio: toRatio(options.defaults?.settings?.voteSkipRatio, 0.5),
         voteSkipMinVotes: toPositiveInt(options.defaults?.settings?.voteSkipMinVotes, 2),
         djRoleIds: normalizeRoleIds(options.defaults?.settings?.djRoleIds ?? []) as string[],
+        commandChannelIds: [],
         musicLogChannelId: normalizeChannelId(options.defaults?.settings?.musicLogChannelId),
         language: normalizeStoredLanguage(options.defaults?.settings?.language),
       },
@@ -270,6 +286,7 @@ export class GuildConfigStore {
             voteSkipRatio: next.settings.voteSkipRatio,
             voteSkipMinVotes: next.settings.voteSkipMinVotes,
             djRoleIds: [...next.settings.djRoleIds],
+            commandChannelIds: [...(next.settings.commandChannelIds ?? [])],
             musicLogChannelId: next.settings.musicLogChannelId,
             language: next.settings.language,
           },
@@ -349,6 +366,10 @@ export class GuildConfigStore {
         next.settings.djRoleIds = normalizeRoleIds(settingsPatch.djRoleIds);
       }
 
+      if (settingsPatch.commandChannelIds !== undefined) {
+        next.settings.commandChannelIds = normalizeChannelIds(settingsPatch.commandChannelIds);
+      }
+
       if (settingsPatch.musicLogChannelId !== undefined) {
         next.settings.musicLogChannelId = normalizeChannelId(settingsPatch.musicLogChannelId);
       }
@@ -382,6 +403,7 @@ export class GuildConfigStore {
         voteSkipRatio: toRatio(settings.voteSkipRatio, this.defaults.settings.voteSkipRatio),
         voteSkipMinVotes: toPositiveInt(settings.voteSkipMinVotes, this.defaults.settings.voteSkipMinVotes),
         djRoleIds: normalizeRoleIds(settings.djRoleIds),
+        commandChannelIds: normalizeChannelIds(settings.commandChannelIds),
         musicLogChannelId: normalizeChannelId(settings.musicLogChannelId),
         language: normalizeStoredLanguage(settings.language) ?? this.defaults.settings.language ?? null,
       },
@@ -406,6 +428,8 @@ export class GuildConfigStore {
     if (as.voteSkipMinVotes !== bs.voteSkipMinVotes) return false;
     if (as.musicLogChannelId !== bs.musicLogChannelId) return false;
     if (as.language !== bs.language) return false;
+
+    if ((as.commandChannelIds ?? []).join(',') !== (bs.commandChannelIds ?? []).join(',')) return false;
 
     if (as.djRoleIds.length !== bs.djRoleIds.length) return false;
     for (let i = 0; i < as.djRoleIds.length; i += 1) {
@@ -455,6 +479,7 @@ type GuildConfigSettings = {
   voteSkipRatio: number;
   voteSkipMinVotes: number;
   djRoleIds: string[];
+  commandChannelIds?: string[];
   musicLogChannelId?: string | null | undefined;
   language?: string | null | undefined;
 };

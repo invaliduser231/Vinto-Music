@@ -39,7 +39,7 @@ import type { ShardTotals } from './services/shardRegistry.ts';
 type RouterContextOptions = {
   prefix?: string;
   hasVoted?: boolean;
-  guildConfig?: { prefix?: string; settings?: { minimalMode?: boolean; language?: string | null } } | null;
+  guildConfig?: { prefix?: string; settings?: { minimalMode?: boolean; language?: string | null; commandChannelIds?: string[] } } | null;
   locale?: Locale;
 };
 
@@ -63,7 +63,7 @@ type RouterConfig = {
 };
 
 type GuildConfigResolver = {
-  get: (guildId: string) => Promise<{ prefix?: string; settings?: { minimalMode?: boolean; language?: string | null } } | null>;
+  get: (guildId: string) => Promise<{ prefix?: string; settings?: { minimalMode?: boolean; language?: string | null; commandChannelIds?: string[] } } | null>;
 };
 
 type RouterRest = {
@@ -72,6 +72,7 @@ type RouterRest = {
   addReactionToMessage?: (channelId: string, messageId: string, emoji: string) => Promise<unknown>;
   removeUserReactionFromMessage?: (channelId: string, messageId: string, emoji: string, userId: string) => Promise<unknown>;
   sendMessage: (channelId: string, payload: MessagePayload) => Promise<unknown>;
+  deleteMessage?: (channelId: string, messageId: string) => Promise<unknown>;
   listCurrentUserGuilds?: (options?: { limit?: number; after?: string | null }) => Promise<unknown>;
 };
 
@@ -198,6 +199,9 @@ type SearchReactionState = {
 };
 
 const AUTOPLAY_RESOLVE_CANDIDATES = 8;
+const COMMAND_CHANNEL_EXEMPT = new Set(['musicchannel', 'settings', 'prefix', 'language']);
+const COMMAND_CHANNEL_NOTICE_COOLDOWN_MS = 30_000;
+const COMMAND_CHANNEL_NOTICE_LIFETIME_MS = 10_000;
 const AUTOPLAY_RESOLVE_TIMEOUT_MS = 3000;
 const DEFERRED_TRACK_START_MESSAGE_GRACE_MS = 1200;
 
@@ -252,6 +256,7 @@ export class CommandRouter {
   helpPaginations: Map<string, HelpPaginationState>;
   searchReactionSelections: Map<string, SearchReactionState>;
   nowPlayingMessages: Map<string, { channelId: string; messageId: string }>;
+  commandChannelNotices: Map<string, number>;
   lastPlayedTracks: Map<string, Record<string, unknown>>;
   autoplaySeeds: Map<string, { artist: string; track: string; playedIdentity: string }>;
   weeklySweepHandle: NodeJS.Timeout | null;
@@ -282,6 +287,7 @@ export class CommandRouter {
     this.helpPaginations = new Map();
     this.searchReactionSelections = new Map();
     this.nowPlayingMessages = new Map();
+    this.commandChannelNotices = new Map();
     this.lastPlayedTracks = new Map();
     this.autoplaySeeds = new Map();
     this.weeklySweepHandle = null;
@@ -362,6 +368,12 @@ export class CommandRouter {
       locale,
       hasVoted: authorId ? Boolean(this.voteService?.hasVoted(authorId)) : false,
     });
+    if (context.guildId && this._isOutsideCommandChannels(guildConfig, channelId, command.name)) {
+      this.metrics?.commandsTotal?.inc?.(1, { command: command.name, outcome: 'wrong_channel' });
+      await this._redirectToCommandChannels(message, channelId, guildConfig?.settings?.commandChannelIds ?? [], context.t);
+      return;
+    }
+
     try {
       if (
         context.guildId
@@ -572,6 +584,47 @@ export class CommandRouter {
         plain: async (text: string) => this._safeReply(channelId, 'plain', text, null, commandReplyOptions ?? null),
       },
     };
+  }
+
+  _isOutsideCommandChannels(
+    guildConfig: RouterContextOptions['guildConfig'],
+    channelId: string,
+    commandName: string | undefined,
+  ): boolean {
+    const allowed = guildConfig?.settings?.commandChannelIds ?? [];
+    if (!allowed.length || allowed.includes(channelId)) return false;
+    return !COMMAND_CHANNEL_EXEMPT.has(String(commandName ?? '').toLowerCase());
+  }
+
+  async _redirectToCommandChannels(
+    message: RouterMessage,
+    channelId: string,
+    allowed: string[],
+    t: ReturnType<typeof createTranslator>,
+  ) {
+    const messageId = String(message.id ?? '').trim();
+    if (messageId) {
+      await this.rest.deleteMessage?.(channelId, messageId).catch(() => null);
+    }
+
+    const now = Date.now();
+    const lastNotice = this.commandChannelNotices.get(channelId) ?? 0;
+    if (now - lastNotice < COMMAND_CHANNEL_NOTICE_COOLDOWN_MS) return;
+    this.commandChannelNotices.set(channelId, now);
+
+    const authorId = String(message.author?.id ?? message.user_id ?? '').trim();
+    const mention = authorId ? `<@${authorId}> ` : '';
+    const sent = await this.rest.sendMessage(channelId, {
+      content: `${mention}${t('musicchannel.redirect', { channels: allowed.map((id) => `<#${id}>`).join(', ') })}`,
+      allowed_mentions: { parse: [], users: authorId ? [authorId] : [], roles: [], replied_user: false },
+    }).catch(() => null);
+
+    const noticeId = String((sent as { id?: unknown } | null)?.id ?? '').trim();
+    if (!noticeId || !this.rest.deleteMessage) return;
+    const timer = setTimeout(() => {
+      this.rest.deleteMessage?.(channelId, noticeId).catch(() => null);
+    }, COMMAND_CHANNEL_NOTICE_LIFETIME_MS);
+    timer.unref?.();
   }
 
   async _withGuildOpLock(guildId: string | null, key: string, fn: () => Promise<unknown>) {
@@ -1094,6 +1147,11 @@ export class CommandRouter {
       for (const [key, state] of this.searchReactionSelections.entries()) {
         if (now > state.expiresAt) {
           this.searchReactionSelections.delete(key);
+        }
+      }
+      for (const [key, sentAt] of this.commandChannelNotices.entries()) {
+        if ((now - sentAt) > COMMAND_CHANNEL_NOTICE_COOLDOWN_MS) {
+          this.commandChannelNotices.delete(key);
         }
       }
       for (const [key, startedAt] of this.guildOpLocks.entries()) {
