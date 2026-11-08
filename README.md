@@ -163,6 +163,10 @@ The bundled Compose file starts NodeLink next to the bot, and playback runs thro
 
 If the bot runs on a different server than a self-hosted Fluxer instance, set `rtc.use_external_ip: true` in that instance's `livekit.yaml`. Otherwise the bot joins voice but logs `Playback pipeline did not produce audio output in time`.
 
+## Deploy On Kubernetes
+
+A Helm chart in [`deploy/helm/vinto`](deploy/helm/vinto) runs the same stack as the Compose file, with one pod per shard and an optional dashboard. Configuration comes from a Secret created from `.env`. Setup and updates are described in [`deploy/helm/README.md`](deploy/helm/README.md).
+
 ## Recommended Setups
 
 <details>

@@ -12,6 +12,9 @@ Runs the bot and everything it needs on a single host. Five containers:
 
 Nothing is exposed publicly.
 
+For a Kubernetes cluster there is a Helm chart instead, see
+[helm/README.md](helm/README.md).
+
 ## Requirements
 
 - A host with at least 2 GB RAM. Typical usage: bot ~1 GB, NodeLink ~300 MB,
