@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.15.1] - 2026-11-08
+
+- Deployment: helm chart under `deploy/helm/vinto` as an alternative to docker compose, with one pod per shard, optional dashboard and network policies
+
 ## [0.15.0] - 2026-11-06
 
 - Player:
