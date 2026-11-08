@@ -1,0 +1,12 @@
+Vinto is starting with {{ .Values.shardCount }} shard(s) in namespace {{ .Release.Namespace }}.
+
+Follow the bot log:
+  kubectl -n {{ .Release.Namespace }} logs -f statefulset/{{ include "vinto.fullname" . }}-app
+
+Check readiness:
+  kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+{{- if .Values.dashboard.enabled }}
+
+Open the dashboard locally:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "vinto.fullname" . }}-dashboard 3000:{{ .Values.dashboard.port }}
+{{- end }}

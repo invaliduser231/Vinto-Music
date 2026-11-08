@@ -1,0 +1,100 @@
+{{- if .Values.dashboard.enabled }}
+{{- $fullname := include "vinto.fullname" . }}
+{{- $selector := dict "root" . "component" "dashboard" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-dashboard
+  labels:
+    {{- include "vinto.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dashboard
+spec:
+  selector:
+    {{- include "vinto.selectorLabels" $selector | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.dashboard.port }}
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-dashboard
+  labels:
+    {{- include "vinto.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "vinto.selectorLabels" $selector | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "vinto.labels" . | nindent 8 }}
+        app.kubernetes.io/component: dashboard
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- include "vinto.podSpecCommon" . | nindent 6 }}
+      containers:
+        - name: dashboard
+          image: {{ include "vinto.image" .Values.dashboard.image }}
+          imagePullPolicy: {{ .Values.dashboard.image.pullPolicy }}
+          envFrom:
+            - secretRef:
+                name: {{ include "vinto.secretName" . }}
+          env:
+            - name: PORT
+              value: {{ .Values.dashboard.port | quote }}
+            - name: DASHBOARD_API_URL
+              value: {{ printf "http://%s-app-0.%s:%d" $fullname (include "vinto.appHeadless" .) (int .Values.app.dashboardApiPort) | quote }}
+            {{- include "vinto.env" .Values.dashboard.env | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.dashboard.port }}
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 15
+          {{- include "vinto.containerSecurity" . | nindent 10 }}
+          resources:
+            {{- toYaml .Values.dashboard.resources | nindent 12 }}
+{{- if .Values.dashboard.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullname }}-dashboard
+  labels:
+    {{- include "vinto.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dashboard
+  {{- with .Values.dashboard.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.dashboard.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- if .Values.dashboard.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.dashboard.ingress.host }}
+      secretName: {{ required "dashboard.ingress.tls.secretName is required" .Values.dashboard.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ required "dashboard.ingress.host is required" .Values.dashboard.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullname }}-dashboard
+                port:
+                  name: http
+{{- end }}
+{{- end }}

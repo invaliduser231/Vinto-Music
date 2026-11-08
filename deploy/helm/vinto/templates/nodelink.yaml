@@ -1,0 +1,76 @@
+{{- $fullname := include "vinto.fullname" . }}
+{{- $selector := dict "root" . "component" "nodelink" }}
+{{- $secretName := include "vinto.secretName" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-nodelink
+  labels:
+    {{- include "vinto.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nodelink
+spec:
+  selector:
+    {{- include "vinto.selectorLabels" $selector | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.nodelink.port }}
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-nodelink
+  labels:
+    {{- include "vinto.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nodelink
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "vinto.selectorLabels" $selector | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "vinto.labels" . | nindent 8 }}
+        app.kubernetes.io/component: nodelink
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- include "vinto.podSpecCommon" . | nindent 6 }}
+      containers:
+        - name: nodelink
+          image: {{ include "vinto.image" .Values.nodelink.image }}
+          imagePullPolicy: {{ .Values.nodelink.image.pullPolicy }}
+          env:
+            - name: NODELINK_SERVER_HOST
+              value: 0.0.0.0
+            - name: NODELINK_SERVER_PORT
+              value: {{ .Values.nodelink.port | quote }}
+            - name: NODELINK_CLUSTER_SPECIALIZEDSOURCEWORKER_COUNT
+              value: {{ .Values.nodelink.sourceWorkers | quote }}
+            - name: NODELINK_SOURCES_YOUTUBE_CIPHER_URL
+              value: {{ include "vinto.cipherUrl" . | quote }}
+            {{- range $name, $key := .Values.nodelink.secretEnv }}
+            - name: {{ $name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: {{ $key }}
+                  optional: {{ ne $name "NODELINK_SERVER_PASSWORD" }}
+            {{- end }}
+            {{- include "vinto.env" .Values.nodelink.env | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.nodelink.port }}
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          {{- include "vinto.containerSecurity" . | nindent 10 }}
+          resources:
+            {{- toYaml .Values.nodelink.resources | nindent 12 }}

@@ -1,0 +1,161 @@
+nameOverride: ""
+fullnameOverride: ""
+
+secret:
+  name: ""
+
+imagePullSecrets: []
+
+podAnnotations: {}
+podSecurityContext:
+  seccompProfile:
+    type: RuntimeDefault
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+shardCount: 1
+
+app:
+  image:
+    repository: ghcr.io/invaliduser231/vinto-music
+    tag: latest
+    pullPolicy: Always
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 3Gi
+  terminationGracePeriodSeconds: 30
+  monitoringPort: 9091
+  dashboardApiPort: 9092
+  env:
+    NODE_ENV: production
+    NODELINK_ENABLED: "1"
+    MONITORING_ENABLED: "1"
+    DASHBOARD_API_REQUIRE_TICKET: "1"
+    DASHBOARD_API_ALLOWED_ORIGINS: http://127.0.0.1:3000
+    DASHBOARD_API_PROGRESS_INTERVAL_MS: "2000"
+    FFMPEG_BIN: /usr/bin/ffmpeg
+    YTDLP_BIN: /usr/local/bin/yt-dlp
+
+nodelink:
+  image:
+    repository: ghcr.io/invaliduser231/nodelink
+    tag: dev
+    pullPolicy: Always
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 4Gi
+  port: 3000
+  sourceWorkers: 2
+  secretEnv:
+    NODELINK_SERVER_PASSWORD: NODELINK_PASSWORD
+    NODELINK_SOURCES_SPOTIFY_CLIENTID: SPOTIFY_CLIENT_ID
+    NODELINK_SOURCES_SPOTIFY_CLIENTSECRET: SPOTIFY_CLIENT_SECRET
+    NODELINK_SOURCES_DEEZER_ARL: DEEZER_ARL
+    NODELINK_SOURCES_DEEZER_DECRYPTIONKEY: NODELINK_SOURCES_DEEZER_DECRYPTIONKEY
+    NODELINK_SOURCES_APPLEMUSIC_MEDIAAPITOKEN: APPLE_MUSIC_MEDIA_API_TOKEN
+    NODELINK_SOURCES_TIDAL_TOKEN: TIDAL_TOKEN
+    NODELINK_SOURCES_YOUTUBE_PROXIES: NODELINK_SOURCES_YOUTUBE_PROXIES
+    NODELINK_SOURCES_YOUTUBE_CLIENTS_SETTINGS_TV_REFRESHTOKEN: NODELINK_SOURCES_YOUTUBE_CLIENTS_SETTINGS_TV_REFRESHTOKEN
+  env:
+    NODELINK_CLUSTER_ENABLED: "true"
+    NODELINK_API_ENABLELOADSTREAMENDPOINT: "true"
+    NODELINK_API_ENABLETRACKSTREAMENDPOINT: "false"
+    NODELINK_ADMISSION_ENABLED: "false"
+    NODELINK_ADMISSION_IP_MAXCONCURRENTSOCKETS: "1000"
+    NODELINK_SEARCH_MAXRESULTS: "10"
+    NODELINK_PLAYBACK_MAXPLAYLISTLENGTH: "100"
+    NODELINK_PLAYBACK_AUDIO_LOUDNESSNORMALIZER: "true"
+    NODELINK_SOURCES_SPOTIFY_ENABLED: "true"
+    NODELINK_SOURCES_SPOTIFY_MARKET: US
+    NODELINK_SOURCES_SPOTIFY_EXTERNALAUTHURL: http://get.1lucas1apk.fun/spotify/gettoken
+    NODELINK_SOURCES_DEEZER_ENABLED: "true"
+    NODELINK_SOURCES_PANDORA_REMOTETOKENURL: https://get.1lucas1apk.fun/pandora/gettoken
+    NODELINK_SOURCES_ETERNALBOX_BASEURL: https://eternalboxmirror.xyz
+    NODELINK_PLAYBACK_SPONSORBLOCK_API: https://sponsor.ajay.app
+    NODELINK_SOURCES_APPLEMUSIC_MARKET: US
+    NODELINK_SOURCES_TIDAL_COUNTRYCODE: US
+    NODELINK_SOURCES_SOUNDCLOUD_ENABLED: "true"
+    NODELINK_SOURCES_YOUTUBE_ENABLED: "true"
+    NODELINK_SOURCES_YOUTUBE_TARGETITAG: ""
+    NODELINK_SOURCES_YOUTUBE_CLIENTS_PLAYBACK: '["VisionOs","TV_DOWN","TV","WebEmbedded","IOS","Web"]'
+    NODELINK_SOURCES_YOUTUBE_CLIENTS_RESOLVE: '["VisionOs","TV_DOWN","TV","WebEmbedded","IOS","Web"]'
+    NODELINK_SOURCES_YOUTUBE_CLIENTS_SEARCH: '["Android"]'
+    NODELINK_SOURCES_YOUTUBE_GETOAUTHTOKEN: "false"
+    NODELINK_LOGGING_LEVEL: info
+    NODELINK_SEARCH_DEFAULTSOURCE: deezer,soundcloud,tidal,jiosaavn
+    NODELINK_SEARCH_UNIFIEDSOURCES: deezer,soundcloud,tidal,jiosaavn
+    NODELINK_SOURCES_YOUTUBE_FALLBACKSOURCES: soundcloud,deezer,jiosaavn,tidal
+
+ytCipher:
+  enabled: true
+  image:
+    repository: ghcr.io/kikkia/yt-cipher
+    tag: master
+    pullPolicy: Always
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+  port: 8001
+  maxThreads: 2
+  cacheSize: 150
+  externalUrl: ""
+
+bgutilPot:
+  enabled: true
+  image:
+    repository: brainicism/bgutil-ytdlp-pot-provider
+    tag: 1.3.1-node
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 25m
+      memory: 96Mi
+    limits:
+      memory: 384Mi
+  port: 4416
+
+dashboard:
+  enabled: false
+  image:
+    repository: ghcr.io/invaliduser231/vinto-music-dashboard
+    tag: latest
+    pullPolicy: Always
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+  port: 3000
+  env:
+    NEXT_PUBLIC_USE_MOCK_SESSION: "0"
+    FLUXER_OAUTH_REDIRECT_URI: http://127.0.0.1:3000/api/auth/callback
+    FLUXER_OAUTH_SCOPE: identify guilds
+    FLUXER_API_BASE: https://api.fluxer.app/v1
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    host: ""
+    tls:
+      enabled: false
+      secretName: ""
+
+networkPolicy:
+  enabled: true
+  monitoringFrom: []

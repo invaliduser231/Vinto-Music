@@ -1,0 +1,113 @@
+{{- $fullname := include "vinto.fullname" . }}
+{{- if .Values.ytCipher.enabled }}
+{{- $selector := dict "root" . "component" "yt-cipher" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-yt-cipher
+  labels:
+    {{- include "vinto.labels" . | nindent 4 }}
+    app.kubernetes.io/component: yt-cipher
+spec:
+  selector:
+    {{- include "vinto.selectorLabels" $selector | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.ytCipher.port }}
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-yt-cipher
+  labels:
+    {{- include "vinto.labels" . | nindent 4 }}
+    app.kubernetes.io/component: yt-cipher
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "vinto.selectorLabels" $selector | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "vinto.labels" . | nindent 8 }}
+        app.kubernetes.io/component: yt-cipher
+    spec:
+      {{- include "vinto.podSpecCommon" . | nindent 6 }}
+      containers:
+        - name: yt-cipher
+          image: {{ include "vinto.image" .Values.ytCipher.image }}
+          imagePullPolicy: {{ .Values.ytCipher.image.pullPolicy }}
+          env:
+            - name: HOST
+              value: 0.0.0.0
+            - name: PORT
+              value: {{ .Values.ytCipher.port | quote }}
+            - name: MAX_THREADS
+              value: {{ .Values.ytCipher.maxThreads | quote }}
+            - name: PREPROCESSED_CACHE_SIZE
+              value: {{ .Values.ytCipher.cacheSize | quote }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.ytCipher.port }}
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 15
+          {{- include "vinto.containerSecurity" . | nindent 10 }}
+          resources:
+            {{- toYaml .Values.ytCipher.resources | nindent 12 }}
+{{- end }}
+{{- if .Values.bgutilPot.enabled }}
+{{- $selector := dict "root" . "component" "bgutil-pot" }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-bgutil-pot
+  labels:
+    {{- include "vinto.labels" . | nindent 4 }}
+    app.kubernetes.io/component: bgutil-pot
+spec:
+  selector:
+    {{- include "vinto.selectorLabels" $selector | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.bgutilPot.port }}
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-bgutil-pot
+  labels:
+    {{- include "vinto.labels" . | nindent 4 }}
+    app.kubernetes.io/component: bgutil-pot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "vinto.selectorLabels" $selector | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "vinto.labels" . | nindent 8 }}
+        app.kubernetes.io/component: bgutil-pot
+    spec:
+      {{- include "vinto.podSpecCommon" . | nindent 6 }}
+      containers:
+        - name: bgutil-pot
+          image: {{ include "vinto.image" .Values.bgutilPot.image }}
+          imagePullPolicy: {{ .Values.bgutilPot.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.bgutilPot.port }}
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 15
+          {{- include "vinto.containerSecurity" . | nindent 10 }}
+          resources:
+            {{- toYaml .Values.bgutilPot.resources | nindent 12 }}
+{{- end }}

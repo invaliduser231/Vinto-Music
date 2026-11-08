@@ -1,0 +1,8 @@
+apiVersion: v2
+name: vinto
+description: Vinto music bot for Fluxer with NodeLink and its sidecar services
+type: application
+version: 0.1.0
+home: https://github.com/invaliduser231/Vinto-Music
+sources:
+  - https://github.com/invaliduser231/Vinto-Music

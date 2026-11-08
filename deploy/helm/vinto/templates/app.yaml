@@ -1,0 +1,106 @@
+{{- $fullname := include "vinto.fullname" . }}
+{{- $headless := include "vinto.appHeadless" . }}
+{{- $selector := dict "root" . "component" "app" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $headless }}
+  labels:
+    {{- include "vinto.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "vinto.selectorLabels" $selector | nindent 4 }}
+  ports:
+    - name: monitoring
+      port: {{ .Values.app.monitoringPort }}
+      targetPort: monitoring
+    - name: dashboard-api
+      port: {{ .Values.app.dashboardApiPort }}
+      targetPort: dashboard-api
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $fullname }}-app
+  labels:
+    {{- include "vinto.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+spec:
+  serviceName: {{ $headless }}
+  replicas: {{ .Values.shardCount }}
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      {{- include "vinto.selectorLabels" $selector | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "vinto.labels" . | nindent 8 }}
+        app.kubernetes.io/component: app
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- include "vinto.podSpecCommon" . | nindent 6 }}
+      terminationGracePeriodSeconds: {{ .Values.app.terminationGracePeriodSeconds }}
+      containers:
+        - name: app
+          image: {{ include "vinto.image" .Values.app.image }}
+          imagePullPolicy: {{ .Values.app.image.pullPolicy }}
+          envFrom:
+            - secretRef:
+                name: {{ include "vinto.secretName" . }}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: SHARD_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['apps.kubernetes.io/pod-index']
+            - name: SHARD_COUNT
+              value: {{ .Values.shardCount | quote }}
+            - name: NODELINK_BASE_URL
+              value: {{ include "vinto.nodelinkUrl" . | quote }}
+            - name: MONITORING_HOST
+              value: 0.0.0.0
+            - name: MONITORING_PORT
+              value: {{ .Values.app.monitoringPort | quote }}
+            - name: DASHBOARD_API_ENABLED
+              value: {{ ternary "1" "0" .Values.dashboard.enabled | quote }}
+            - name: DASHBOARD_API_HOST
+              value: 0.0.0.0
+            - name: DASHBOARD_API_PORT
+              value: {{ .Values.app.dashboardApiPort | quote }}
+            - name: DASHBOARD_API_ADVERTISE_URL
+              value: {{ printf "http://$(POD_NAME).%s:%d" $headless (int .Values.app.dashboardApiPort) | quote }}
+            {{- if .Values.bgutilPot.enabled }}
+            - name: YTDLP_EXTRA_ARGS
+              value: {{ printf "--plugin-dirs,/etc/yt-dlp/plugins,--js-runtimes,node,--remote-components,ejs:github,--extractor-args,youtubepot-bgutilhttp:base_url=http://%s-bgutil-pot:%d" $fullname (int .Values.bgutilPot.port) | quote }}
+            {{- end }}
+            {{- include "vinto.env" .Values.app.env | nindent 12 }}
+          ports:
+            - name: monitoring
+              containerPort: {{ .Values.app.monitoringPort }}
+            - name: dashboard-api
+              containerPort: {{ .Values.app.dashboardApiPort }}
+          {{- if eq (toString .Values.app.env.MONITORING_ENABLED) "1" }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: monitoring
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 4
+          {{- end }}
+          {{- include "vinto.containerSecurity" . | nindent 10 }}
+          resources:
+            {{- toYaml .Values.app.resources | nindent 12 }}
