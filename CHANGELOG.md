@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.16.1] - 2026-11-10
+
+- Dashboard: next updated to 16.4.6, which fixes two remote code execution flaws and a denial of service in server actions
+
 ## [0.16.0] - 2026-11-10
 
 - Stats:
