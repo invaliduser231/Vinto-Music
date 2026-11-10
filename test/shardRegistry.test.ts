@@ -200,7 +200,30 @@ test('totals add up the counts every shard reported in its heartbeat', async () 
   await createRegistry(collection, 1, clock, [], { guildCount: 989, memberCount: 130_000, uncountedGuildCount: 1 }).heartbeat();
   await zero.heartbeat();
 
-  assert.deepEqual(await zero.totals(), { shardCount: 2, guildCount: 1977, memberCount: 250_000, uncountedGuildCount: 3 });
+  assert.deepEqual(await zero.totals(), {
+    shardCount: 2,
+    guildCount: 1977,
+    memberCount: 250_000,
+    uncountedGuildCount: 3,
+    playingCount: null,
+    listenerCount: null,
+  });
+});
+
+test('totals add up playing sessions and listeners once every shard reports them', async () => {
+  const { collection } = createCollection();
+  const clock = { now: new Date('2026-10-18T12:00:00Z') };
+  const zero = createRegistry(collection, 0, clock, [], {
+    guildCount: 10, memberCount: 100, uncountedGuildCount: 0, playingCount: 28, listenerCount: 61,
+  });
+  await createRegistry(collection, 1, clock, [], {
+    guildCount: 12, memberCount: 90, uncountedGuildCount: 0, playingCount: 13, listenerCount: 30,
+  }).heartbeat();
+  await zero.heartbeat();
+
+  const totals = await zero.totals();
+  assert.equal(totals?.playingCount, 41);
+  assert.equal(totals?.listenerCount, 91);
 });
 
 test('totals stay unknown while a shard is missing, stale or still loading its guilds', async () => {
@@ -232,5 +255,12 @@ test('a shard without the dashboard api still joins the registry for the totals'
   await registry.heartbeat();
 
   assert.equal(docs[0]?.dashboardUrl, null);
-  assert.deepEqual(await registry.totals(), { shardCount: 1, guildCount: 3, memberCount: 30, uncountedGuildCount: 0 });
+  assert.deepEqual(await registry.totals(), {
+    shardCount: 1,
+    guildCount: 3,
+    memberCount: 30,
+    uncountedGuildCount: 0,
+    playingCount: null,
+    listenerCount: null,
+  });
 });

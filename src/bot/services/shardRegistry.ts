@@ -7,6 +7,8 @@ export interface ShardStats {
   guildCount: number;
   memberCount: number;
   uncountedGuildCount: number;
+  playingCount?: number | null;
+  listenerCount?: number | null;
 }
 
 export interface ShardRecord {
@@ -58,13 +60,24 @@ function readCount(value: unknown): number | null {
   return value != null && Number.isInteger(count) && count >= 0 ? count : null;
 }
 
+function sumKnown(total: number | null | undefined, value: number | null | undefined): number | null {
+  if (total == null || value == null) return null;
+  return total + value;
+}
+
 function toStats(value: unknown): ShardStats | null {
   const stats = asRecord(value);
   const guildCount = readCount(stats?.guildCount);
   const memberCount = readCount(stats?.memberCount);
   const uncountedGuildCount = readCount(stats?.uncountedGuildCount);
   if (guildCount == null || memberCount == null || uncountedGuildCount == null) return null;
-  return { guildCount, memberCount, uncountedGuildCount };
+  return {
+    guildCount,
+    memberCount,
+    uncountedGuildCount,
+    playingCount: readCount(stats?.playingCount),
+    listenerCount: readCount(stats?.listenerCount),
+  };
 }
 
 function toRecord(doc: Doc | null): ShardRecord | null {
@@ -174,11 +187,20 @@ export class ShardRegistry {
     }
     if (statsByShard.size !== shardCount) return null;
 
-    const totals: ShardTotals = { shardCount, guildCount: 0, memberCount: 0, uncountedGuildCount: 0 };
+    const totals: ShardTotals = {
+      shardCount,
+      guildCount: 0,
+      memberCount: 0,
+      uncountedGuildCount: 0,
+      playingCount: 0,
+      listenerCount: 0,
+    };
     for (const stats of statsByShard.values()) {
       totals.guildCount += stats.guildCount;
       totals.memberCount += stats.memberCount;
       totals.uncountedGuildCount += stats.uncountedGuildCount;
+      totals.playingCount = sumKnown(totals.playingCount, stats.playingCount);
+      totals.listenerCount = sumKnown(totals.listenerCount, stats.listenerCount);
     }
     return totals;
   }

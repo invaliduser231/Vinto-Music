@@ -31,6 +31,7 @@ import { LastFmAccountStore } from '../bot/services/lastFmAccountStore.ts';
 import { LastFmCrownStore } from '../bot/services/lastFmCrownStore.ts';
 import { ScrobbleService } from '../bot/services/scrobbleService.ts';
 import { ShardRegistry } from '../bot/services/shardRegistry.ts';
+import { collectListeningStats } from '../bot/services/listeningStats.ts';
 import { fetchGlobalGuildCount } from '../bot/commands/helpers/guildStats.ts';
 import { sanitizeBrokenLocalProxyEnv } from './proxy.ts';
 import { setPrivateUrlPolicy } from '../utils/safeHttp.ts';
@@ -323,7 +324,15 @@ export async function startApp() {
     assignment: { shardId: config.shardId, shardCount: config.shardCount },
     dashboardUrl: config.dashboardApiEnabled ? config.dashboardApiAdvertiseUrl : null,
     stats: () => (guildStreamSettled
-      ? { guildCount: guildStateCache.guildCount(), ...guildStateCache.memberTotals() }
+      ? {
+        guildCount: guildStateCache.guildCount(),
+        ...guildStateCache.memberTotals(),
+        ...collectListeningStats(
+          sessions.sessions.values(),
+          (guildId, channelId, excluded) => voiceStateStore.countUsersInChannel(guildId, channelId, excluded),
+          resolvedBotUserId,
+        ),
+      }
       : null),
     logger: logger.child('shard-registry'),
   });
