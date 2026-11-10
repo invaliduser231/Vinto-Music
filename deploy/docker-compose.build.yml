@@ -1,0 +1,23 @@
+# Builds the bot and the dashboard from this checkout instead of pulling the
+# published images. Use it together with the main file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#
+# or set COMPOSE_FILE=docker-compose.yml:docker-compose.build.yml in .env.
+services:
+  app:
+    image: vinto-music:local
+    pull_policy: build
+    build:
+      context: ..
+      dockerfile: Dockerfile
+
+  app-shard-1:
+    image: vinto-music:local
+    pull_policy: build
+
+  dashboard:
+    image: vinto-music-dashboard:local
+    pull_policy: build
+    build:
+      context: ../dashboard

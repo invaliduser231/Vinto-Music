@@ -1,0 +1,21 @@
+# Runs only the services the bot depends on and publishes them on localhost,
+# so the bot itself can run from source with "pnpm dev":
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d nodelink mongo
+#
+# The bot then needs these values in the .env of the repository root:
+#
+#   NODELINK_ENABLED=1
+#   NODELINK_BASE_URL=http://127.0.0.1:2333
+#   NODELINK_ROUTING_MODE=all
+#   MONGODB_URI=mongodb://127.0.0.1:27017
+services:
+  nodelink:
+    ports:
+      - "127.0.0.1:2333:3000"
+
+  mongo:
+    profiles: []
+    command: ["--bind_ip_all"]
+    ports:
+      - "127.0.0.1:27017:27017"
