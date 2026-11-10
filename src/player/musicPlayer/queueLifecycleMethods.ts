@@ -10,6 +10,8 @@ const PCM_BYTES_PER_SECOND = 48_000 * 2 * 2;
 const LIVE_RESTART_MAX_ATTEMPTS = 5;
 const LIVE_RESTART_BASE_DELAY_MS = 1_000;
 const LIVE_RESTART_MAX_DELAY_MS = 15_000;
+const LIVE_SAME_LENGTH_MIN_SEC = 60;
+const LIVE_SAME_LENGTH_TOLERANCE_SEC = 3;
 
 function isLiveStreamTrack(track: Track | null | undefined) {
   return track?.isLive === true || String(track?.source ?? '').startsWith('radio');
@@ -26,7 +28,15 @@ function summarizeStderrTail(tail: string | null | undefined) {
 type RecoverableTrack = Track & {
   recoveryAttemptCount?: unknown;
   recoveryWindowStartedAtMs?: unknown;
+  liveEndedAfterSec?: unknown;
 };
+
+function endedAtSameLiveLength(track: Track | null | undefined, elapsedSeconds: number | null) {
+  const previous = Number((track as RecoverableTrack | null | undefined)?.liveEndedAfterSec);
+  if (!Number.isFinite(previous) || elapsedSeconds == null) return false;
+  if (elapsedSeconds < LIVE_SAME_LENGTH_MIN_SEC) return false;
+  return Math.abs(elapsedSeconds - previous) <= LIVE_SAME_LENGTH_TOLERANCE_SEC;
+}
 
 export type QueueLifecycleMethods = {
   clearQueue(): number;
@@ -391,11 +401,18 @@ export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecy
     const isLiveStream = isLiveStreamTrack(track);
     const liveStreamEnded = isLiveStream && !wasSkip && !pendingSeekTrack;
     const liveStderrTail = isLiveStream ? summarizeStderrTail(this.liveStreamStderrTail) : null;
+    const liveEndedAtSameLength = liveStreamEnded && endedAtSameLiveLength(track, elapsedSeconds);
     let liveRestartDelayMs: number | null = null;
-    if (!continuationTrack && liveStreamEnded && recoveryAttempt < LIVE_RESTART_MAX_ATTEMPTS) {
+    if (
+      !continuationTrack
+      && liveStreamEnded
+      && !liveEndedAtSameLength
+      && recoveryAttempt < LIVE_RESTART_MAX_ATTEMPTS
+    ) {
       const restartTrack = this._cloneTrack(track, { seekStartSec: 0 }) as RecoverableTrack;
       restartTrack.recoveryAttemptCount = recoveryAttempt + 1;
       restartTrack.recoveryWindowStartedAtMs = recoveryState.windowStartedAtMs;
+      restartTrack.liveEndedAfterSec = elapsedSeconds;
       continuationTrack = restartTrack;
       liveRestartDelayMs = Math.min(LIVE_RESTART_MAX_DELAY_MS, LIVE_RESTART_BASE_DELAY_MS * 2 ** recoveryAttempt);
     }
@@ -484,6 +501,8 @@ export const queueLifecycleMethods: QueueLifecycleMethods & ThisType<QueueLifecy
       };
       if (liveRestartDelayMs != null) {
         this.logger?.warn?.('Live stream ended, reconnecting', { ...liveMeta, delayMs: liveRestartDelayMs });
+      } else if (liveEndedAtSameLength) {
+        this.logger?.warn?.('Live stream ended at the same length twice, not reconnecting', liveMeta);
       } else {
         this.logger?.warn?.('Live stream kept ending, giving up', liveMeta);
       }

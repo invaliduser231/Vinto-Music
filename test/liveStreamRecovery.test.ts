@@ -133,6 +133,44 @@ test('a radio stream that keeps ending gives up after five restarts', async () =
   assert.ok(warnings.some(({ message }) => message === 'Live stream kept ending, giving up'));
 });
 
+test('a live track that ends at the same length twice is not restarted again', async () => {
+  const warnings: LoggedWarning[] = [];
+  const player = createPlayer(warnings);
+  const track = radioTrack(player) as Track & RecoveryFields & { liveEndedAfterSec?: number };
+  track.recoveryAttemptCount = 1;
+  track.recoveryWindowStartedAtMs = Date.now() - 20 * 60_000;
+  track.liveEndedAfterSec = 910;
+  let queueEmpty = 0;
+  player.on('queueEmpty', () => {
+    queueEmpty += 1;
+  });
+  markPlaying(player, track);
+  player.getProgressSeconds = () => 912;
+
+  await player._handleTrackClose(track, 0, null);
+
+  assert.equal(player.pendingTracks.length, 0);
+  assert.equal(queueEmpty, 1);
+  assert.ok(warnings.some(({ message }) => message === 'Live stream ended at the same length twice, not reconnecting'));
+});
+
+test('a live restart remembers how long the stream ran', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1_000_000 });
+  const player = createPlayer();
+  const track = radioTrack(player) as Track & RecoveryFields & { liveEndedAfterSec?: number };
+  track.liveEndedAfterSec = 910;
+  player.play = async () => {};
+  markPlaying(player, track);
+
+  const closing = player._handleTrackClose(track, 0, null);
+  await settle();
+  t.mock.timers.tick(1_000);
+  await closing;
+
+  const restarted = player.pendingTracks[0] as (Track & { liveEndedAfterSec?: number }) | undefined;
+  assert.equal(restarted?.liveEndedAfterSec, 3600);
+});
+
 test('skipping or stopping a radio stream never restarts it', async () => {
   const player = createPlayer();
   const track = radioTrack(player);
