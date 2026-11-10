@@ -1,0 +1,8 @@
+allowBuilds:
+  esbuild: true
+  ffmpeg-static: true
+overrides:
+  'ws@>=8.0.0 <8.21.0': '>=8.21.3'
+  'brace-expansion@<5.0.9': '>=5.0.9'
+  'esbuild@>=0.27.3 <0.28.1': '>=0.28.1'
+  '@opentelemetry/core@<2.8.0': '>=2.8.0'
