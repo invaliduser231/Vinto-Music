@@ -263,3 +263,34 @@ test('trackStart popup is suppressed for persistent session restore playback', a
 
   assert.deepEqual(calls, []);
 });
+
+test('a restart of the shown track keeps the existing now playing message', async () => {
+  const sessions = new EventEmitter();
+  const router = createRouter(sessions);
+  const published: string[] = [];
+  const session = { guildId: 'guild-1', sessionId: 'guild-1:voice-1', textChannelId: 'text-1', settings: {} };
+  const live = { title: 'Fred again and again and again..', duration: 'Live', url: 'https://www.youtube.com/watch?v=9IY19hboeBE', source: 'youtube' };
+
+  router._publishNowPlaying = (async (_session: unknown, track: Record<string, unknown>) => {
+    published.push(String(track.title));
+    router.nowPlayingMessages.set('guild-1:voice-1', { channelId: 'text-1', messageId: 'card-1', isCard: true });
+    return true;
+  }) as CommandRouter['_publishNowPlaying'];
+
+  const settle = () => new Promise((resolve) => setImmediate(resolve));
+  try {
+    sessions.emit('trackStart', { session, track: live });
+    await settle();
+    sessions.emit('trackEnd', { session, track: live, seekRestart: true });
+    sessions.emit('trackStart', { session, track: { ...live } });
+    await settle();
+    sessions.emit('trackEnd', { session, track: live, seekRestart: true });
+    sessions.emit('trackStart', { session, track: { title: 'Other', duration: '3:00', url: 'https://example.com/other', source: 'youtube' } });
+    await settle();
+  } finally {
+    if (router.weeklySweepHandle) clearInterval(router.weeklySweepHandle);
+    if (router.ephemeralCleanupHandle) clearInterval(router.ephemeralCleanupHandle);
+  }
+
+  assert.deepEqual(published, ['Fred again and again and again..', 'Other']);
+});

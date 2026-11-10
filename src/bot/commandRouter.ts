@@ -149,7 +149,7 @@ type RouterReactionPayload = Record<string, unknown> & {
 
 type SessionEventPayload = {
   session?: SessionLookup | null;
-  track?: { title?: string; duration?: string; requestedBy?: string | null; source?: string | null; metadataDeferred?: boolean } | null;
+  track?: { title?: string; url?: string | null; duration?: string; requestedBy?: string | null; source?: string | null; metadataDeferred?: boolean } | null;
   error?: { message?: string | null } | null;
   reason?: string | null;
   seekRestart?: boolean;
@@ -262,6 +262,7 @@ export class CommandRouter {
   helpPaginations: Map<string, HelpPaginationState>;
   searchReactionSelections: Map<string, SearchReactionState>;
   nowPlayingMessages: Map<string, { channelId: string; messageId: string; isCard?: boolean }>;
+  restartingTrackUrls: Map<string, string>;
   commandChannelNotices: Map<string, number>;
   lastPlayedTracks: Map<string, Record<string, unknown>>;
   autoplaySeeds: Map<string, { artist: string; track: string; playedIdentity: string }>;
@@ -293,6 +294,7 @@ export class CommandRouter {
     this.helpPaginations = new Map();
     this.searchReactionSelections = new Map();
     this.nowPlayingMessages = new Map();
+    this.restartingTrackUrls = new Map();
     this.commandChannelNotices = new Map();
     this.lastPlayedTracks = new Map();
     this.autoplaySeeds = new Map();
@@ -699,6 +701,7 @@ export class CommandRouter {
       const { session, track, restoredFromPersistentSession } = payload ?? {};
       const channelId = this._resolveEventChannelId(session);
       if (!channelId || !track) return;
+      if (this._isRestartOfShownTrack(session, track)) return;
       if (restoredFromPersistentSession) {
         return;
       }
@@ -758,6 +761,7 @@ export class CommandRouter {
       const { session, reason = null } = payload ?? {};
       if (!session?.guildId) return;
       this.nowPlayingMessages.delete(this._nowPlayingKey(session));
+      this.restartingTrackUrls.delete(this._nowPlayingKey(session));
       const activeSession = this.sessions.get(session.guildId, { sessionId: session?.sessionId });
       if (activeSession && activeSession !== session) return;
       const player = session?.player ?? null;
@@ -839,7 +843,12 @@ export class CommandRouter {
 
     this.sessions.on('trackEnd', async (payload?: SessionEventPayload) => {
       const { session, track, seekRestart, skipped } = payload ?? {};
-      if (!session?.guildId || !track || seekRestart) return;
+      if (!session?.guildId || !track) return;
+      if (seekRestart) {
+        const url = String(track.url ?? '').trim();
+        if (url) this.restartingTrackUrls.set(this._nowPlayingKey(session), url);
+        return;
+      }
 
       const sessionId = String(session.sessionId ?? '').trim();
       if (sessionId) this.lastPlayedTracks.set(sessionId, track as Record<string, unknown>);
@@ -1182,6 +1191,15 @@ export class CommandRouter {
     if (messageId) this.nowPlayingMessages.set(messageKey, { channelId, messageId, isCard: true });
     else this.nowPlayingMessages.delete(messageKey);
     return true;
+  }
+
+  _isRestartOfShownTrack(session: SessionLookup | null | undefined, track: Record<string, unknown>): boolean {
+    const messageKey = this._nowPlayingKey(session);
+    const restartingUrl = this.restartingTrackUrls.get(messageKey);
+    if (!restartingUrl) return false;
+    this.restartingTrackUrls.delete(messageKey);
+    if (String(track?.url ?? '').trim() !== restartingUrl) return false;
+    return this.nowPlayingMessages.has(messageKey);
   }
 
   _nowPlayingKey(session: SessionLookup | null | undefined): string {
