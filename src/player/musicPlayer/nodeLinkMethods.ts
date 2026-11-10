@@ -49,6 +49,10 @@ function isBlockedTrack(item: NodeLinkTrackData): boolean {
   return toRecord(item?.pluginInfo)?.playback === 'BLOCK';
 }
 
+function isPreviewTrack(item: NodeLinkTrackData): boolean {
+  return toRecord(item?.pluginInfo)?.playback === 'PARTIAL';
+}
+
 function normalizeLimit(limit: number | null | undefined, fallback: number): number {
   const parsed = Number.parseInt(String(limit ?? ''), 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
@@ -202,9 +206,11 @@ export const nodeLinkMethods: NodeLinkMethods & ThisType<NodeLinkRuntime> = {
     // because a playlist link legitimately expands into many tracks.
     const collapseToSingle = options.urlQuery === true && loadType === 'search';
     const safeLimit = collapseToSingle ? 1 : normalizeLimit(limit, this.maxPlaylistTracks);
-    const items = readTracksFromLoadData(loadType, result?.data)
-      .filter((item) => !isBlockedTrack(item))
-      .slice(0, safeLimit);
+    const playable = readTracksFromLoadData(loadType, result?.data).filter((item) => !isBlockedTrack(item));
+    const ordered = loadType === 'search'
+      ? [...playable.filter((item) => !isPreviewTrack(item)), ...playable.filter(isPreviewTrack)]
+      : playable;
+    const items = ordered.slice(0, safeLimit);
     const tracks = items
       .map((item) => this._nodeLinkTrackDataToTrack(item, requestedBy))
       .filter((track): track is Track => Boolean(track));

@@ -1490,5 +1490,31 @@ test('NodeLink load result mapping skips soundcloud tracks marked as blocked', (
   };
 
   const tracks = player._nodeLinkLoadResultToTracks(result, 'user-1', 2);
-  assert.deepEqual(tracks.map((track) => track.title), ['Snippet', 'Full']);
+  assert.deepEqual(tracks.map((track) => track.title), ['Full', 'Snippet']);
+});
+
+test('NodeLink search results list soundcloud previews after full tracks', () => {
+  const player = createPlayer();
+  const result: NodeLinkLoadResult = {
+    loadType: 'search',
+    data: [
+      { ...nodeLinkTrack('Preview', 'encoded-preview'), pluginInfo: { policy: 'SNIP', playback: 'PARTIAL' } },
+      { ...nodeLinkTrack('Full One', 'encoded-full-one'), pluginInfo: { policy: 'ALLOW', playback: 'FULL' } },
+      { ...nodeLinkTrack('Full Two', 'encoded-full-two') },
+    ],
+  };
+
+  const tracks = player._nodeLinkLoadResultToTracks(result, 'user-1', 5);
+  assert.deepEqual(tracks.map((track) => track.title), ['Full One', 'Full Two', 'Preview']);
+});
+
+test('a link to a soundcloud preview still resolves to that preview', () => {
+  const player = createPlayer();
+  const result: NodeLinkLoadResult = {
+    loadType: 'track',
+    data: { ...nodeLinkTrack('Preview', 'encoded-preview'), pluginInfo: { policy: 'SNIP', playback: 'PARTIAL' } },
+  };
+
+  const tracks = player._nodeLinkLoadResultToTracks(result, 'user-1', 1, { urlQuery: true });
+  assert.deepEqual(tracks.map((track) => track.title), ['Preview']);
 });
