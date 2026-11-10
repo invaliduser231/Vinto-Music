@@ -487,24 +487,22 @@ test('NodeLink resolves extensionless urls when the local radio probe rejects th
     },
   } as unknown as MusicPlayer['nodeLinkClient'];
 
-  const originalFetch = global.fetch;
-  global.fetch = (async () => {
+  player._resolveDirectHttpAudioTrack = async () => {
+    throw new Error('not an audio file');
+  };
+  player._resolveRadioStreamTrack = async () => {
     throw new Error('not a radio stream');
-  }) as typeof fetch;
+  };
 
-  try {
-    const tracks = await player._resolveSingleUrlTrack(
-      'https://www.last.fm/music/GReeen/_/Panama',
-      'user-1',
-    );
+  const tracks = await player._resolveSingleUrlTrack(
+    'https://www.last.fm/music/GReeen/_/Panama',
+    'user-1',
+  );
 
-    assert.equal(nodeLinkCalled, true);
-    assert.equal(tracks.length, 1);
-    assert.equal(tracks[0]!.source, 'lastfm');
-    assert.equal(tracks[0]!.nodelinkEncodedTrack, 'encoded-lastfm');
-  } finally {
-    global.fetch = originalFetch;
-  }
+  assert.equal(nodeLinkCalled, true);
+  assert.equal(tracks.length, 1);
+  assert.equal(tracks[0]!.source, 'lastfm');
+  assert.equal(tracks[0]!.nodelinkEncodedTrack, 'encoded-lastfm');
 });
 
 test('createTrackFromData normalizes stale youtube favorite source for live direct stream urls', () => {

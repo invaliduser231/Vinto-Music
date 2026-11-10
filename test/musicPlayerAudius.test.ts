@@ -42,6 +42,7 @@ test('play() uses audius pipeline for audius source tracks', async () => {
       once() {},
     };
   };
+  player._resolveStartupMirrorFallbackTrack = async () => null;
   player._startYouTubePipeline = async () => {
     throw new Error('youtube pipeline should not be used');
   };

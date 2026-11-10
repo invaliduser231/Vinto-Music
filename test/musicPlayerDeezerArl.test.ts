@@ -47,6 +47,7 @@ test('play() uses deezer pipeline for deezer-direct source tracks', async () => 
       once() {},
     };
   };
+  player._resolveStartupMirrorFallbackTrack = async () => null;
   player._startYouTubePipeline = async () => {
     throw new Error('youtube pipeline should not be used');
   };
@@ -80,6 +81,7 @@ test('play() uses deezer pipeline when deezerTrackId exists even if source is no
       once() {},
     };
   };
+  player._resolveStartupMirrorFallbackTrack = async () => null;
   player._startYouTubePipeline = async () => {
     throw new Error('youtube pipeline should not be used');
   };
@@ -113,6 +115,7 @@ test('play() routes deezer URLs to the deezer pipeline even without a deezerTrac
       once() {},
     };
   };
+  player._resolveStartupMirrorFallbackTrack = async () => null;
   player._startYouTubePipeline = async () => {
     throw new Error('youtube pipeline should not be used');
   };
