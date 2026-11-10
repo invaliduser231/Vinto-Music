@@ -1477,3 +1477,18 @@ test('NodeLink search keeps colons in plain queries instead of treating them as 
     globalThis.fetch = originalFetch;
   }
 });
+
+test('NodeLink load result mapping skips soundcloud tracks marked as blocked', () => {
+  const player = createPlayer();
+  const result: NodeLinkLoadResult = {
+    loadType: 'search',
+    data: [
+      { ...nodeLinkTrack('Blocked', 'encoded-blocked'), pluginInfo: { policy: 'BLOCK', playback: 'BLOCK' } },
+      { ...nodeLinkTrack('Snippet', 'encoded-snippet'), pluginInfo: { policy: 'SNIP', playback: 'PARTIAL' } },
+      { ...nodeLinkTrack('Full', 'encoded-full'), pluginInfo: { policy: 'ALLOW', playback: 'FULL' } },
+    ],
+  };
+
+  const tracks = player._nodeLinkLoadResultToTracks(result, 'user-1', 2);
+  assert.deepEqual(tracks.map((track) => track.title), ['Snippet', 'Full']);
+});
