@@ -1,12 +1,12 @@
-FROM node:24-bookworm-slim AS build
+FROM node:26-bookworm-slim AS build
 
 ENV NODE_OPTIONS="--max-old-space-size=1024 --openssl-legacy-provider"
 
 WORKDIR /app
 
-RUN corepack enable
+RUN npm install -g pnpm@12.18.0
 
-COPY package.json pnpm-lock.yaml tsconfig.json tsconfig.build.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json tsconfig.build.json ./
 RUN pnpm install --frozen-lockfile
 
 COPY src ./src
@@ -14,7 +14,7 @@ COPY scripts ./scripts
 
 RUN pnpm run build
 
-FROM node:24-bookworm-slim AS runtime
+FROM node:26-bookworm-slim AS runtime
 
 ARG BGUTIL_YTDLP_POT_PROVIDER_VERSION=1.3.1
 
@@ -33,12 +33,12 @@ RUN apt-get update \
 
 WORKDIR /app
 
-RUN corepack enable
+RUN npm install -g pnpm@12.18.0
 
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --prod --frozen-lockfile
 
 COPY --from=build /app/dist ./dist
 COPY assets/fonts ./assets/fonts
 
-CMD ["pnpm", "start"]
+CMD ["node", "dist/src/index.js"]
