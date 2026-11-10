@@ -1,6 +1,6 @@
 # Configuration Reference
 
-Most runtime environment variables are parsed in `src/config.ts`. `.env.example` is the template to copy from. A small number of values are read directly outside `src/config.ts`, mainly owner-only or script-only helpers.
+Most runtime environment variables are parsed in `src/config.ts`. [`deploy/.env.example`](../deploy/.env.example) is the template to copy from. A small number of values are read directly outside `src/config.ts`, mainly owner-only or script-only helpers.
 
 ## Required
 
@@ -26,6 +26,7 @@ Most runtime environment variables are parsed in `src/config.ts`. `.env.example`
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `PREFIX` | `!` | Default command prefix for new guilds. |
+| `DEFAULT_LANGUAGE` | `en` | Reply language for guilds and users that never picked one: `en`, `de` or `pt-BR`. |
 | `LOG_LEVEL` | `info` | Logger verbosity. |
 | `API_BASE` | `https://api.fluxer.app/v1` | REST API base URL. |
 | `GATEWAY_URL` | `wss://gateway.fluxer.app` | Gateway websocket URL. |
@@ -86,6 +87,7 @@ Most runtime environment variables are parsed in `src/config.ts`. `.env.example`
 | `SESSION_SNAPSHOT_FLUSH_INTERVAL_MS` | `30000` | Background flush interval for dirty persistent session snapshots. |
 | `SESSION_SNAPSHOT_MAX_PENDING_TRACKS` | `25` | Max queued tracks copied into each persisted session snapshot. Lower this on memory-constrained hosts to reduce periodic clone/write overhead. |
 | `MAX_QUEUE_SIZE` | `100` | Max pending queue size per voice-channel session. |
+| `MAX_TRACK_LENGTH_HOURS` | `6` | Longest track accepted into the queue. Live streams are exempt. `0` disables the check. |
 | `MAX_PLAYLIST_TRACKS` | `25` | Max tracks pulled from a single external playlist/import resolution. |
 | `MAX_SAVED_PLAYLISTS_PER_GUILD` | `100` | Max persisted guild playlists. |
 | `MAX_SAVED_TRACKS_PER_PLAYLIST` | `500` | Max tracks per saved playlist or queue template. |
@@ -136,17 +138,17 @@ Most runtime environment variables are parsed in `src/config.ts`. `.env.example`
 
 When NodeLink is enabled, the bot can use NodeLink's Lavalink-compatible `loadtracks` API for search and URL resolution, then consumes NodeLink's `/v4/loadstream` PCM endpoint and forwards the audio through the existing Fluxer voice connection. This does not use NodeLink's Discord voice player, so it remains compatible with Fluxer.
 
-The NodeLink server must run with `NODELINK_ENABLELOADSTREAMENDPOINT=true`; otherwise resolution may work but playback cannot start.
+The NodeLink server must run with `NODELINK_API_ENABLELOADSTREAMENDPOINT=true`; otherwise resolution may work but playback cannot start. The compose file and the Helm chart set it.
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `NODELINK_ENABLED` | `0` | Enable NodeLink backend integration. Exact resolution routing depends on `NODELINK_ROUTING_MODE`. Docker Compose defaults this to `1` for the bundled sidecar. |
-| `NODELINK_IMAGE` | `performanc/nodelink:latest` | Docker image used by the bundled NodeLink sidecar. Use `latest` for automatic updates via `docker compose pull`, or pin a tag such as `performanc/nodelink:3.7.0`. |
+| `NODELINK_ENABLED` | `0` | Enable NodeLink backend integration. Exact resolution routing depends on `NODELINK_ROUTING_MODE`. The compose file and the Helm chart set it to `1`. |
+| `NODELINK_IMAGE` | `ghcr.io/invaliduser231/nodelink:dev` | Compose only. NodeLink image for the bundled container. The upstream `performanc/nodelink` image plays Deezer distorted and replaces offline YouTube live streams with unrelated tracks, so keep the fork. |
 | `NODELINK_BASE_URL` | empty | HTTP base URL of NodeLink, for example `http://nodelink:3000` in Docker Compose. Required when `NODELINK_ENABLED=1`. Compose only exposes NodeLink on the internal network. If you run the bot outside Compose and publish NodeLink to the host, map it to a port other than 3000, which the dashboard occupies. |
 | `NODELINK_PASSWORD` | empty | Authorization password sent to NodeLink. Must match `NODELINK_SERVER_PASSWORD` on the NodeLink service. |
 | `NODELINK_MIRROR_SEARCH_ORDER` | `dzsearch,tdsearch,scsearch,ytsearch,ytmsearch` | Search identifiers tried in order when a track resolves but its source cannot be streamed, for example Spotify. The first identifier that returns a playable match wins, and the source that just failed is skipped. Put the sources with the best audio first. |
 | `NODELINK_DEFAULT_SEARCH` | `search` | Prefix for plain text queries sent to NodeLink, for example `search` or another NodeLink-supported search identifier. |
-| `NODELINK_ROUTING_MODE` | `smart` | NodeLink routing policy: `smart` uses NodeLink for text search + YouTube URLs, `all` resolves and plays everything through NodeLink, YouTube included: a failed NodeLink stream is retried once through NodeLink and then mirrored to another source through NodeLink, so yt-dlp and play-dl never run for playback, and only radio stations and direct audio URLs keep the local ffmpeg path, `youtube-only` limits NodeLink to direct YouTube URLs. Tidal, Apple Music, and Spotify links are resolved by the bot itself, because NodeLink silently swaps in a mirror for them while keeping the original track metadata. Playback of those mirrors still goes through NodeLink. Spotify albums, playlists, and artists only take this path when `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` are set. |
+| `NODELINK_ROUTING_MODE` | `smart` | The compose file and the Helm chart use `all`. NodeLink routing policy: `smart` uses NodeLink for text search + YouTube URLs, `all` resolves and plays everything through NodeLink, YouTube included: a failed NodeLink stream is retried once through NodeLink and then mirrored to another source through NodeLink, so yt-dlp and play-dl never run for playback, and only radio stations and direct audio URLs keep the local ffmpeg path, `youtube-only` limits NodeLink to direct YouTube URLs. Tidal, Apple Music, and Spotify links are resolved by the bot itself, because NodeLink silently swaps in a mirror for them while keeping the original track metadata. Playback of those mirrors still goes through NodeLink. Spotify albums, playlists, and artists only take this path when `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` are set. |
 | `NODELINK_REQUEST_TIMEOUT_MS` | `8000` | Timeout for a NodeLink search, such as one step of the mirror chain. The chain tries sources in sequence, so this multiplies with the number of sources; the chain itself is capped at 20 seconds in total. |
 | `NODELINK_LINK_TIMEOUT_MS` | `30000` | Timeout for a link a listener pasted. A playlist or album legitimately takes longer than a search, and it is one deliberate request rather than a step in a chain, so it is not held to the search budget. Never falls below `NODELINK_REQUEST_TIMEOUT_MS`. |
 | `NODELINK_STREAM_START_TIMEOUT_MS` | `10000` | Timeout for the initial NodeLink `loadStream` response. |
@@ -215,10 +217,10 @@ These are used only by `pnpm spotify:token`.
 
 Notes:
 
-- `.env.example` intentionally keeps some example values conservative for self-hosting. The table above reflects the actual fallback defaults from [`src/config.ts`](../src/config.ts).
-- `.env.example` also includes helper-only variables such as `BOT_OWNER_USER_ID` that are intentionally not parsed through `loadConfig()`.
+- [`deploy/.env.example`](../deploy/.env.example) intentionally keeps some example values conservative for self-hosting. The table above reflects the actual fallback defaults from [`src/config.ts`](../src/config.ts).
+- The template also includes helper-only variables such as `BOT_OWNER_USER_ID` that are intentionally not parsed through `loadConfig()`.
 - The bundled Docker setup installs the `bgutil-ytdlp-pot-provider` yt-dlp plugin and runs the matching HTTP provider sidecar. Keep `YTDLP_YOUTUBE_CLIENT=mweb` and the default `YTDLP_EXTRA_ARGS` when YouTube requires PO tokens on your host.
-- With the bundled NodeLink sidecar, Docker Compose uses `performanc/nodelink:latest` by default and enables `NODELINK_ENABLELOADSTREAMENDPOINT=true` so the bot can receive raw PCM from NodeLink and still send voice through Fluxer.
+- With the bundled NodeLink container, Docker Compose uses `ghcr.io/invaliduser231/nodelink:dev` and enables `NODELINK_API_ENABLELOADSTREAMENDPOINT=true` so the bot can receive raw PCM from NodeLink and still send voice through Fluxer.
 - `YTDLP_PROXY_URL` is not appended to every yt-dlp call. The player first tries direct YouTube access and retries with the proxy only for block-like failures such as `UNPLAYABLE`, bot checks, or HTTP 403.
 - `proxyEnabled` in the bot's YouTube prefetch logs refers to yt-dlp proxy fallback usage only, not NodeLink source-side proxying.
 
@@ -240,8 +242,8 @@ Notes:
 | `MONITORING_ENABLED` | `1` | Start monitoring HTTP server. |
 | `MONITORING_HOST` | `0.0.0.0` | Monitoring bind host. Restrict this in untrusted environments. |
 | `MONITORING_PORT` | `9091` | Monitoring bind port. |
-| `APP_LOG_MAX_SIZE` | `50m` | Docker Compose json-file log rotation size for the app container. Used by `docker-compose.yml`, not parsed by `loadConfig()`. |
-| `APP_LOG_MAX_FILE` | `5` | Docker Compose retained app log files. Used by `docker-compose.yml`, not parsed by `loadConfig()`. |
+| `APP_LOG_MAX_SIZE` | `50m` | Docker Compose json-file log rotation size for the app container. Used by `deploy/docker-compose.yml`, not parsed by `loadConfig()`. |
+| `APP_LOG_MAX_FILE` | `5` | Docker Compose retained app log files. Used by `deploy/docker-compose.yml`, not parsed by `loadConfig()`. |
 | `MONGO_LOG_MAX_SIZE` | `25m` | Docker Compose json-file log rotation size for the bundled MongoDB container. |
 | `MONGO_LOG_MAX_FILE` | `3` | Docker Compose retained MongoDB log files. |
 | `UNHEALTHY_EXIT_ENABLED` | `1` | Exit the process when runtime readiness stays unhealthy long enough, so Docker restart policies can recover it. |
@@ -355,21 +357,21 @@ Above 2,500 guilds per process Fluxer refuses the connection with close code
   `Another process is running with the same shard id`.
 
 The bundled compose file runs shard 0 as `app` and shard 1 as `app-shard-1`
-under the `sharded` profile. For two shards set `SHARD_COUNT=2` in `.env` and
-start with `docker compose --profile sharded up -d`. The dashboard needs no
-change.
+under the `sharded` profile. For two shards set `SHARD_COUNT=2` in `.env`, add
+`sharded` to `COMPOSE_PROFILES` and run `docker compose up -d`. The dashboard
+needs no change.
 
 ## Practical Presets
 
 ### Simple Fluxer setup
 
-Use this if you want the easiest normal Fluxer self-hosted setup.
+Use the Docker Compose setup from [`deploy/README.md`](../deploy/README.md).
 
-- required: `BOT_TOKEN`, `MONGODB_URI`
-- recommended: install `ffmpeg` and `yt-dlp`
-- leave Spotify, SoundCloud, Deezer, and Tidal credentials empty
+- required: `BOT_TOKEN`, `NODELINK_PASSWORD`, `BOT_OWNER_USER_ID`
+- keep `COMPOSE_PROFILES=bundled-db` unless you have your own MongoDB
+- leave all source credentials empty to start with
 
-This still allows direct YouTube/SoundCloud/Audius/radio playback and URL imports from Bandcamp, Audiomack, Mixcloud, and JioSaavn through metadata mirroring.
+This plays YouTube, SoundCloud, Bandcamp, Audius, radio streams and direct audio links, and resolves Spotify, Apple Music and Tidal links to a playable match.
 
 ## Runtime Notes
 

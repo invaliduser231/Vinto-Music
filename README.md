@@ -33,8 +33,9 @@ Resilient, self-hosted music bot for Fluxer with persistent music data, queue sa
 
 ## Jump To
 
-- [Quick Start](#quick-start)
-- [Self-Hosting On Fluxer](#self-hosting-on-fluxer)
+- [Self-Hosting](#self-hosting)
+- [Running From Source](#running-from-source)
+- [Music Sources](#music-sources)
 - [Configuration](#configuration)
 - [Dashboard](#dashboard)
 - [Commands](#commands)
@@ -59,162 +60,92 @@ Resilient, self-hosted music bot for Fluxer with persistent music data, queue sa
 - Built-in `/healthz`, `/readyz`, and Prometheus `/metrics` endpoints.
 - Optional Sentry reporting, an optional Fluxer error channel with redacted reports, opt-in runtime playback diagnostics, and memory telemetry / heap snapshot controls.
 
-## Self-Hosting On Fluxer
+## Self-Hosting
 
-> This project is intended to be self-hosted for Fluxer.
+Docker Compose is the supported way to run Vinto. The stack brings the bot,
+NodeLink, the YouTube cipher service and optionally MongoDB and the dashboard,
+all configured through one `.env` file:
 
-The defaults already point at the official Fluxer services:
+```bash
+mkdir -p ~/vinto && cd ~/vinto
+BASE=https://raw.githubusercontent.com/invaliduser231/Vinto-Music/main/deploy
+curl -fsSLO "$BASE/docker-compose.yml"
+curl -fsSL "$BASE/.env.example" -o .env
+# set BOT_TOKEN, NODELINK_PASSWORD and BOT_OWNER_USER_ID in .env
+docker compose up -d
+```
 
-| Variable | Default |
-| --- | --- |
-| `API_BASE` | `https://api.fluxer.app/v1` |
-| `GATEWAY_URL` | `wss://gateway.fluxer.app` |
+The full guide covers the database, the dashboard with your own domain,
+sharding, updates and backups: [deploy/README.md](deploy/README.md).
 
-For most operators, the practical requirements are:
+On Kubernetes, use the Helm chart in [`deploy/helm/vinto`](deploy/helm/vinto).
+It runs the same stack with one pod per shard, see
+[`deploy/helm/README.md`](deploy/helm/README.md).
 
-- a valid Fluxer bot token
-- MongoDB
-- NodeLink (bundled in `docker-compose.yml`)
-- `ffmpeg` for radio streams and direct audio links
+Coolify and similar platforms can deploy `deploy/docker-compose.yml` directly
+as a Docker Compose resource. Set the variables from `deploy/.env.example` in
+the platform instead of a file.
 
-`GATEWAY_ONLY_MODE=1` only skips the startup REST health check and gateway discovery. During normal Fluxer operation the bot still talks to the Fluxer REST API.
+The defaults point at the official Fluxer services. For a self-hosted Fluxer
+instance, set `API_BASE` and `GATEWAY_URL`. If the bot runs on a different
+server than that instance, also set `rtc.use_external_ip: true` in its
+`livekit.yaml`, otherwise the bot joins voice but logs
+`Playback pipeline did not produce audio output in time`.
 
-## Requirements
+## Running From Source
+
+For development. Running the bot outside Docker in production means installing
+and updating NodeLink (the fork, not upstream), the cipher service, MongoDB and
+ffmpeg by hand, which is what the compose file does for you.
 
 | Requirement | Notes |
 | --- | --- |
-| Node.js | `>= 24` |
-| MongoDB | local or managed |
-| NodeLink | playback backend, run with `NODELINK_ENABLELOADSTREAMENDPOINT=true` |
-| `ffmpeg` | on `PATH` or via `FFMPEG_BIN`, used for radio streams and direct audio links |
+| Node.js | `>= 24`, the images use 26 |
+| pnpm | 12, install with `npm install -g pnpm@12` |
+| ffmpeg | on `PATH` or via `FFMPEG_BIN`, used for radio streams and direct audio links |
 
-## Quick Start
-
-### 1. Install pnpm, then copy env
-
-If `pnpm` is not installed yet, enable it through Corepack first:
-
-```bash
-corepack enable
-```
-
-Then install dependencies and create your env file:
+Start NodeLink and MongoDB in Docker and the bot from source:
 
 ```bash
 pnpm install --frozen-lockfile
-cp .env.example .env
+cp deploy/.env.example .env
+# set BOT_TOKEN and NODELINK_PASSWORD, then add:
+#   NODELINK_BASE_URL=http://127.0.0.1:2333
+#   MONGODB_URI=mongodb://127.0.0.1:27017
+cp .env deploy/.env
+docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.dev.yml up -d nodelink mongo
+pnpm dev
 ```
-
-Windows PowerShell:
-
-```powershell
-Copy-Item .env.example .env
-```
-
-### 2. Fill the minimum env values
-
-```env
-BOT_TOKEN=your_fluxer_bot_token
-MONGODB_URI=mongodb://127.0.0.1:27017
-NODELINK_ENABLED=1
-NODELINK_BASE_URL=http://127.0.0.1:3001
-NODELINK_PASSWORD=your_nodelink_password
-NODELINK_ROUTING_MODE=all
-```
-
-### 3. Start the bot
-
-```bash
-pnpm start
-```
-
-Useful commands:
 
 | Action | Command |
 | --- | --- |
-| Start | `pnpm start` |
 | Dev mode | `pnpm dev` |
 | Build | `pnpm run build` |
+| Start the build | `pnpm start` |
 | Typecheck | `pnpm run typecheck` |
 | Tests | `pnpm test` |
 | Spotify token helper | `pnpm spotify:token` |
 
-## Deploy On Coolify
+## Music Sources
 
-This repo now includes [`docker-compose.yml`](docker-compose.yml) and a production [`Dockerfile`](Dockerfile) for Coolify.
+Without any credentials Vinto plays YouTube, SoundCloud, Bandcamp, Audius, radio
+streams and direct audio links, and resolves Spotify, Apple Music and Tidal
+links to a playable match.
 
-### Recommended Coolify setup
+| Add | Variables | Effect |
+| --- | --- | --- |
+| Deezer | `DEEZER_ARL`, `NODELINK_SOURCES_DEEZER_DECRYPTIONKEY` | full-length Deezer playback, preferred for text search and for matching Spotify tracks by ISRC |
+| Spotify app | `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` | own rate limit instead of the shared token service |
+| YouTube login | `NODELINK_SOURCES_YOUTUBE_CLIENTS_SETTINGS_TV_REFRESHTOKEN` | fewer "Sign in to confirm you're not a bot" blocks |
+| Last.fm | `LASTFM_ENABLED`, `LASTFM_API_KEY`, `LASTFM_API_SECRET`, `LASTFM_ENCRYPTION_KEY` | scrobbling, profile stats, Last.fm autoplay |
 
-- Use the Docker Compose deployment type.
-- Set at least `BOT_TOKEN` in Coolify.
-- Leave `MONGODB_URI` unset if you want to use the bundled `mongo` service from `docker-compose.yml`.
-- Expose port `9091` if you want Coolify or external monitoring to reach `/healthz`, `/readyz`, and `/metrics`.
-- Add any optional provider secrets such as `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `SPOTIFY_REFRESH_TOKEN`, `DEEZER_ARL`, or `SENTRY_DSN` directly in Coolify as environment variables.
-- The bundled Docker defaults already set conservative memory values: `NODE_OPTIONS=--max-old-space-size=1024 --openssl-legacy-provider`, `MONGODB_MAX_POOL_SIZE=20`, and `MONGODB_MIN_POOL_SIZE=2`. Override them in Coolify only if you want different limits.
-- The app now exits with code `1` if it stays unhealthy for too long, so `restart: unless-stopped` can actually restart the container. Tune this with `UNHEALTHY_EXIT_AFTER_MS` if needed.
-
-If you use an external MongoDB instead of the bundled container, set:
-
-```env
-MONGODB_URI=mongodb://user:password@your-mongo-host:27017
-```
-
-The bundled Compose file starts NodeLink next to the bot, and playback runs through it. The image still ships `ffmpeg` for radio streams and direct audio links, plus `yt-dlp` with the `bgutil-ytdlp-pot-provider` plugin as a resolver fallback for setups that do not route everything through NodeLink. With `NODELINK_ROUTING_MODE=all`, yt-dlp is never used for playback.
-
-If the bot runs on a different server than a self-hosted Fluxer instance, set `rtc.use_external_ip: true` in that instance's `livekit.yaml`. Otherwise the bot joins voice but logs `Playback pipeline did not produce audio output in time`.
-
-## Deploy On Kubernetes
-
-A Helm chart in [`deploy/helm/vinto`](deploy/helm/vinto) runs the same stack as the Compose file, with one pod per shard and an optional dashboard. Configuration comes from a Secret created from `.env`. Setup and updates are described in [`deploy/helm/README.md`](deploy/helm/README.md).
-
-## Recommended Setups
-
-<details>
-<summary><strong>Minimal setup</strong></summary>
-
-Good for the simplest Fluxer self-hosted deployment.
-
-- keep `ENABLE_YT_SEARCH=1`
-- keep `ENABLE_YT_PLAYBACK=1`
-- run NodeLink with `NODELINK_ROUTING_MODE=all`
-- leave Spotify, Deezer, and Tidal credentials empty
-- install `ffmpeg`
-
-This still supports YouTube, SoundCloud, Audius, radio streams, and keyless metadata mirroring from Bandcamp, Audiomack, Mixcloud, and JioSaavn URLs.
-
-</details>
-
-<details>
-<summary><strong>Spotify import setup</strong></summary>
-
-Use this if users should be able to paste Spotify URLs.
-
-- set `SPOTIFY_CLIENT_ID`
-- set `SPOTIFY_CLIENT_SECRET`
-- set `SPOTIFY_REFRESH_TOKEN`
-- optionally set `SPOTIFY_MARKET`
-
-Spotify is metadata resolution only. Playback is mirrored to Deezer first when `DEEZER_ARL` is configured, otherwise to YouTube.
-
-</details>
-
-<details>
-<summary><strong>Deezer-first setup</strong></summary>
-
-Use this if you want Deezer-first text search and the best direct Deezer playback path.
-
-- set `DEEZER_ARL`
-- keep `ENABLE_DEEZER_IMPORT=1`
-
-With `DEEZER_ARL` configured, plain text `play` resolution prefers Deezer before falling back to YouTube.
-
-</details>
+Each entry is explained in [deploy/.env.example](deploy/.env.example).
 
 ## Troubleshooting
 
 | Problem | What to check |
 | --- | --- |
-| YouTube playback fails | NodeLink reachability (`/readyz` shows a `nodelink` object), `NODELINK_PASSWORD`, `NODELINK_ENABLELOADSTREAMENDPOINT=true` on NodeLink, `NODELINK_SOURCES_YOUTUBE_PROXIES` if YouTube blocks the server IP |
+| YouTube playback fails | NodeLink reachability (`/readyz` shows a `nodelink` object), `NODELINK_PASSWORD`, `NODELINK_API_ENABLELOADSTREAMENDPOINT=true` on NodeLink, a YouTube refresh token or `NODELINK_SOURCES_YOUTUBE_PROXIES` if YouTube blocks the server IP |
 | A link is refused as a private address | The URL resolves to a private, loopback, or link-local address. Set `ALLOW_PRIVATE_MEDIA_URLS=1` only on private instances that need LAN streams |
 | Commands fail but gateway connects | `API_BASE`, token validity, runtime REST access |
 | Voice joins but no audio | Fluxer voice-side setup, `VOICE_MAX_BITRATE`, LiveKit-based publisher flow, and whether a restart recovery snapshot existed before reboot |
@@ -226,7 +157,7 @@ With `DEEZER_ARL` configured, plain text `play` resolution prefers Deezer before
 ### Bot starts but cannot play YouTube
 
 - check that NodeLink is up and that `/readyz` reports it as reachable
-- make sure `NODELINK_PASSWORD` matches `NODELINK_SERVER_PASSWORD` on NodeLink and that NodeLink runs with `NODELINK_ENABLELOADSTREAMENDPOINT=true`
+- make sure `NODELINK_PASSWORD` matches `NODELINK_SERVER_PASSWORD` on NodeLink and that NodeLink runs with `NODELINK_API_ENABLELOADSTREAMENDPOINT=true`
 - if YouTube blocks the server IP, give NodeLink a proxy pool through `NODELINK_SOURCES_YOUTUBE_PROXIES`
 - with `NODELINK_ROUTING_MODE=all` a failed stream is retried through NodeLink and then mirrored to another source, so a single YouTube failure does not stop the queue
 - without NodeLink, the yt-dlp settings in [docs/CONFIGURATION.md](docs/CONFIGURATION.md) still apply
@@ -251,7 +182,7 @@ With `DEEZER_ARL` configured, plain text `play` resolution prefers Deezer before
 
 - Full env reference: [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
 - Architecture notes: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- Env template: [.env.example](.env.example)
+- Env template: [deploy/.env.example](deploy/.env.example)
 
 ## Dashboard
 
