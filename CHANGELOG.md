@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.17.1] - 2026-11-10
+
+- Wording: replies, command descriptions and the dashboard say community instead of guild or server, matching Fluxer
+- Commands: `language community <code>` and `lastfm leaderboard community` work, `guild` and `server` stay as aliases
+- Tests: language command scope, updated wording
+
 ## [0.17.0] - 2026-11-10
 
 - Deployment:
