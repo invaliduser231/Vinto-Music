@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.15.2] - 2026-11-10
+
+- Fixes:
+  - a restarted live stream or a recovered track keeps its now playing card instead of posting a new one
+  - live tracks that end twice at the same length are no longer restarted endlessly
+  - soundcloud results that nodelink marks as blocked are skipped
+- Tests: live restart length check, now playing card on restart, blocked soundcloud results
+
 ## [0.15.1] - 2026-11-08
 
 - Deployment: helm chart under `deploy/helm/vinto` as an alternative to docker compose, with one pod per shard, optional dashboard and network policies
