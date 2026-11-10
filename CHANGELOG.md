@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.16.0] - 2026-11-10
+
+- Stats:
+  - shows when the bot started as a relative time, plus playing sessions and listeners across all shards
+  - version, shard, ping and heap moved into the footer
+- Search: soundcloud previews are listed after full tracks
+- Fixes: youtube music album and search links are no longer rewritten to youtube.com, where they did not resolve
+- Tests: stats layout and shard totals, preview ranking, youtube music links
+
 ## [0.15.2] - 2026-11-10
 
 - Fixes:
