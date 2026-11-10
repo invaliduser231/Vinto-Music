@@ -69,7 +69,7 @@ test('the play count is in the very first render, not only the final one', async
   for (const [index, fields] of renders.entries()) {
     const played = fields.find((field) => field.name === 'Tracks played');
     assert.ok(played, `render ${index + 1} is missing the play count`);
-    assert.equal(played?.value, '`33,147`');
+    assert.equal(played?.value, '33,147');
   }
 });
 
