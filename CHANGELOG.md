@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.17.0] - 2026-11-10
+
+- Deployment:
+  - `deploy/docker-compose.yml` is the only compose file, the root one is gone
+  - optional containers are chosen through `COMPOSE_PROFILES` in `.env`: `bundled-db`, `dashboard`, `sharded`
+  - the dashboard is now an opt-in profile and no longer forces `DASHBOARD_API_SECRET` on setups without it
+  - `docker-compose.build.yml` builds the images from a checkout, `docker-compose.dev.yml` publishes NodeLink and Mongo for `pnpm dev`
+  - compose and helm route everything through NodeLink by default
+  - guide rewritten, with dashboard behind a reverse proxy, sharding and source builds
+- Images run on node 26, the container starts node directly instead of through pnpm
+- Tooling: pnpm 12, build approvals and overrides moved to `pnpm-workspace.yaml`, typescript 7
+- Dependencies: livekit rtc-node 1.2, sentry 11, dotenv 18, react 19.3, mongodb 7.8
+- CI: actions updated to their current major versions
+- Fixes:
+  - spotify, apple music and tidal settings set under their NodeLink names in `.env` now reach NodeLink
+  - youtube client order and search sources match between `.env.example`, compose and helm
+  - missing settings added to the template, among them Last.fm, the error channel and the audio thread watchdog
+
 ## [0.16.1] - 2026-11-10
 
 - Dashboard: next updated to 16.4.6, which fixes two remote code execution flaws and a denial of service in server actions
