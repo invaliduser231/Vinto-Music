@@ -306,7 +306,7 @@ export function VintoApp() {
     ];
 
     if (guildSettingsHook.settings?.canManage) {
-      misc.push({ id: 'open:settings', group: 'Guild', label: 'Open guild settings', run: () => setSettingsOpen(true) });
+      misc.push({ id: 'open:settings', group: 'Community', label: 'Open community settings', run: () => setSettingsOpen(true) });
     }
 
     return [...viewCommands, ...misc, ...playback];

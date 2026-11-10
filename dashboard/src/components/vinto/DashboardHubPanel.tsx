@@ -100,7 +100,7 @@ export function DashboardHubPanel({
     <div className="vinto-panel-stack">
       <h2>Library</h2>
 
-      <h3>Guild playlists</h3>
+      <h3>Community playlists</h3>
       {canControl ? (
         <form className="vinto-inline-form" onSubmit={(event) => {
           event.preventDefault();
