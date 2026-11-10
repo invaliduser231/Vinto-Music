@@ -917,7 +917,7 @@ export class MusicLibraryStore {
 
     const count = await this.guildPlaylists.countDocuments!({ guildId: normalizedGuildId });
     if (count >= this.maxPlaylistsPerGuild) {
-      throw new ValidationError(`Playlist limit reached (${this.maxPlaylistsPerGuild} per guild).`);
+      throw new ValidationError(`Playlist limit reached (${this.maxPlaylistsPerGuild} per community).`);
     }
 
     const now = new Date();

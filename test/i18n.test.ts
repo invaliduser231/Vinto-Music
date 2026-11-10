@@ -68,6 +68,7 @@ test('no translation is left as an untranslated copy of english', () => {
     'lastfm.topTitle',
     'autoplay.set',
     'stats.footerPing',
+    'stats.communities',
   ]);
   let identical = 0;
 

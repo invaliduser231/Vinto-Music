@@ -352,7 +352,7 @@ export function registerAdvancedCommands(registry: RegistryLike, h: AdvancedComm
 
   registry.register(createCommand({
     name: 'charts',
-    description: 'Show top played tracks in this guild.',
+    description: 'Show top played tracks in this community.',
     usage: 'charts [days]',
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);

@@ -72,7 +72,7 @@ export function registerStatsCommand(registry: CommandRegistry) {
 
       const render = async (guilds: string, users: string, listening: ListeningStats) => {
         const fields = [
-          { name: t('stats.servers'), value: guilds, inline: true },
+          { name: t('stats.communities'), value: guilds, inline: true },
           { name: t('stats.users'), value: users, inline: true },
           { name: t('stats.started'), value: relativeTimestamp(startedAt), inline: true },
           { name: t('stats.playing'), value: formatCount(typedCtx, listening.playingCount), inline: true },

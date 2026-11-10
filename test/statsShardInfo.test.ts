@@ -119,7 +119,7 @@ test('stats take guild and member totals from the shard registry when every shar
     shardTotals: { shardCount: 2, guildCount: 1977, memberCount: 250_000, uncountedGuildCount: 0 },
     guildList: [{ id: '1', approximate_member_count: 5 }],
   });
-  assert.equal(fields.Servers, '1,977');
+  assert.equal(fields.Communities, '1,977');
   assert.equal(fields.Users, '250,000');
 });
 
@@ -139,6 +139,6 @@ test('stats fall back to the guild list counts when the registry has no totals',
       { id: '2', approximate_member_count: 7 },
     ],
   });
-  assert.equal(fields.Servers, '2');
+  assert.equal(fields.Communities, '2');
   assert.equal(fields.Users, '12');
 });

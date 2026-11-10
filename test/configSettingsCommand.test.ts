@@ -78,7 +78,7 @@ test('settings command shows 24/7 status with the active voice channel tag', asy
     permissionService: null,
   });
 
-  assert.equal(replyTitle, 'Guild configuration');
+  assert.equal(replyTitle, 'Community configuration');
   const stayField = replyFields.find((field) => field.name === '24/7');
   assert.ok(stayField);
   assert.equal(stayField.value, '<#222222>: on');

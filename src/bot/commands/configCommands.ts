@@ -168,7 +168,7 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
   registry.register(createCommand({
     name: 'volumedefault',
     aliases: ['volcfg', 'defaultvolume'],
-    description: 'Show or set the default volume for new guild sessions.',
+    description: 'Show or set the default volume for new community sessions.',
     usage: 'volumedefault [0-200]',
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
@@ -284,7 +284,7 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
 
   registry.register(createCommand({
     name: 'prefix',
-    description: 'Show or set the guild command prefix.',
+    description: 'Show or set the community command prefix.',
     usage: 'prefix [newPrefix]',
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
@@ -410,7 +410,7 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
   registry.register(createCommand({
     name: 'voteskipcfg',
     aliases: ['vscfg'],
-    description: 'Configure vote-skip threshold per guild.',
+    description: 'Configure vote-skip threshold per community.',
     usage: 'voteskipcfg [ratio <0..1>|min <number>]',
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
@@ -459,7 +459,7 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
   registry.register(createCommand({
     name: 'settings',
     aliases: ['cfg', 'config'],
-    description: 'Show effective guild music-bot settings.',
+    description: 'Show effective community music-bot settings.',
     usage: 'settings',
     async execute(ctx: CommandContextLike) {
       ensureGuild(ctx);
@@ -518,7 +518,7 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
     name: 'language',
     aliases: ['lang', 'sprache', 'idioma'],
     description: 'Show or change the language used for bot replies.',
-    usage: 'language [en|de|pt-BR|guild <code>|reset]',
+    usage: 'language [en|de|pt-BR|community <code>|reset]',
     async execute(ctx: CommandContextLike) {
       const localeList = SUPPORTED_LOCALES.join(', ');
       const library = requireLibrary(ctx);
@@ -561,7 +561,7 @@ export function registerConfigCommands(registry: RegistryLike, h: ConfigCommandH
         return;
       }
 
-      if (action === 'server' || action === 'guild') {
+      if (action === 'community' || action === 'server' || action === 'guild') {
         ensureGuild(ctx);
         const guildConfig = await getGuildConfigOrThrow(ctx);
 

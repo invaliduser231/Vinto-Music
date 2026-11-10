@@ -724,7 +724,7 @@ async function handleBlend(ctx: CommandContextLike, lastfm: LastFmBundle): Promi
 
 async function handleLeaderboard(ctx: CommandContextLike, lastfm: LastFmBundle): Promise<void> {
   const scope = String(ctx.args[1] ?? 'global').trim().toLowerCase();
-  const guildScope = scope === 'guild' || scope === 'server';
+  const guildScope = scope === 'community' || scope === 'guild' || scope === 'server';
 
   let userIds: string[] | null = null;
   if (guildScope) {

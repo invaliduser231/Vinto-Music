@@ -476,7 +476,7 @@ function formatSearchResultLine(track: SearchTrack, index: number) {
 }
 
 function formatRadioStationSummary(station: ResolvedRadioStation, index: number) {
-  const scope = station.scope === 'guild' ? 'Guild' : 'Built-in';
+  const scope = station.scope === 'guild' ? 'Community' : 'Built-in';
   const tags = station.tags.length ? ` - ${station.tags.join(', ')}` : '';
   return `${index}. **${station.name}** [${scope}]${tags}`;
 }
@@ -629,8 +629,8 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
 
   registry.register(createCommand({
     name: 'support',
-    aliases: ['fluxer', 'server', 'guild'],
-    description: 'Get the support guild invite link.',
+    aliases: ['fluxer', 'community', 'server', 'guild'],
+    description: 'Get the support community invite link.',
     usage: 'support',
     async execute(ctx: PlaybackCommandContext) {
       await ctx.reply.info(ctx.t('support.title'), [
@@ -749,7 +749,7 @@ export function registerCorePlaybackCommands(registry: CommandRegistry) {
 
   registry.register(createCommand({
     name: 'radio',
-    description: 'Play a built-in or guild-saved radio station preset.',
+    description: 'Play a built-in or community-saved radio station preset.',
     usage: 'radio <station|random|url>',
     async execute(ctx: PlaybackCommandContext) {
       ensureGuild(ctx);

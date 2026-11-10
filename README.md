@@ -228,7 +228,7 @@ Available when `LASTFM_ENABLED=1`. Each listener links their own account, nothin
 - `lastfm top [artists|tracks|albums] [7d|1m|3m|6m|1y|all] [@user]`
 - `lastfm compare <@user>` for a taste match score
 - `lastfm blend` builds a queue from the top artists of everyone currently in the voice channel
-- `lastfm leaderboard [guild|global]`
+- `lastfm leaderboard [community|global]`
 - `lastfm whoknows [artist]` ranks linked members for an artist, the playing one by default; the top listener with at least 30 plays holds the crown
 - `lastfm crowns [@user]`
 - `lastfm play <loved|top|recent> [@user] [7d|1m|3m|6m|1y|all]` queues up to 15 tracks from someone's Last.fm lists

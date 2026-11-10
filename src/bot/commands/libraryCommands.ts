@@ -130,7 +130,7 @@ function isHttpUrl(value: string) {
 }
 
 function formatStationLine(station: ResolvedRadioStation, index: number) {
-  const scope = station.scope === 'guild' ? 'Guild' : 'Built-in';
+  const scope = station.scope === 'guild' ? 'Community' : 'Built-in';
   const tags = station.tags.length ? ` - ${station.tags.join(', ')}` : '';
   return `${index}. **${station.name}** [${scope}]${tags}`;
 }
@@ -192,7 +192,7 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
   registry.register(createCommand({
     name: 'playlist',
     aliases: ['pl'],
-    description: 'Manage persistent guild playlists.',
+    description: 'Manage persistent community playlists.',
     usage: 'playlist <create|add|remove|show|list|delete|play> ...',
     async execute(ctx: CommandContextLike) {
       const typedCtx = ctx as LibraryCommandContext;
@@ -404,7 +404,7 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
   registry.register(createCommand({
     name: 'stations',
     aliases: ['radiolist'],
-    description: 'Browse built-in and guild-saved radio presets.',
+    description: 'Browse built-in and community-saved radio presets.',
     usage: 'stations [filter] [page]',
     async execute(ctx: CommandContextLike) {
       const typedCtx = ctx as LibraryCommandContext;
@@ -475,7 +475,7 @@ export function registerLibraryCommands(registry: CommandRegistry, h: LibraryHel
   registry.register(createCommand({
     name: 'station',
     aliases: ['presetstation'],
-    description: 'Manage guild radio station presets.',
+    description: 'Manage community radio station presets.',
     usage: 'station <list|show|save|delete> ...',
     async execute(ctx: CommandContextLike) {
       const typedCtx = ctx as LibraryCommandContext;
