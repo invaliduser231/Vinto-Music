@@ -723,6 +723,7 @@ export const urlResolverMethods: UrlResolverMethods & ThisType<UrlResolverRuntim
     try {
       const parsed = new URL(trimmed);
       if (parsed.hostname === 'music.youtube.com') {
+        if (parsed.pathname !== '/watch' && parsed.pathname !== '/playlist') return parsed.toString();
         parsed.hostname = 'www.youtube.com';
         return parsed.toString();
       }

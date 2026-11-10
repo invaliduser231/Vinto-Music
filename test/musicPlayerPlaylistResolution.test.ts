@@ -229,3 +229,24 @@ test('playlist resolver falls back to inferred watch URL when ytdlp/play-dl fail
 
 
 
+
+test('youtube music watch and playlist links move to www, other pages stay on music.youtube.com', async () => {
+  const player = new MusicPlayer({}, { logger: undefined });
+
+  assert.equal(
+    await player._normalizeInputUrl('https://music.youtube.com/watch?v=ZMwJ6R9BE48'),
+    'https://www.youtube.com/watch?v=ZMwJ6R9BE48',
+  );
+  assert.equal(
+    await player._normalizeInputUrl('https://music.youtube.com/playlist?list=OLAK5uy_abc'),
+    'https://www.youtube.com/playlist?list=OLAK5uy_abc',
+  );
+  assert.equal(
+    await player._normalizeInputUrl('https://music.youtube.com/search?q=fred+again'),
+    'https://music.youtube.com/search?q=fred+again',
+  );
+  assert.equal(
+    await player._normalizeInputUrl('https://music.youtube.com/browse/MPREb_abc'),
+    'https://music.youtube.com/browse/MPREb_abc',
+  );
+});
