@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.17.2] - 2026-11-11
+
+- Commands: `donate` (aliases `kofi`, `tip`) links Ko-fi and the bank transfer page
+- `help` and `stats` mention vinto.music/donate, the radio recognition footer points there too
+- Tests: donate command, help footer, stats donation line
+
 ## [0.17.1] - 2026-11-10
 
 - Wording: replies, command descriptions and the dashboard say community instead of guild or server, matching Fluxer
