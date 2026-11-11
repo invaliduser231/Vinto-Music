@@ -1,4 +1,5 @@
 import {
+  DONATE_PAGE_URL,
   createCommand,
   fetchGlobalGuildAndUserCounts,
   getCachedGlobalGuildAndUserCounts,
@@ -79,7 +80,7 @@ export function registerStatsCommand(registry: CommandRegistry) {
           { name: t('stats.listeners'), value: formatCount(typedCtx, listening.listenerCount), inline: true },
           { name: t('stats.tracksPlayed'), value: formatCount(typedCtx, totalPlays), inline: true },
         ];
-        const payload = buildInfoPayload(typedCtx, t('stats.title'), '', fields, { footer: buildFooter(typedCtx) });
+        const payload = buildInfoPayload(typedCtx, t('stats.title'), t('stats.donate', { url: DONATE_PAGE_URL }), fields, { footer: buildFooter(typedCtx) });
         const replaced = await progress.replace(payload);
         if (!replaced) await progress.info(t('stats.title'), fields);
       };

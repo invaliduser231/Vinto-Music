@@ -47,6 +47,10 @@ export const en = {
 
   'support.title': 'Support community',
   'support.invite': 'Invite',
+  'donate.title': 'Donate',
+  'donate.description': 'Vinto is free and stays free. Donating is voluntary and comes with no perks.',
+  'donate.kofi': 'Ko-fi (card, PayPal)',
+  'donate.bank': 'Bank transfer (SEPA)',
 
   'ping.pong': 'Pong!',
   'ping.pinging': 'Pinging...',
@@ -209,6 +213,7 @@ export const en = {
   'stats.footerMemory': '{mb} MB heap',
   'stats.counting': 'counting...',
   'stats.partial': '{count} (partial)',
+  'stats.donate': 'Vinto is free to use. Donations: {url}',
 
   'common.tracks': 'Tracks',
   'common.noData': 'No data',
@@ -579,6 +584,7 @@ export const en = {
   'cmd.stations.description': 'Browse built-in and community-saved radio presets.',
   'cmd.stats.description': 'Show bot statistics.',
   'cmd.support.description': 'Get the support community invite link.',
+  'cmd.donate.description': 'Show how to donate to Vinto.',
   'cmd.taste.description': 'Show personal taste memory terms.',
   'cmd.template.description': 'Manage queue templates.',
   'cmd.tempo.description': 'Set playback tempo (0.5 - 2.0).',

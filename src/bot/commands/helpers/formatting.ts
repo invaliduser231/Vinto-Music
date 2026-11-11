@@ -7,6 +7,7 @@ import {
   EMBED_FIELD_TEXT_LIMIT,
   HISTORY_PAGE_SIZE,
   PENDING_PAGE_SIZE,
+  DONATE_PAGE_URL,
   SUPPORT_SERVER_URL,
   TRACK_LINE_MAX_CHARS,
   VOICE_CHANNEL_PATTERN,
@@ -372,7 +373,7 @@ export function buildHelpPayload(ctx: HelpPayloadContext): MessagePayload {
       buildEmbed({
         title: ctx.title,
         description: ctx.description,
-        footer: `Support: ${SUPPORT_SERVER_URL}`,
+        footer: `Support: ${SUPPORT_SERVER_URL} | Donate: ${DONATE_PAGE_URL}`,
       }),
     ],
     allowed_mentions: {

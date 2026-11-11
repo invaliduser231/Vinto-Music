@@ -11,7 +11,7 @@ type Field = { name: string; value: string };
 
 type ShardTotalsStub = { shardCount: number; guildCount: number; memberCount: number; uncountedGuildCount: number } | null;
 
-type StatsEmbed = { fields?: Field[]; footer?: { text?: string } };
+type StatsEmbed = { description?: string; fields?: Field[]; footer?: { text?: string } };
 type ShardTotalsFull = NonNullable<ShardTotalsStub> & { playingCount?: number | null; listenerCount?: number | null };
 
 async function runStats(
@@ -65,8 +65,13 @@ async function runStats(
 
   const embed = edits.at(-1) ?? {};
   const fields = Object.fromEntries((embed.fields ?? []).map((field) => [field.name, field.value]));
-  return { fields, footer: embed.footer?.text ?? '' };
+  return { fields, footer: embed.footer?.text ?? '', description: embed.description ?? '' };
 }
+
+test('stats mention that donations are possible', async () => {
+  const { description } = await runStats({}, 1234);
+  assert.equal(description, 'Vinto is free to use. Donations: https://vinto.music/donate');
+});
 
 const playing = (guildId: string, channelId: string) => ({
   guildId,

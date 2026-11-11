@@ -49,6 +49,10 @@ export const de: Catalog = {
 
   'support.title': 'Support-Community',
   'support.invite': 'Einladung',
+  'donate.title': 'Spenden',
+  'donate.description': 'Vinto ist kostenlos und bleibt es. Spenden sind freiwillig und bringen keine Vorteile.',
+  'donate.kofi': 'Ko-fi (Karte, PayPal)',
+  'donate.bank': 'Überweisung (SEPA)',
 
   'ping.pong': 'Pong!',
   'ping.pinging': 'Messe...',
@@ -211,6 +215,7 @@ export const de: Catalog = {
   'stats.footerMemory': '{mb} MB Heap',
   'stats.counting': 'wird gezählt...',
   'stats.partial': '{count} (unvollständig)',
+  'stats.donate': 'Vinto ist kostenlos. Spenden: {url}',
 
   'common.tracks': 'Titel',
   'common.noData': 'Keine Daten',
@@ -581,6 +586,7 @@ export const de: Catalog = {
   'cmd.stations.description': 'Eingebaute und gespeicherte Radio-Presets durchsuchen.',
   'cmd.stats.description': 'Bot-Statistik anzeigen.',
   'cmd.support.description': 'Den Einladungslink zur Support-Community anzeigen.',
+  'cmd.donate.description': 'Zeigt, wie man für Vinto spenden kann.',
   'cmd.taste.description': 'Gespeicherte Geschmacksbegriffe anzeigen.',
   'cmd.template.description': 'Warteschlangen-Vorlagen verwalten.',
   'cmd.tempo.description': 'Wiedergabetempo einstellen (0.5 bis 2.0).',

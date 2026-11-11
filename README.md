@@ -199,7 +199,7 @@ Default prefix: `!`
 
 ### Core Playback
 
-- `help [command|page_number]`, `support`, `ping`
+- `help [command|page_number]`, `support`, `donate`, `ping`
 - `join`, `leave`
 - `radio <station|random|url>`, `stations [filter] [page]`
 - `play <query|url>`, `playnext <query|url>`, `search <query>`, `pick <index>`

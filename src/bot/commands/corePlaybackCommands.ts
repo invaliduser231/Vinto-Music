@@ -4,6 +4,7 @@ import {
   PENDING_PAGE_SIZE,
   SEARCH_RESULT_DEFAULT_LIMIT,
   SUPPORT_SERVER_URL,
+  DONATE_PAGE_URL,
   createCommand,
   buildHelpPages,
   parseVoiceChannelArgument,
@@ -99,7 +100,7 @@ async function sendNowPlayingCard(
   return Boolean(sent);
 }
 
-const RADIO_RECOGNITION_SUPPORT_FOOTER = 'Radio recognition costs money to run. Support: https://ko-fi.com/Q5Q31VDH1Z';
+const RADIO_RECOGNITION_SUPPORT_FOOTER = `Radio recognition costs money to run. Support: ${DONATE_PAGE_URL}`;
 const DIRECT_YOUTUBE_METADATA_GRACE_MS = 150;
 const DIRECT_YOUTUBE_MESSAGE_GRACE_MS = 500;
 

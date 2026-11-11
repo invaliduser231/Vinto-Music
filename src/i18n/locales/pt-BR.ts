@@ -49,6 +49,10 @@ export const ptBR: Catalog = {
 
   'support.title': 'Comunidade de suporte',
   'support.invite': 'Convite',
+  'donate.title': 'Doar',
+  'donate.description': 'O Vinto é gratuito e vai continuar assim. Doar é voluntário e não dá vantagens.',
+  'donate.kofi': 'Ko-fi (cartão, PayPal)',
+  'donate.bank': 'Transferência bancária (SEPA)',
 
   'ping.pong': 'Pong!',
   'ping.pinging': 'Medindo...',
@@ -211,6 +215,7 @@ export const ptBR: Catalog = {
   'stats.footerMemory': '{mb} MB de heap',
   'stats.counting': 'contando...',
   'stats.partial': '{count} (parcial)',
+  'stats.donate': 'O Vinto é gratuito. Doações: {url}',
 
   'common.tracks': 'Faixas',
   'common.noData': 'Sem dados',
@@ -581,6 +586,7 @@ export const ptBR: Catalog = {
   'cmd.stations.description': 'Navegar pelas predefinições de rádio internas e salvas.',
   'cmd.stats.description': 'Mostrar estatísticas do bot.',
   'cmd.support.description': 'Obter o convite da comunidade de suporte.',
+  'cmd.donate.description': 'Mostrar como doar para o Vinto.',
   'cmd.taste.description': 'Mostrar os termos do seu perfil de gosto.',
   'cmd.template.description': 'Gerenciar modelos de fila.',
   'cmd.tempo.description': 'Definir o tempo de reprodução (0.5 a 2.0).',
