@@ -29,7 +29,7 @@
     "deezer"
   ],
   "dependencies": {
-    "@livekit/rtc-node": "^1.2.1",
+    "@livekit/rtc-node": "^1.2.3",
     "@napi-rs/canvas": "^1.1.0",
     "@sentry/node": "^11.11.0",
     "dotenv": "^18.0.10",
